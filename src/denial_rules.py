@@ -1,0 +1,296 @@
+"""
+Rule-based construction of the `is_denied` target for the CMS Synthetic Claims PUF.
+
+Why this file exists at all (don't delete this docstring — it's the answer to the
+first interview question this project will get): the public CMS synthetic claims
+PUF has no real denial/non-payment field — every candidate field
+(CARR_CLM_PMT_DNL_CD, CLM_MDCR_NON_PMT_RSN_CD, CLM_DISP_CD) is a fixed constant
+across all 8,671 beneficiaries. See data/TARGET_DEFINITION.md for the full
+verification trail. `is_denied` here is therefore an engineered, documented proxy
+label, not observed ground truth.
+
+Each rule is a standalone function returning a boolean Series so you can inspect
+which rule(s) fired on which claims, and report each rule's individual hit rate,
+not just the combined label. That per-rule transparency is what makes this
+defensible under interview follow-up.
+
+Column names below follow standard Medicare RIF / CCW naming (CLM_PMT_AMT,
+PRNCPAL_DGNS_CD, HCPCS_CD, CLM_FROM_DT, etc.). Adapt to your actual downloaded
+column names if CMS has renamed anything since this was written -- print
+`df.columns.tolist()` first and diff against the calls below before trusting any
+rule's output.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+
+# ---------------------------------------------------------------------------
+# Rule 1 — Zero / near-zero payment on a billed claim
+# ---------------------------------------------------------------------------
+# SUPERSEDED as a denial CAUSE -- see denial_reasons.py. Using CLM_PMT_AMT to
+# *detect* is_denied and then also feeding CLM_PMT_AMT (or anything derived
+# from it) into the Phase 2 model is raw-feature target leakage: the model
+# would just be recovering the label from a field that near-determines it by
+# construction. Kept here only as a POST-HOC CONSISTENCY CHECK -- after
+# denial_reasons.py assigns is_denied probabilistically, use this to verify
+# denied claims actually got their CLM_PMT_AMT zeroed out downstream (see
+# apply_payment_consequence() in denial_reasons.py), never as a model input.
+# CLM_PMT_AMT must be excluded from the Phase 2 feature set entirely once
+# denial_reasons.py has run -- document this explicitly in the data
+# dictionary, don't rely on remembering it.
+ZERO_PAY_THRESHOLD = 1.00  # dollars
+
+
+def rule_zero_payment(
+    df: pd.DataFrame,
+    payment_col: str = "CLM_PMT_AMT",
+    billed_col: str | None = None,
+    min_billed: float = 25.00,
+) -> pd.Series:
+    """Flag claims paid ~$0 despite a non-trivial billed amount.
+
+    If `billed_col` isn't available in your extract (some CMS claim files don't
+    expose a clean submitted-charge total), this degrades to flagging any claim
+    with payment below ZERO_PAY_THRESHOLD -- document that degradation in your
+    README if you end up here, since it's a materially weaker signal.
+    """
+    paid = df[payment_col].fillna(0)
+    low_pay = paid < ZERO_PAY_THRESHOLD
+
+    if billed_col is not None and billed_col in df.columns:
+        billed = df[billed_col].fillna(0)
+        return low_pay & (billed >= min_billed)
+
+    return low_pay
+
+
+# ---------------------------------------------------------------------------
+# Rule 2 — Missing prior-authorization proxy
+# ---------------------------------------------------------------------------
+# Real prior-auth flags aren't in the public PUF. Proxy: high-cost service
+# categories (DME, selected outpatient procedure families) where the
+# beneficiary has no prior claim in the lookback window that would plausibly
+# represent the authorizing encounter (e.g. a preceding outpatient visit for
+# DME, or a preceding diagnosis-supporting encounter for major procedures).
+HIGH_COST_HCPCS_PREFIXES = ("E", "K")  # DME HCPCS Level II prefixes, adapt as needed
+LOOKBACK_DAYS = 90
+
+
+def rule_missing_prior_auth(
+    df: pd.DataFrame,
+    bene_id_col: str = "BENE_ID",
+    hcpcs_col: str = "HCPCS_CD",
+    claim_date_col: str = "CLM_FROM_DT",
+) -> pd.Series:
+    """Flag high-cost-category claims with no supporting claim in the prior
+    LOOKBACK_DAYS for the same beneficiary.
+
+    This is a coarse proxy, not real auth data -- document it as such. False
+    positives are expected for beneficiaries whose supporting encounter fell
+    just outside the lookback window or in a claim file this rule doesn't scan.
+    """
+    is_high_cost = df[hcpcs_col].astype(str).str.startswith(HIGH_COST_HCPCS_PREFIXES)
+
+    dates = pd.to_datetime(df[claim_date_col], errors="coerce")
+    df_sorted = df.assign(_date=dates).sort_values([bene_id_col, "_date"])
+
+    # Days since beneficiary's previous claim of any kind (any file/category
+    # you've concatenated in). NaN (first claim on record) treated as "no
+    # supporting history" -> flagged, which is intentional and conservative.
+    gap_days = (
+        df_sorted.groupby(bene_id_col)["_date"]
+        .diff()
+        .dt.days
+    )
+    no_recent_history = gap_days.isna() | (gap_days > LOOKBACK_DAYS)
+
+    # Realign to original index (groupby/sort changed row order)
+    no_recent_history = no_recent_history.reindex(df.index)
+
+    return is_high_cost & no_recent_history.fillna(True)
+
+
+# ---------------------------------------------------------------------------
+# Rule 3 — Diagnosis / procedure mismatch (medical-necessity proxy)
+# ---------------------------------------------------------------------------
+# Coarse category-level check: does the procedure's typical diagnosis category
+# (first 3 chars of ICD-10-CM, mapped to a broad category) match any diagnosis
+# billed on the same claim? This is deliberately simple -- a real payer's
+# medical-necessity edit is far more granular (specific LCD/NCD policy per
+# code). Document the simplification.
+
+# Minimal illustrative mapping -- extend this table once you've inspected the
+# actual HCPCS/ICD-10 distribution in your downloaded data (Phase 1 Step 4 EDA
+# will show you the real top codes to prioritize).
+PROCEDURE_TO_EXPECTED_DX_PREFIX = {
+    # HCPCS/CPT prefix or code -> plausible ICD-10-CM chapter prefixes (partial, illustrative)
+    "93000": ("I",),   # EKG -> circulatory system diagnoses
+    "71046": ("J",),   # Chest X-ray -> respiratory diagnoses
+    "80053": ("E", "K", "N"),  # Comprehensive metabolic panel -> broad
+}
+
+
+def rule_dx_procedure_mismatch(
+    df: pd.DataFrame,
+    hcpcs_col: str = "HCPCS_CD",
+    dx_cols: tuple[str, ...] = ("PRNCPAL_DGNS_CD",),
+) -> pd.Series:
+    """Flag claims where none of the billed diagnosis codes fall in the
+    procedure's expected ICD-10-CM chapter range, for the small illustrative
+    procedure set in PROCEDURE_TO_EXPECTED_DX_PREFIX.
+
+    Returns False (not flagged) for any procedure code not in the mapping --
+    extend the table before relying on this rule as a primary signal; as
+    written it only covers a handful of illustrative codes.
+    """
+    hcpcs = df[hcpcs_col].astype(str)
+    flagged = pd.Series(False, index=df.index)
+
+    for code, expected_prefixes in PROCEDURE_TO_EXPECTED_DX_PREFIX.items():
+        mask = hcpcs == code
+        if not mask.any():
+            continue
+
+        dx_matches = pd.Series(False, index=df.index)
+        for dx_col in dx_cols:
+            if dx_col not in df.columns:
+                continue
+            dx_prefix = df[dx_col].astype(str).str[0]
+            dx_matches |= dx_prefix.isin(expected_prefixes)
+
+        flagged |= mask & ~dx_matches
+
+    return flagged
+
+
+# ---------------------------------------------------------------------------
+# Rule 4 — Timely filing violation
+# ---------------------------------------------------------------------------
+# NOT IMPLEMENTED. FI_CLM_PROC_DT (claim processing date) is documented as
+# blank/fixed in this synthetic release, so days-between-service-and-
+# submission can't be computed. Left here as a stub so the gap is visible in
+# code, not just prose -- and so it's trivial to wire in if you switch to a
+# data source that does populate a processing date.
+def rule_timely_filing(*_args, **_kwargs) -> None:
+    raise NotImplementedError(
+        "FI_CLM_PROC_DT is blank/fixed in the CMS Synthetic Claims PUF -- "
+        "timely-filing logic has no signal to run on in this data source. "
+        "Documented in data/TARGET_DEFINITION.md as a disclosed limitation."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Rule 5 — Provider outlier billing pattern
+# ---------------------------------------------------------------------------
+def rule_provider_outlier(
+    df: pd.DataFrame,
+    provider_col: str = "PRVDR_NUM",
+    specialty_col: str | None = None,
+    payment_col: str = "CLM_PMT_AMT",
+    percentile: float = 0.95,
+) -> pd.Series:
+    """Flag claims from providers in the top `percentile` of total claim
+    volume OR total payment amount, within specialty if specialty_col is
+    available, else across all providers.
+
+    Rough proxy for audit-flagged/outlier providers -- a real driver of
+    denials and payer reviews. Not a fraud determination.
+    """
+    group_cols = [specialty_col] if specialty_col and specialty_col in df.columns else []
+
+    provider_stats = (
+        df.groupby(group_cols + [provider_col])
+        .agg(claim_count=(payment_col, "size"), total_paid=(payment_col, "sum"))
+        .reset_index()
+    )
+
+    def _flag_group(g: pd.DataFrame) -> pd.DataFrame:
+        vol_cut = g["claim_count"].quantile(percentile)
+        pay_cut = g["total_paid"].quantile(percentile)
+        g["_outlier_provider"] = (g["claim_count"] >= vol_cut) | (g["total_paid"] >= pay_cut)
+        return g
+
+    if group_cols:
+        provider_stats = provider_stats.groupby(group_cols, group_keys=False).apply(_flag_group)
+    else:
+        provider_stats = _flag_group(provider_stats)
+
+    outlier_providers = set(
+        provider_stats.loc[provider_stats["_outlier_provider"], provider_col]
+    )
+    return df[provider_col].isin(outlier_providers)
+
+
+# ---------------------------------------------------------------------------
+# Combined label
+# ---------------------------------------------------------------------------
+def build_is_denied(
+    df: pd.DataFrame,
+    *,
+    payment_col: str = "CLM_PMT_AMT",
+    billed_col: str | None = None,
+    bene_id_col: str = "BENE_ID",
+    hcpcs_col: str = "HCPCS_CD",
+    claim_date_col: str = "CLM_FROM_DT",
+    dx_cols: tuple[str, ...] = ("PRNCPAL_DGNS_CD",),
+    provider_col: str = "PRVDR_NUM",
+    specialty_col: str | None = None,
+    use_rules: tuple[str, ...] = ("missing_prior_auth", "provider_outlier"),
+) -> pd.DataFrame:
+    """DEPRECATED as the primary label source -- use denial_reasons.sample_denials()
+    instead, which combines these same risk factors probabilistically (noisy-OR)
+    and assigns multi-reason CARC labels, rather than a hard boolean OR. Kept
+    here for inspecting individual rule hit rates during development.
+
+    `zero_payment` is excluded from the default `use_rules` -- it's a raw
+    leakage risk (CLM_PMT_AMT would need to be dropped from features if used
+    as a label input; see the note above rule_zero_payment). `dx_procedure_mismatch`
+    is excluded because its illustrative mapping only covers 3 codes -- extend
+    PROCEDURE_TO_EXPECTED_DX_PREFIX from your real HCPCS distribution first.
+    """
+    flags = pd.DataFrame(index=df.index)
+
+    if "zero_payment" in use_rules:
+        flags["rule_zero_payment"] = rule_zero_payment(df, payment_col, billed_col)
+    if "missing_prior_auth" in use_rules:
+        flags["rule_missing_prior_auth"] = rule_missing_prior_auth(
+            df, bene_id_col, hcpcs_col, claim_date_col
+        )
+    if "dx_procedure_mismatch" in use_rules:
+        flags["rule_dx_procedure_mismatch"] = rule_dx_procedure_mismatch(df, hcpcs_col, dx_cols)
+    if "provider_outlier" in use_rules:
+        flags["rule_provider_outlier"] = rule_provider_outlier(
+            df, provider_col, specialty_col, payment_col
+        )
+
+    flags["is_denied"] = flags.any(axis=1).astype(int)
+    return flags
+
+
+def report_rule_hit_rates(flags: pd.DataFrame) -> pd.Series:
+    """Per-rule hit rate + combined rate -- put this table directly in the
+    README next to the target definition. Reviewers will ask 'what fraction
+    of denials came from each rule', have the number ready.
+    """
+    rule_cols = [c for c in flags.columns if c.startswith("rule_")]
+    rates = flags[rule_cols + ["is_denied"]].mean().sort_values(ascending=False)
+    return rates
+
+
+# ---------------------------------------------------------------------------
+# Calibration note
+# ---------------------------------------------------------------------------
+# Sanity-checked against a schema-realistic mock (see repo test run in the
+# build session) at ~30% combined denial rate -- above the 5-20% range real
+# payer denial rates typically fall in (Phase 1 Step 2 pitfall note). Two
+# knobs to pull if your real-data combined rate lands outside 5-20% after
+# Phase 1 Step 4 EDA:
+#   - `percentile` in rule_provider_outlier (higher = fewer flagged providers)
+#   - `LOOKBACK_DAYS` in rule_missing_prior_auth (shorter window = fewer flags,
+#     since real per-beneficiary claims cluster in time far more than the
+#     mock's uniform-random dates do, so this may self-correct on real data)
+# Check df['is_denied'].value_counts(normalize=True) right after Step 3
+# wrangling, before moving on to Phase 2 -- don't discover an off-spec class
+# balance after you've already built the train/val/test split.

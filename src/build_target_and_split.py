@@ -1,0 +1,98 @@
+"""
+Phase 1 Step 2/3 — build is_denied, split before any target-leaking transform.
+
+Run after load_data.py has produced data/processed/combined_claims_raw.parquet.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+from sklearn.model_selection import train_test_split
+
+from denial_reasons import apply_payment_consequence, calibration_report, sample_denials
+
+PROCESSED_DIR = Path(__file__).resolve().parents[1] / "data" / "processed"
+
+# If the real-data denial rate lands outside 10-15% on first run, adjust this
+# and rerun -- don't hand-edit REASON_CATALOG base_prob values individually
+# unless the calibration_report shows one specific factor is over/under-firing.
+CALIBRATION_SCALE = 1.4
+
+
+def main() -> None:
+    raw_path = PROCESSED_DIR / "combined_claims_raw.parquet"
+    if not raw_path.exists():
+        raise FileNotFoundError(f"{raw_path} not found -- run load_data.py first.")
+
+    df = pd.read_parquet(raw_path)
+
+    result = sample_denials(df, calibration_scale=CALIBRATION_SCALE)
+    calibration_report(result)
+
+    df = apply_payment_consequence(df, result)
+    df = df.join(result)
+
+    rate = df["is_denied"].mean()
+    if not (0.05 <= rate <= 0.20):
+        print(
+            "\nWARNING: denial rate is outside the ~5-20% range typical for "
+            "real payer data (Phase 1 Step 2 pitfall). Adjust CALIBRATION_SCALE "
+            "at the top of this file and rerun."
+        )
+
+    # Target leakage guard: drop everything that was used to construct or is a
+    # direct consequence of the label. `risk_*` and `p_denied_model` ARE the
+    # target by construction. CLM_PMT_AMT was overwritten as a CONSEQUENCE of
+    # is_denied in apply_payment_consequence() above -- it must be dropped too,
+    # not just the risk columns. (Phase 1 Common Pitfalls: target leakage.)
+    leakage_cols = [c for c in df.columns if c.startswith("risk_")] + [
+        "p_denied_model",
+        "denial_reason_carc_1",
+        "denial_reason_carc_2",
+        "CLM_PMT_AMT",
+    ]
+    leakage_cols = [c for c in leakage_cols if c in df.columns]
+    print(f"\nDropping target-leakage columns before split: {leakage_cols}")
+    print(
+        "Note: denial_reason_carc_1/2 are dropped from the MODELING split here "
+        "but are genuinely useful for the Phase 4 SHAP-narrative demo and the "
+        "Phase 5 report's 'top denial reasons' chart -- keep a separate copy "
+        "of df[['BENE_ID','CLM_ID','denial_reason_carc_1','denial_reason_carc_2']] "
+        "before dropping, joinable back in for those purposes only."
+    )
+
+    # Time-based split if CLM_FROM_DT is usable, else fall back to stratified
+    # random split (Phase 1 Step 3).
+    date_col = "CLM_FROM_DT"
+    if date_col in df.columns and pd.to_datetime(df[date_col], errors="coerce").notna().mean() > 0.9:
+        df = df.sort_values(date_col)
+        n = len(df)
+        train_end = int(n * 0.64)  # 0.8 * 0.8 to match the two-stage 80/20 split's proportions
+        val_end = int(n * 0.8)
+        train_df = df.iloc[:train_end]
+        val_df = df.iloc[train_end:val_end]
+        test_df = df.iloc[val_end:]
+        print(f"\nTime-based split on {date_col}")
+    else:
+        train_df, test_df = train_test_split(
+            df, test_size=0.2, stratify=df["is_denied"], random_state=42
+        )
+        train_df, val_df = train_test_split(
+            train_df, test_size=0.2, stratify=train_df["is_denied"], random_state=42
+        )
+        print("\nStratified random split (date column unusable for time split)")
+
+    for name, split_df in [("train", train_df), ("val", val_df), ("test", test_df)]:
+        split_df = split_df.drop(columns=leakage_cols, errors="ignore")
+        out_path = PROCESSED_DIR / f"{name}.parquet"
+        split_df.to_parquet(out_path, index=False)
+        print(
+            f"{name}: {len(split_df):,} rows, "
+            f"is_denied rate {split_df['is_denied'].mean():.1%} -> {out_path}"
+        )
+
+
+if __name__ == "__main__":
+    main()
