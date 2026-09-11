@@ -1,9 +1,9 @@
 """
 Rule-based construction of the `is_denied` target for the CMS Synthetic Claims PUF.
 
-Why this file exists at all (don't delete this docstring — it's the answer to the
+Why this file exists at all (don't delete this docstring -- it's the answer to the
 first interview question this project will get): the public CMS synthetic claims
-PUF has no real denial/non-payment field — every candidate field
+PUF has no real denial/non-payment field -- every candidate field
 (CARR_CLM_PMT_DNL_CD, CLM_MDCR_NON_PMT_RSN_CD, CLM_DISP_CD) is a fixed constant
 across all 8,671 beneficiaries. See data/TARGET_DEFINITION.md for the full
 verification trail. `is_denied` here is therefore an engineered, documented proxy
@@ -40,6 +40,13 @@ import pandas as pd
 # CLM_PMT_AMT must be excluded from the Phase 2 feature set entirely once
 # denial_reasons.py has run -- document this explicitly in the data
 # dictionary, don't rely on remembering it.
+#
+# NOTE (2026-09-11): also verified NOT usable as the target itself, even
+# reframed as "predict $0-pay claims" rather than "predict denial" -- $0
+# insurer payment also happens for deductible/coinsurance absorption and
+# bundling, neither of which is a denial. See data/TARGET_DEFINITION.md
+# Addendum #5 for the full reasoning and the native-payment validation check
+# in run_eda.py that tests this empirically against this project's own data.
 ZERO_PAY_THRESHOLD = 1.00  # dollars
 
 
@@ -197,6 +204,13 @@ def rule_provider_outlier(
 
     Rough proxy for audit-flagged/outlier providers -- a real driver of
     denials and payer reviews. Not a fraud determination.
+
+    NOTE (2026-09-11): structurally this is a RETROSPECTIVE/post-payment audit
+    signal, not a same-stage real-time adjudication edit like the other rules
+    in this file -- see data/TARGET_DEFINITION.md Addendum #3. That's why it's
+    given fixed last priority in denial_reasons.REASON_PRIORITY: by the time a
+    retrospective outlier-billing review could flag a claim, any real-time
+    adjudication reason would already have been recorded first.
     """
     group_cols = [specialty_col] if specialty_col and specialty_col in df.columns else []
 
@@ -221,6 +235,47 @@ def rule_provider_outlier(
         provider_stats.loc[provider_stats["_outlier_provider"], provider_col]
     )
     return df[provider_col].isin(outlier_providers)
+
+
+# ---------------------------------------------------------------------------
+# Rule 6 — Duplicate claim
+# ---------------------------------------------------------------------------
+# Added 2026-09-11 per design review -- see data/TARGET_DEFINITION.md
+# Addendum #4 for full grounding. Duplicate-claim denials (CARC 18) are one of
+# the best-grounded denial categories available: a Louisiana Medicaid
+# transparency report found duplicates at ~31% of all denials -- the
+# second-largest single category, behind invalid procedure/modifier
+# combinations and ahead of missing prior authorization. Also structurally
+# one of the earliest checks a real adjudication system runs (cheap, and
+# usually ahead of medical-policy edits) -- see REASON_PRIORITY in
+# denial_reasons.py.
+def rule_duplicate_claim(
+    df: pd.DataFrame,
+    bene_id_col: str = "BENE_ID",
+    hcpcs_col: str = "HCPCS_CD",
+    claim_date_col: str = "CLM_FROM_DT",
+    provider_col: str = "PRVDR_NUM",
+    claim_id_col: str = "CLM_ID",
+) -> pd.Series:
+    """Flag claims that share (beneficiary, procedure, service date, provider)
+    with at least one other claim carrying a different CLM_ID.
+
+    KNOWN FALSE-POSITIVE RISK: legitimately recurring services (dialysis,
+    physical therapy, some DME rentals) can share code+date+beneficiary+
+    provider across multiple real, non-duplicate claims. A real duplicate
+    edit typically also checks exact-match units/modifiers, which aren't
+    reliably available in this release -- documented simplification, not a
+    hidden gap.
+    """
+    if claim_id_col not in df.columns:
+        # Can't tell "same claim re-billed" from "same claim re-read" without
+        # a claim identifier -- degrade to all-False rather than silently
+        # mis-flagging on the group key alone.
+        return pd.Series(False, index=df.index)
+
+    group_cols = [bene_id_col, hcpcs_col, claim_date_col, provider_col]
+    dup_counts = df.groupby(group_cols)[claim_id_col].transform("nunique")
+    return dup_counts > 1
 
 
 # ---------------------------------------------------------------------------
@@ -249,6 +304,8 @@ def build_is_denied(
     as a label input; see the note above rule_zero_payment). `dx_procedure_mismatch`
     is excluded because its illustrative mapping only covers 3 codes -- extend
     PROCEDURE_TO_EXPECTED_DX_PREFIX from your real HCPCS distribution first.
+    `duplicate_claim` (Rule 6) isn't wired into this deprecated function -- use
+    denial_reasons.sample_denials() to get it.
     """
     flags = pd.DataFrame(index=df.index)
 
