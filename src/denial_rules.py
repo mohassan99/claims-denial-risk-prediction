@@ -249,6 +249,11 @@ def rule_provider_outlier(
 # one of the earliest checks a real adjudication system runs (cheap, and
 # usually ahead of medical-policy edits) -- see REASON_PRIORITY in
 # denial_reasons.py.
+#
+# NOTE (2026-09-12): the first real-data run of this rule flagged 982 claims,
+# 968 of which were HCPCS code 99241 -- investigated and traced to Rule 7
+# below, not a duplicate-billing pattern. See data/TARGET_DEFINITION.md's
+# Phase 1 real-data run log for the full investigation.
 def rule_duplicate_claim(
     df: pd.DataFrame,
     bene_id_col: str = "BENE_ID",
@@ -279,6 +284,59 @@ def rule_duplicate_claim(
 
 
 # ---------------------------------------------------------------------------
+# Rule 7 — Deprecated / Medicare-non-payable procedure code
+# ---------------------------------------------------------------------------
+# Added 2026-09-12. This is the SINGLE BEST-GROUNDED rule in this file --
+# every other rule here is anchored to a marginal survey estimate or a coarse
+# proxy; this one is anchored to an exact, dated, verifiable federal policy.
+#
+# Effective January 1, 2010, CMS stopped recognizing CPT consultation codes
+# (99241-99245 office/outpatient, 99251-99255 inpatient) for Medicare Part B
+# payment (CMS Transmittal 1875 / MLN Matters MM6740, IOM Pub 100-04 Ch. 12
+# section 30.6.10) -- physicians were instructed to bill standard E/M codes
+# instead. Code 99241 was further deleted from the CPT code set entirely
+# effective January 1, 2021 (99251 deleted effective 2023). A Medicare claim
+# billed with any of these codes on or after 2010-01-01 is, by CMS's own
+# stated policy, not a payable service -- this isn't a coarse proxy for
+# denial risk, it's closer to the real mechanism itself.
+#
+# Origin story worth keeping for the interview: this rule wasn't planned --
+# it was DISCOVERED. rule_duplicate_claim's first real-data run flagged 982
+# claims, 968 of which were HCPCS 99241. A control comparison against other
+# high-volume, single-line-per-claim codes (90935: 222,786 claims, 0% flagged)
+# ruled out "just high volume" as the explanation. That result was the cue to
+# check whether something about code 99241 itself was unusual -- which led
+# directly to this rule. See data/TARGET_DEFINITION.md's Phase 1 real-data
+# run log for the full investigation trail.
+MEDICARE_NONPAYABLE_CONSULT_CODES = {
+    "99241", "99242", "99243", "99244", "99245",  # office/outpatient consultations
+    "99251", "99252", "99253", "99254", "99255",  # inpatient consultations
+}
+MEDICARE_CONSULT_NONPAY_EFFECTIVE_DATE = pd.Timestamp("2010-01-01")
+
+
+def rule_deprecated_code(
+    df: pd.DataFrame,
+    hcpcs_col: str = "HCPCS_CD",
+    claim_date_col: str = "CLM_FROM_DT",
+) -> pd.Series:
+    """Flag claims billed with a Medicare-non-payable consultation code on or
+    after the 2010-01-01 CMS policy effective date.
+
+    Scope note: this project's data (2015-2023 per the beneficiary files)
+    falls entirely after the effective date, so in practice this collapses to
+    "is the code in MEDICARE_NONPAYABLE_CONSULT_CODES" -- the date check is
+    kept explicit anyway so the rule states its actual real-world condition
+    rather than an assumption baked silently into which codes are listed.
+    """
+    codes = df[hcpcs_col].astype(str)
+    dates = pd.to_datetime(df[claim_date_col], errors="coerce")
+    return codes.isin(MEDICARE_NONPAYABLE_CONSULT_CODES) & (
+        dates >= MEDICARE_CONSULT_NONPAY_EFFECTIVE_DATE
+    )
+
+
+# ---------------------------------------------------------------------------
 # Combined label
 # ---------------------------------------------------------------------------
 def build_is_denied(
@@ -304,8 +362,8 @@ def build_is_denied(
     as a label input; see the note above rule_zero_payment). `dx_procedure_mismatch`
     is excluded because its illustrative mapping only covers 3 codes -- extend
     PROCEDURE_TO_EXPECTED_DX_PREFIX from your real HCPCS distribution first.
-    `duplicate_claim` (Rule 6) isn't wired into this deprecated function -- use
-    denial_reasons.sample_denials() to get it.
+    `duplicate_claim` (Rule 6) and `deprecated_code` (Rule 7) aren't wired into
+    this deprecated function -- use denial_reasons.sample_denials() to get them.
     """
     flags = pd.DataFrame(index=df.index)
 
