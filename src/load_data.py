@@ -8,11 +8,14 @@ Unzip into data/raw/ -- you should end up with beneficiary_2015.csv ...
 beneficiary_2023.csv, carrier.csv, dme.csv, hha.csv, hospice.csv, inpatient.csv,
 outpatient.csv, pde.csv, snf.csv (all pipe-delimited, per the CMS user guide).
 
-This script concatenates the claim-type files you're modeling on into one
-frame for target construction + feature engineering. Start with carrier +
-outpatient (highest claim volume per the CMS user guide's Table 3-1: carrier
-is 59% of claims, outpatient 30% -- covers ~89% of claim volume with 2 files)
-and add inpatient/DME/SNF/hospice/hha once the pipeline works end to end.
+Default claim set: carrier + outpatient + dme. Carrier is 59% of claim volume
+and outpatient 30% per the CMS user guide's Table 3-1 -- covers ~89% of claim
+volume with those two alone. DME added 2026-09-12 specifically so
+rule_missing_prior_auth (denial_rules.py) has claims to check: it flags HCPCS
+codes starting with "E"/"K" (DME Level II codes), which carrier/outpatient
+claims essentially never use -- without DME claims in the mix that rule fires
+at 0% by construction, not because of a bug. Add inpatient/SNF/hospice/hha
+once the pipeline works end to end.
 """
 
 from __future__ import annotations
@@ -74,7 +77,9 @@ def load_claim_file(filename: str) -> pd.DataFrame:
     return df
 
 
-def load_and_concat(claim_files: tuple[str, ...] = ("carrier.csv", "outpatient.csv")) -> pd.DataFrame:
+def load_and_concat(
+    claim_files: tuple[str, ...] = ("carrier.csv", "outpatient.csv", "dme.csv")
+) -> pd.DataFrame:
     """Load and concatenate the given claim files. Row counts at each step are
     printed -- keep this output, it's your data-lineage narrative for the
     Phase 5 report (Phase 1 Step 3 requirement)."""
