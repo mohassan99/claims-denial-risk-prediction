@@ -42,6 +42,27 @@ def main() -> None:
             "at the top of this file and rerun."
         )
 
+    # Persist a slim side-file with the label-construction columns before
+    # they're dropped below. Two consumers need this, and a single saved file
+    # beats each one recomputing sample_denials() separately (which risks
+    # drift from a different CALIBRATION_SCALE, a different seed, or a stale
+    # pull -- see the pull-lag incident logged in TARGET_DEFINITION.md):
+    #   1. Phase 4/5: denial_reason_carc_1/2 for the SHAP-narrative demo and
+    #      the report's "top denial reasons" chart.
+    #   2. Phase 1 EDA (run_eda.py): risk-factor co-occurrence and per-factor
+    #      lift charts, which need risk_*/is_denied together -- unavailable
+    #      once leakage_cols are dropped from train/val/test below.
+    eda_cols = ["BENE_ID", "CLM_ID"] + [c for c in df.columns if c.startswith("risk_")] + [
+        "p_denied_model",
+        "is_denied",
+        "denial_reason_carc_1",
+        "denial_reason_carc_2",
+    ]
+    eda_cols = [c for c in eda_cols if c in df.columns]
+    eda_path = PROCESSED_DIR / "labeled_claims_for_eda.parquet"
+    df[eda_cols].to_parquet(eda_path, index=False)
+    print(f"\nSaved label-construction columns for EDA/Phase 4-5 use -> {eda_path}")
+
     # Target leakage guard: drop everything that was used to construct or is a
     # direct consequence of the label. `risk_*` and `p_denied_model` ARE the
     # target by construction. CLM_PMT_AMT was overwritten as a CONSEQUENCE of
@@ -54,14 +75,7 @@ def main() -> None:
         "CLM_PMT_AMT",
     ]
     leakage_cols = [c for c in leakage_cols if c in df.columns]
-    print(f"\nDropping target-leakage columns before split: {leakage_cols}")
-    print(
-        "Note: denial_reason_carc_1/2 are dropped from the MODELING split here "
-        "but are genuinely useful for the Phase 4 SHAP-narrative demo and the "
-        "Phase 5 report's 'top denial reasons' chart -- keep a separate copy "
-        "of df[['BENE_ID','CLM_ID','denial_reason_carc_1','denial_reason_carc_2']] "
-        "before dropping, joinable back in for those purposes only."
-    )
+    print(f"Dropping target-leakage columns before split: {leakage_cols}")
 
     # Time-based split if CLM_FROM_DT is usable, else fall back to stratified
     # random split (Phase 1 Step 3).
