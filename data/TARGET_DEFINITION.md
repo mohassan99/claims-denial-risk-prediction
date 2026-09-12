@@ -130,9 +130,9 @@ be: in reality these are plausibly correlated (a provider with an outlier billin
 plausibly *more* likely to also produce diagnosis/procedure mismatches — same underlying
 sloppy-billing cause), so the true joint denial probability when multiple factors co-occur may
 differ from what independence implies. This is a disclosed modeling simplification, not a
-measured fact. **Empirically checked 2026-09-13 — see Addendum #8: `risk_factor_cooccurrence.png`
-and the lift analysis suggest real co-occurrence exists between at least `duplicate_claim` and
-`deprecated_code`.**
+measured fact. **Empirically checked 2026-09-13 — see Addendum #8: `duplicate_claim` and
+`deprecated_code` are confirmed to co-occur heavily (98.6% of `duplicate_claim` claims are also
+`deprecated_code`), so the independence assumption is measurably violated for at least this pair.**
 
 ### 2. `CALIBRATION_SCALE` mechanics — where in the pipeline scaling actually happens
 
@@ -283,10 +283,11 @@ denial concept in its claims export (see "Decision" section above). By that same
 reasoned there was "no strong reason to expect" Synthea's *native* `CLM_PMT_AMT` to already
 correlate with the risk factors. **That reasoning held for `deprecated_code` (confirmed, no
 correlation) but was WRONG for `missing_prior_auth` (a strong, real correlation was found on
-actual data) — see Addendum #8 for the numbers and the follow-up investigation.** Worth keeping
-this correction visible rather than quietly fixing the original claim: reasoning from first
-principles about what a data-generation process "shouldn't" do is a hypothesis, not a fact, and
-this is a concrete example of that hypothesis being checked and partly failing.
+actual data, since fully explained — see Addendum #8) — see Addendum #8 for the numbers and the
+resolved explanation.** Worth keeping this correction visible rather than quietly fixing the
+original claim: reasoning from first principles about what a data-generation process "shouldn't"
+do is a hypothesis, not a fact, and this is a concrete example of that hypothesis being checked
+and partly failing.
 
 **Validation check: implemented AND RUN 2026-09-13 — see Addendum #8 for full results.** The
 action item that was open since 2026-09-11 is now closed. `validate_native_payment_vs_risk_factors()`
@@ -632,7 +633,7 @@ zero/null. **Action item: run `.describe()` across all 77 before Phase 2 feature
 don't feed all 77 into the baseline model without first checking which ones carry real variance
 and which are structurally redundant or empty.
 
-### Risk-factor lift — mostly validates the pipeline, one anomaly flagged for follow-up
+### Risk-factor lift — mostly validates the pipeline; the one anomaly is now fully resolved
 
 ```
 factor                      active_rate   inactive_rate
@@ -646,13 +647,25 @@ risk_provider_outlier          25.3%          5.4%
 `missing_prior_auth` (30.8% observed vs. `base_prob=0.22 × CALIBRATION_SCALE=1.4` ≈ 30.8%
 predicted-in-isolation) and `dx_procedure_mismatch` (23.6% vs. ≈21% predicted) land close to what
 their calibrated probability alone would produce — a good sign the noisy-OR mechanics are working
-as designed. `duplicate_claim` at 97.6% is far above its own ≈49% isolated prediction, which is
-best explained by co-occurrence: `duplicate_claim` claims plausibly also trip `deprecated_code`
-often (both were entangled in the original 99241 investigation — `duplicate_claim` still flags
-independently even though `deprecated_code` wins the `REASON_PRIORITY` tie-break), and the two
-compound via noisy-OR toward near-certain denial. **See `reports/figures/risk_factor_cooccurrence.png`
-for the direct correlation check** — not yet visually confirmed in this doc, but the hypothesis is
-specific and testable against that figure.
+as designed.
+
+`duplicate_claim` at 97.6% sat far above its own ≈49% isolated prediction (`base_prob=0.35 ×
+CALIBRATION_SCALE=1.4`, clamped at 0.95). **Resolved 2026-09-13, not just hypothesized:** of the
+982 `duplicate_claim`-flagged claims, **98.6% are also flagged `deprecated_code`**. This is the
+same claim population Addendum #6 already identified — a `99241` claim billed twice trips
+`duplicate_claim` on the pair, and both copies are also Medicare-non-payable consultation codes,
+tripping `deprecated_code` independently. The two rules aren't providing two pieces of independent
+evidence toward the same conclusion; they're both firing on the same underlying data artifact.
+Combining `deprecated_code` (0.85) and `duplicate_claim`'s scaled probability (≈0.49) via noisy-OR
+predicts `1 − (1−0.85)(1−0.49) ≈ 92%` denial probability for a claim with both active — close to
+the 97.6% observed, with the remaining gap explained by `provider_outlier` also co-occurring on
+44.6% of these same claims. The correlation matrix (`risk_factor_cooccurrence.png` /
+`labeled_claims_for_eda.parquet`) shows this pair's Pearson correlation at only 0.097, which
+understates how tightly linked they are in practice — Pearson correlation on very rare binary
+flags (`duplicate_claim` fires on ~0.05% of claims) is diluted by the base rates and is a much
+weaker signal here than direct conditional overlap (the 98.6% figure). **Worth noting for future
+diagnostics: when investigating rare-flag co-occurrence, compute the conditional overlap rate
+directly rather than relying on the correlation coefficient alone.**
 
 ### Native-payment validation — CLOSES Addendum #5's open action item, with a real correction
 
@@ -672,16 +685,21 @@ provider_outlier               20.0%           6.6%                  5.7%
 awareness they're Medicare-non-payable. Expected result, strong confirming evidence.
 
 **`missing_prior_auth`: 95.8% near-zero-pay when active, vs. 5.8% baseline — a real, large
-correlation, and it directly contradicts the "no strong reason to expect" reasoning in Addendum
-#5's original text (now corrected there, see above).** This factor only fires on DME codes
-(`E`/`K` HCPCS prefixes). The likely explanation is structural, not denial-related: DME billing
-commonly includes $0-paid setup/rental line items as a normal part of how recurring equipment gets
-billed (e.g. an initial line establishing a rental agreement, with the actual payment on a
-different line or billing cycle) — but this is a hypothesis, not yet verified against actual DME
-claim rows. **Action item: pull a handful of flagged `missing_prior_auth` claims and inspect their
-native `CLM_PMT_AMT` alongside HCPCS code and any related line-item structure, before writing this
-into the Phase 5 report** — a genuine finding deserves an explained mechanism, not just a reported
-correlation.
+correlation, and it directly contradicted the "no strong reason to expect" reasoning in Addendum
+#5's original text (now corrected there). Investigated and fully explained, 2026-09-13, not left
+as an open hypothesis.** Pulled the 1,436 flagged claims directly and sorted by `CLM_PMT_AMT`: the
+HCPCS codes involved are `E0260`/`E0261` (hospital beds), `K0001`-`K0004` (wheelchairs, standard
+through heavy-duty/custom), and `E1038` (transport chair) — Medicare's **capped-rental DME**
+equipment category, billed monthly over a rental period rather than paid in full upfront. The
+payment distribution matches that structure exactly: 75% of flagged claims show a native
+`CLM_PMT_AMT` of exactly $0.00 (median $0, mean pulled to ~$1.95 only by a handful of claims up to
+$90.18). Capped-rental billing genuinely produces $0-paid lines as a normal, structural feature —
+administrative/setup lines or specific months within the rental cycle can legitimately show no
+payment without the claim being denied. So `missing_prior_auth`'s proxy (E/K HCPCS codes with no
+recent prior claim) happens to heavily overlap with this specific DME billing pattern, and that
+billing pattern has its own independent, well-documented reason for showing frequent $0 native
+payment — unrelated to whether the claim represents genuine denial risk. This confirms the
+hypothesis from the first pass rather than surfacing a bug or a hidden real signal.
 
 `dx_procedure_mismatch` shows a moderate real gap (27.3% vs. 3.1%) worth a passing mention.
 `duplicate_claim` and `provider_outlier` show no meaningful gap, as expected.
@@ -691,5 +709,6 @@ as the label, either as a heuristic or as the target itself — still holds rega
 finding, since the reasoning in Addendum #5(a)/(b) about deductible absorption and bundling
 conflating with true denial doesn't depend on whether native payment happens to correlate with any
 specific risk factor. What changes is the *supporting* claim about *why* no correlation was
-expected — that turned out to be right for one factor and wrong for another, and both outcomes are
-now on record rather than only the confirming one.
+expected — that turned out to be right for one factor (`deprecated_code`) and wrong for another
+(`missing_prior_auth`, now explained by capped-rental DME billing structure), and both outcomes,
+plus the explanation for the miss, are on record rather than only the confirming one.
