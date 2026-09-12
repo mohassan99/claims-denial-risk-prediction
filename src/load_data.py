@@ -26,6 +26,8 @@ PROCESSED_DIR = Path(__file__).resolve().parents[1] / "data" / "processed"
 
 # Code columns that must stay strings -- leading zeros matter (Phase 1 Common
 # Pitfalls: silent dtype coercion on procedure codes with leading zeros).
+# Kept explicit for columns that don't cleanly match the _CD/_NUM suffix
+# pattern below (e.g. ICD_DGNS_CD1/2 end in a digit, not "_CD").
 CODE_DTYPE_COLS = [
     "BENE_ID",
     "HCPCS_CD",
@@ -45,10 +47,27 @@ def load_claim_file(filename: str) -> pd.DataFrame:
             f"into {RAW_DIR} first (see this file's module docstring)."
         )
 
-    # Only pass dtype overrides for columns that actually exist in this file --
-    # not every claim type has every code column.
     header = pd.read_csv(path, sep="|", nrows=0).columns
-    dtype_map = {c: str for c in CODE_DTYPE_COLS if c in header}
+
+    # Force every CMS "code"/identifier-number column to string, not just the
+    # explicit CODE_DTYPE_COLS list above. CMS RIF _CD/_NUM fields are always
+    # categorical identifiers, never real numeric quantities, and several
+    # (e.g. PRVDR_STATE_CD, an SSA state code) can carry leading zeros that
+    # silently vanish under pandas' default int inference.
+    #
+    # Why this matters beyond a single file: pandas infers dtype per-file
+    # independently. If one claim file's column happens to parse cleanly as
+    # int64 and another's doesn't (nulls, a stray non-numeric value, etc.),
+    # concatenating the two produces a mixed int/str "object" column that
+    # pyarrow can't write to parquet at all -- this is exactly what happened
+    # 2026-09-11 concatenating carrier.csv + outpatient.csv on
+    # PRVDR_STATE_CD (ArrowTypeError: "Expected bytes, got a 'int' object").
+    # Forcing str at read time, per-file, before concat, prevents the two
+    # files from ever disagreeing on this column's dtype in the first place.
+    force_str_cols = {
+        c for c in header if c in CODE_DTYPE_COLS or c.endswith("_CD") or c.endswith("_NUM")
+    }
+    dtype_map = {c: str for c in force_str_cols}
 
     df = pd.read_csv(path, sep="|", dtype=dtype_map, low_memory=False)
     df["_source_file"] = filename
