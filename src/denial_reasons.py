@@ -3,8 +3,9 @@ Probabilistic, multi-reason denial label engine.
 
 Supersedes the pure boolean-OR combination in denial_rules.py (the individual
 risk-factor detector functions there -- rule_missing_prior_auth,
-rule_dx_procedure_mismatch, rule_provider_outlier, rule_duplicate_claim --
-are still used here as inputs; only the combination logic changes).
+rule_dx_procedure_mismatch, rule_provider_outlier, rule_duplicate_claim,
+rule_deprecated_code -- are still used here as inputs; only the combination
+logic changes).
 
 WHY PROBABILISTIC, NOT DETERMINISTIC (see chat for full discussion, keep the
 short version here since it's the answer to an obvious review question):
@@ -30,10 +31,11 @@ cite prior auth as a top driver") -- self-reported frequency-of-mention, not
 measured claim-level incidence, and they don't sum to 100% since respondents
 cite multiple reasons. True CARC/RARC co-occurrence data lives inside payer
 adjudication systems and isn't published, for the same reason no public CMS
-PUF has a real denial field. The per-rule base rates below are therefore
+PUF has a real denial field. Most per-rule base rates below are therefore
 documented, reasoned ASSUMPTIONS anchored loosely to those marginal
 benchmarks, not measured facts -- tunable knobs, disclosed as such in the
-README/report, not presented as ground truth.
+README/report, not presented as ground truth. `deprecated_code` is the one
+exception -- see its entry below and data/TARGET_DEFINITION.md Addendum #6.
 
 NOTE ON NOISY-OR INDEPENDENCE ASSUMPTION: the noisy-OR combination below
 treats all active risk factors as statistically independent given they're
@@ -52,6 +54,10 @@ Sources for the anchoring (see full citations in chat / Phase 5 report):
 - Louisiana Medicaid transparency report: duplicate claims ~31% of all
   denials, second-largest single category (added 2026-09-11, backs
   duplicate_claim below)
+- CMS Transmittal 1875 / MLN Matters MM6740 (effective 2010-01-01): Medicare
+  Part B no longer recognizes CPT consultation codes 99241-99245/99251-99255
+  for payment (added 2026-09-12, backs deprecated_code below -- this is an
+  exact federal policy citation, not a survey estimate)
 """
 
 from __future__ import annotations
@@ -60,6 +66,7 @@ import numpy as np
 import pandas as pd
 
 from denial_rules import (
+    rule_deprecated_code,
     rule_dx_procedure_mismatch,
     rule_duplicate_claim,
     rule_missing_prior_auth,
@@ -71,6 +78,20 @@ from denial_rules import (
 # probability of denial GIVEN the risk factor is active, source note)
 # ---------------------------------------------------------------------------
 REASON_CATALOG = {
+    "deprecated_code": {
+        "carc_code": "181",
+        "label": "Procedure code was invalid on the date of service",
+        "base_prob": 0.85,
+        "source_note": "Added 2026-09-12. HIGHEST base_prob of any factor, deliberately: "
+        "this is the only rule anchored to an exact, dated federal policy (CMS stopped "
+        "recognizing CPT consultation codes 99241-99245/99251-99255 for Medicare Part B "
+        "payment effective 2010-01-01 -- Transmittal 1875/MLN Matters MM6740) rather than "
+        "a marginal survey estimate. Kept below 0.95 (the global clamp) to avoid a fully "
+        "deterministic single-feature relationship, consistent with why is_denied is "
+        "probabilistic at all -- see module docstring. Discovered via investigation of "
+        "duplicate_claim's near-zero activation rate, not planned in advance -- see "
+        "data/TARGET_DEFINITION.md Addendum #6 for the full discovery trail.",
+    },
     "duplicate_claim": {
         "carc_code": "18",
         "label": "Exact duplicate claim/service",
@@ -80,7 +101,10 @@ REASON_CATALOG = {
         "transparency report, second-largest single category) to account for this "
         "proxy's false-positive risk from legitimate recurring services (dialysis, "
         "PT, DME rentals) that a coarse code+date+beneficiary+provider match can't "
-        "distinguish from a true duplicate. See data/TARGET_DEFINITION.md Addendum #4.",
+        "distinguish from a true duplicate. See data/TARGET_DEFINITION.md Addendum #4. "
+        "NOTE: on real data this rule's near-zero rate turned out to be driven almost "
+        "entirely by deprecated_code claims (HCPCS 99241), not genuine duplicate billing "
+        "-- see Addendum #6.",
     },
     "missing_prior_auth": {
         "carc_code": "197",
@@ -107,6 +131,7 @@ REASON_CATALOG = {
 }
 
 RISK_FACTOR_FUNCS = {
+    "deprecated_code": rule_deprecated_code,
     "duplicate_claim": rule_duplicate_claim,
     "missing_prior_auth": rule_missing_prior_auth,
     "dx_procedure_mismatch": rule_dx_procedure_mismatch,
@@ -116,17 +141,24 @@ RISK_FACTOR_FUNCS = {
 # Fixed processing-order priority for reason-code assignment when 2+ factors
 # are active on the same denied claim -- DETERMINISTIC, not weighted-random
 # (changed 2026-09-11; see data/TARGET_DEFINITION.md Addendum #3 for the full
-# rationale). Ordered by real-world adjudication stage: duplicate-claim
-# detection and the prior-auth gate are early/front-end checks, dx/procedure
-# mismatch is a mid-adjudication medical-policy edit, and provider_outlier is
-# ALWAYS last -- it's structurally a retrospective/post-payment audit
-# mechanism, not a same-stage adjudication edit, so by the time it could fire,
-# any real-time reason would already have been recorded. This ordering
-# doesn't affect modeling (denial_reason_carc_1/2 is excluded from the
-# feature set) -- it exists purely so Phase 4/5 demo claims are reproducible
-# ("same active factors -> same recorded reason") rather than exhibiting
-# spurious run-to-run attribution randomness.
+# rationale). Ordered by real-world adjudication stage:
+#   1. deprecated_code -- added 2026-09-12, placed FIRST: code-validity/
+#      recognition is a harder, more upfront system check than even duplicate
+#      detection -- a claims system needs a currently-recognized procedure
+#      code before it's even meaningful to check whether that code has been
+#      billed twice.
+#   2. duplicate_claim -- early/front-end system check.
+#   3. missing_prior_auth (CARC 197) -- front-end, pre/early-adjudication gate.
+#   4. dx_procedure_mismatch (CARC 11) -- mid-adjudication medical-policy edit.
+#   5. provider_outlier -- ALWAYS last. It's structurally a retrospective/
+#      post-payment audit mechanism, not a same-stage adjudication edit, so by
+#      the time it could fire, any real-time reason would already have been
+#      recorded. This ordering doesn't affect modeling (denial_reason_carc_1/2
+#      is excluded from the feature set) -- it exists purely so Phase 4/5 demo
+#      claims are reproducible ("same active factors -> same recorded reason")
+#      rather than exhibiting spurious run-to-run attribution randomness.
 REASON_PRIORITY = [
+    "deprecated_code",
     "duplicate_claim",
     "missing_prior_auth",
     "dx_procedure_mismatch",
@@ -137,6 +169,11 @@ REASON_PRIORITY = [
 def compute_risk_factors(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
     """Run each risk-factor detector, return one boolean column per factor."""
     out = pd.DataFrame(index=df.index)
+    out["deprecated_code"] = RISK_FACTOR_FUNCS["deprecated_code"](
+        df,
+        kwargs.get("hcpcs_col", "HCPCS_CD"),
+        kwargs.get("claim_date_col", "CLM_FROM_DT"),
+    )
     out["duplicate_claim"] = RISK_FACTOR_FUNCS["duplicate_claim"](
         df,
         kwargs.get("bene_id_col", "BENE_ID"),
