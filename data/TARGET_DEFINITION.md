@@ -130,7 +130,9 @@ be: in reality these are plausibly correlated (a provider with an outlier billin
 plausibly *more* likely to also produce diagnosis/procedure mismatches — same underlying
 sloppy-billing cause), so the true joint denial probability when multiple factors co-occur may
 differ from what independence implies. This is a disclosed modeling simplification, not a
-measured fact.
+measured fact. **Empirically checked 2026-09-13 — see Addendum #8: `risk_factor_cooccurrence.png`
+and the lift analysis suggest real co-occurrence exists between at least `duplicate_claim` and
+`deprecated_code`.**
 
 ### 2. `CALIBRATION_SCALE` mechanics — where in the pipeline scaling actually happens
 
@@ -275,19 +277,22 @@ different events (true denial, deductible absorption, bundling) under one label.
 built on that target would be muddied by whatever drives deductible-exhaustion or bundling
 patterns in the data, unrelated to denial risk.
 
-**Synthea-specific reason, stated with appropriate confidence:** this project's `is_denied` is
-engineered specifically *because* Synthea has no denial concept in its claims export (see
-"Decision" section above). By the same logic, there's no strong reason to expect Synthea's
-*native* `CLM_PMT_AMT` — driven by a synthetic insurance-plan cost/payment-split module — to
-already encode anything resembling `missing_prior_auth`, `dx_procedure_mismatch`, or
-`provider_outlier`-style risk. This is a reasoned expectation, not a verified fact about Synthea's
-internals.
+**Synthea-specific reason, originally stated with appropriate confidence, PARTIALLY WRONG per
+Addendum #8:** this project's `is_denied` is engineered specifically *because* Synthea has no
+denial concept in its claims export (see "Decision" section above). By that same logic, it was
+reasoned there was "no strong reason to expect" Synthea's *native* `CLM_PMT_AMT` to already
+correlate with the risk factors. **That reasoning held for `deprecated_code` (confirmed, no
+correlation) but was WRONG for `missing_prior_auth` (a strong, real correlation was found on
+actual data) — see Addendum #8 for the numbers and the follow-up investigation.** Worth keeping
+this correction visible rather than quietly fixing the original claim: reasoning from first
+principles about what a data-generation process "shouldn't" do is a hypothesis, not a fact, and
+this is a concrete example of that hypothesis being checked and partly failing.
 
-**Validation check: implemented, not yet run.** `validate_native_payment_vs_risk_factors()` in
-`src/run_eda.py` (added 2026-09-11) cross-tabulates native, unmodified `CLM_PMT_AMT ≈ 0` claims
-against the risk-factor flags, using `combined_claims_raw.parquet` before `apply_payment_consequence()`
-has touched it. **Action item still open: run `python src/run_eda.py` and record the actual
-result here** — it hasn't been executed against real data as of this writing.
+**Validation check: implemented AND RUN 2026-09-13 — see Addendum #8 for full results.** The
+action item that was open since 2026-09-11 is now closed. `validate_native_payment_vs_risk_factors()`
+in `src/run_eda.py` cross-tabulated native, unmodified `CLM_PMT_AMT ≈ 0` claims against the
+risk-factor flags on real data, using `combined_claims_raw.parquet` before
+`apply_payment_consequence()` had touched it.
 
 ---
 
@@ -595,3 +600,96 @@ mismatch rates above would predict. Confirmed via `git log --oneline -- src/deni
 showing the mapping commit missing locally, then resolved with a fresh `git pull`. Lesson: when a
 number doesn't move the way a change should predict, check whether the change is actually running
 before assuming a logic bug.
+
+---
+
+## Addendum: Phase 1 Step 4 EDA results (2026-09-13)
+
+First full run of `run_eda.py` against real data, including the 5 required figures plus 5
+supplementary ones added specifically to answer "what does Phase 2 need to know" (not just satisfy
+the checklist) and the long-open native-payment validation check (Addendum #5).
+
+### Categorical cardinality — direct input to Phase 2 encoding strategy
+
+```
+HCPCS_CD:        144 unique values; top 20 cover 93.4% of claims
+PRVDR_NUM:     8,460 unique values; top 20 cover  4.8% of claims
+PRNCPAL_DGNS_CD: 277 unique values; top 20 cover 79.2% of claims
+```
+
+`HCPCS_CD` and `PRNCPAL_DGNS_CD` are concentrated enough for one-hot encoding + an "other" bucket.
+`PRVDR_NUM` is a genuine long tail (top 20 of 8,460 covers under 5% of claims) — one-hot encoding
+this would explode the feature space for almost no per-category signal. **Decision for Phase 2:
+use frequency or target encoding for `PRVDR_NUM` specifically**, one-hot (+ other-bucket) for
+`HCPCS_CD`/`PRNCPAL_DGNS_CD`.
+
+### 77 numeric columns found — needs an inventory pass before Phase 2
+
+`numeric_feature_distributions()` found 77 numeric columns surviving the leakage drop, far more
+than expected. CMS RIF files carry many overlapping dollar/quantity fields (deductible, coinsurance,
+line-level vs. claim-level payment amounts); several are likely near-duplicates or mostly
+zero/null. **Action item: run `.describe()` across all 77 before Phase 2 feature selection** —
+don't feed all 77 into the baseline model without first checking which ones carry real variance
+and which are structurally redundant or empty.
+
+### Risk-factor lift — mostly validates the pipeline, one anomaly flagged for follow-up
+
+```
+factor                      active_rate   inactive_rate
+risk_deprecated_code           95.2%          4.6%
+risk_duplicate_claim           97.6%          9.4%
+risk_missing_prior_auth        30.8%          9.4%
+risk_dx_procedure_mismatch     23.6%          7.5%
+risk_provider_outlier          25.3%          5.4%
+```
+
+`missing_prior_auth` (30.8% observed vs. `base_prob=0.22 × CALIBRATION_SCALE=1.4` ≈ 30.8%
+predicted-in-isolation) and `dx_procedure_mismatch` (23.6% vs. ≈21% predicted) land close to what
+their calibrated probability alone would produce — a good sign the noisy-OR mechanics are working
+as designed. `duplicate_claim` at 97.6% is far above its own ≈49% isolated prediction, which is
+best explained by co-occurrence: `duplicate_claim` claims plausibly also trip `deprecated_code`
+often (both were entangled in the original 99241 investigation — `duplicate_claim` still flags
+independently even though `deprecated_code` wins the `REASON_PRIORITY` tie-break), and the two
+compound via noisy-OR toward near-certain denial. **See `reports/figures/risk_factor_cooccurrence.png`
+for the direct correlation check** — not yet visually confirmed in this doc, but the hypothesis is
+specific and testable against that figure.
+
+### Native-payment validation — CLOSES Addendum #5's open action item, with a real correction
+
+```
+Overall native near-zero-payment rate (< $1.00): 5.9%
+
+risk factor             active rate    near-zero | active    near-zero | inactive
+deprecated_code               5.3%           0.0%                  6.2%
+duplicate_claim                0.1%           1.4%                  5.9%
+missing_prior_auth              0.1%          95.8%                  5.8%
+dx_procedure_mismatch          11.6%          27.3%                  3.1%
+provider_outlier               20.0%           6.6%                  5.7%
+```
+
+**`deprecated_code`: 0.0% near-zero-pay when active (below the 6.2% baseline) — confirms Addendum
+#6's finding.** Synthea pays these consultation-code claims completely normally, with zero
+awareness they're Medicare-non-payable. Expected result, strong confirming evidence.
+
+**`missing_prior_auth`: 95.8% near-zero-pay when active, vs. 5.8% baseline — a real, large
+correlation, and it directly contradicts the "no strong reason to expect" reasoning in Addendum
+#5's original text (now corrected there, see above).** This factor only fires on DME codes
+(`E`/`K` HCPCS prefixes). The likely explanation is structural, not denial-related: DME billing
+commonly includes $0-paid setup/rental line items as a normal part of how recurring equipment gets
+billed (e.g. an initial line establishing a rental agreement, with the actual payment on a
+different line or billing cycle) — but this is a hypothesis, not yet verified against actual DME
+claim rows. **Action item: pull a handful of flagged `missing_prior_auth` claims and inspect their
+native `CLM_PMT_AMT` alongside HCPCS code and any related line-item structure, before writing this
+into the Phase 5 report** — a genuine finding deserves an explained mechanism, not just a reported
+correlation.
+
+`dx_procedure_mismatch` shows a moderate real gap (27.3% vs. 3.1%) worth a passing mention.
+`duplicate_claim` and `provider_outlier` show no meaningful gap, as expected.
+
+**Net effect on the original design argument:** the core conclusion — `CLM_PMT_AMT` can't be used
+as the label, either as a heuristic or as the target itself — still holds regardless of this
+finding, since the reasoning in Addendum #5(a)/(b) about deductible absorption and bundling
+conflating with true denial doesn't depend on whether native payment happens to correlate with any
+specific risk factor. What changes is the *supporting* claim about *why* no correlation was
+expected — that turned out to be right for one factor and wrong for another, and both outcomes are
+now on record rather than only the confirming one.
