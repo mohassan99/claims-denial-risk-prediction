@@ -48,7 +48,9 @@ realistic multi-reason denials (when 2+ factors are active, their probabilities 
 requiring a real joint-probability table, which doesn't exist publicly (see below).
 
 Risk factors (with each one's illustrative CARC code and base conditional probability). Updated
-2026-09-12 to 5 factors (see Addendum #4 for the 4th, Addendum #6 for the 5th):
+2026-09-12 to 5 factors (see Addendum #4 for the 4th, Addendum #6 for the 5th). **Final real-data
+calibration confirmed 2026-09-12 — see Addendum #7: overall 9.4% denial rate, 3 of 5 factors
+genuinely contributing.**
 
 1. **Deprecated / Medicare-non-payable procedure code** (CARC 181, `base_prob=0.85`) — CPT
    consultation codes CMS stopped recognizing for Medicare Part B payment effective 2010-01-01.
@@ -155,8 +157,10 @@ gives exactly 12%" — the population-level rate depends on the calibrated `pᵢ
 distribution of how many claims have 0/1/2/3 active factors, which is itself a property of the
 real CMS data. Calibration is empirical: guess a `calibration_scale`, run `calibration_report()`,
 check `is_denied.mean()`, adjust, repeat — not something the formula guarantees on its own. **This
-was confirmed concretely on real data 2026-09-12 — see Addendum #6: the first real run landed at
-1.4%, nowhere near 10-15%, and the cause was NOT the calibration scale itself; see #6 for why.**
+was confirmed concretely on real data 2026-09-12 — see Addendum #6/#7: the first real run landed
+at 1.4%, then 7.0% after the DME fix, then 9.4% once `dx_procedure_mismatch`'s mapping was
+actually running (see Addendum #7) — the cause was never the calibration scale itself; it was two
+under-firing rules, both now fixed.**
 
 ### 3. Reason-code selection — moved from weighted-random to deterministic priority
 
@@ -322,8 +326,9 @@ prior-auth mechanism specifically for DME, so pairing `missing_prior_auth` with 
 arguably a *better* fit than the original carrier/outpatient-only scope, not merely a bug
 workaround.
 
-### First real calibration numbers (pre-DME-fix, for the record — needs re-running)
+### Calibration numbers — three runs, tracked in full
 
+**Run 1 (pre-DME-fix):**
 ```
 Overall is_denied rate: 1.4%  (target: 10-15%, hard bound 5-20%)
 
@@ -341,28 +346,76 @@ Primary reason distribution (of denied claims):
 11 (dx_procedure_mismatch) 0.26%
 ```
 
-**Why the fix wasn't "just raise `CALIBRATION_SCALE`":** with 3 of 4 factors nearly inert,
-`provider_outlier` was carrying the entire signal alone. Hitting 10-15% by scaling
-`provider_outlier` alone would have pushed its calibrated `pᵢ` toward the `min(p, 0.95)` clamp
-ceiling — i.e. "provider_outlier active" predicting denial ~95% of the time, which is exactly the
-near-deterministic, suspiciously-clean-rule problem the whole noisy-OR design (see main body
-above) was built to avoid, just relocated from a hard boolean-OR to one dominant soft factor
-instead of genuinely contributing ones. Fixing the under-firing factors is the correct approach;
-calibration-scale tuning is the right *next* step only after all factors are genuinely
-contributing. **Numbers need to be re-run and recorded here** — DME is now loaded and
-`dx_procedure_mismatch`'s real HCPCS mapping is now built (see Addendum #7); this run is the
-immediate next step.
+**Run 2 (post-DME-fix, post-deprecated_code, PRE dx_procedure_mismatch mapping fix — this run
+also happened to be executed against a stale local file, see Addendum #7's note on the pull-lag
+diagnostic; numbers below are what that stale state actually produced):**
+```
+Overall is_denied rate: 7.0%
 
-### `provider_outlier` at 12.7% (claim-level) — explained, not a bug
+Risk factor activation rates (all claims):
+risk_provider_outlier         20.0152%
+risk_deprecated_code           5.3337%
+risk_missing_prior_auth        0.0798%
+risk_duplicate_claim           0.0546%
+risk_dx_procedure_mismatch     0.0173%
 
-The rule flags *providers* in the top 5th percentile by claim count OR total paid, but 12.7% is
-measured at the *claim* level. These diverge because claim-volume is itself one of the flagging
-criteria: a provider flagged partly *for* being high-volume then contributes disproportionately
-many claim-level rows, so ~5% of providers can plausibly account for >12% of claims. Not
-necessarily unrealistic (real audit-flagged providers often are disproportionately high-volume in
-practice too) — but it's the direct explanation for why this factor was carrying nearly the whole
-`is_denied` signal pre-fix. Revisit whether the percentile cutoff needs adjusting only after
-re-running with all factors genuinely contributing, not before.
+Of denied claims, 10.9% carry a second reason code
+
+Primary reason distribution (of denied claims):
+181 (deprecated_code)    72.1032%
+16  (provider_outlier)   27.4992%
+197 (missing_prior_auth)  0.3377%
+11  (dx_procedure_mismatch) 0.0529%
+18  (duplicate_claim)     0.0071%
+```
+
+**Run 3 (final — all fixes actually loaded, including the real `dx_procedure_mismatch` mapping):**
+```
+Overall is_denied rate: 9.4%  (target: 10-15%, hard bound 5-20%)
+
+Risk factor activation rates (all claims):
+risk_provider_outlier         20.0152%
+risk_dx_procedure_mismatch    11.6172%
+risk_deprecated_code           5.3337%
+risk_missing_prior_auth        0.0798%
+risk_duplicate_claim           0.0546%
+
+Of denied claims, 11.2% carry a second reason code
+
+Primary reason distribution (of denied claims):
+181 (deprecated_code)      53.9418%
+11  (dx_procedure_mismatch) 29.1001%
+16  (provider_outlier)     16.6931%
+197 (missing_prior_auth)    0.2597%
+18  (duplicate_claim)       0.0053%
+```
+
+**This is the number to cite going forward.** 9.4% overall, inside the 5-20% hard bound and just
+under the 10-15% soft target (itself derived from a marginal survey stat, not a precise number —
+see the base-probability sourcing discussion above). Three of five factors are now genuinely
+contributing to the primary-reason distribution (53.9% / 29.1% / 16.7%), a real improvement over
+Run 1's single-factor-dominance problem. `missing_prior_auth` and `duplicate_claim` remain small
+but are now fully explained rather than mysterious (see Addendum #6 for `duplicate_claim`;
+`missing_prior_auth`'s proxy is inherently narrow by design — DME codes + a 90-day no-prior-claim
+window).
+
+**Decision point, left open deliberately:** whether to bump `CALIBRATION_SCALE` (try 1.15-1.25)
+to push from 9.4% toward the center of the 10-15% band, or leave it as-is since 9.4% is
+already close to Kodiak/HFMA's cited ~11.8% industry-average denial rate. Both are defensible;
+record whichever is chosen and why once decided.
+
+### `provider_outlier` — two separate explanations now on record
+
+**At 12.7% (Run 1, carrier+outpatient only):** the rule flags *providers* in the top 5th
+percentile by claim count OR total paid, but the rate is measured at the *claim* level. These
+diverge because claim-volume is itself one of the flagging criteria: a provider flagged partly
+*for* being high-volume then contributes disproportionately many claim-level rows.
+
+**Jump to 20.0% after adding DME (Run 2/3):** expected, not a new bug. The percentile cutoff is
+computed *within the current claim population* — adding 103,828 DME claims changed who's in that
+population and how volume is distributed across providers, which shifts the 95th-percentile
+threshold itself. Revisit the percentile cutoff only if this proves too high relative to real
+audit-flag rates once the model is built; not a code fix, a calibration question for later.
 
 ### Split logic — confirmed correct as designed, no change made
 
@@ -505,9 +558,40 @@ its required-diagnosis logic is coming from, the same bar every other mapping he
 other rule in this file) was held to — extending by analogy or plausibility, without a source, is
 exactly the kind of unverified assumption this project has been careful to avoid elsewhere.
 
+### Verification of the mapping's own accuracy, before trusting the activation rate
+
+Before trusting the jump this mapping produced, the actual `PRNCPAL_DGNS_CD` distribution was
+checked directly against three of the mapped codes on real data:
+
+```
+G0444: 166,324 claims -- PRNCPAL_DGNS_CD first-char distribution:
+  Z 45.4%, T 10.3%, E 7.6%, J 7.5%, N 6.3%
+
+90935: 222,786 claims:
+  N 96.1%, J 0.9%, Z 0.8%, E 0.6%, D 0.6%
+
+A7038: 16,295 claims:
+  Z 65.7%, T 11.7%, N 3.4%, E 2.8%, G 2.7%
+```
+
+**Interpretation:** `90935` (hemodialysis) matches its expected `N` prefix 96.1% of the time —
+Synthea appears to correctly pair this code with an ESRD/CKD diagnosis, consistent with real
+billing convention. `G0444` and `A7038`, by contrast, match their expected prefix (`Z`, `G`
+respectively) only 45.4% and 2.7% of the time — Synthea does **not** reliably enforce the
+screening/DME-specific diagnosis pairing real billing rules require for these codes. This is a
+genuine, useful finding about the synthetic data's fidelity, not a rule bug: `rule_dx_procedure_mismatch`
+is working exactly as designed against real Medicare billing requirements — it's Synthea's
+generation logic for these specific code families that doesn't fully replicate real-world coding
+discipline. Worth a sentence in the Phase 5 report's limitations section.
+
 ### Status
 
-**Implemented and pushed** — `PROCEDURE_TO_EXPECTED_DX_PREFIX` in `src/denial_rules.py`. Real-data
-calibration numbers for `dx_procedure_mismatch` with this mapping in place have not yet been
-generated — that's the next `build_target_and_split.py` run, tracked in the Phase 1 real-data run
-log addendum above.
+**Implemented, pulled, and confirmed working on real data** — `PROCEDURE_TO_EXPECTED_DX_PREFIX` in
+`src/denial_rules.py`. A pull-lag diagnostic is worth recording too: the mapping code was pushed
+well before it was actually pulled locally, so an intermediate `build_target_and_split.py` run
+(Run 2 above) executed against the *old* 3-code placeholder without anyone realizing it until the
+activation rate (0.017%, essentially unchanged from before) didn't match what the verified
+mismatch rates above would predict. Confirmed via `git log --oneline -- src/denial_rules.py`
+showing the mapping commit missing locally, then resolved with a fresh `git pull`. Lesson: when a
+number doesn't move the way a change should predict, check whether the change is actually running
+before assuming a logic bug.
