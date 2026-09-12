@@ -123,19 +123,61 @@ def rule_missing_prior_auth(
 # Rule 3 — Diagnosis / procedure mismatch (medical-necessity proxy)
 # ---------------------------------------------------------------------------
 # Coarse category-level check: does the procedure's typical diagnosis category
-# (first 3 chars of ICD-10-CM, mapped to a broad category) match any diagnosis
-# billed on the same claim? This is deliberately simple -- a real payer's
-# medical-necessity edit is far more granular (specific LCD/NCD policy per
-# code). Document the simplification.
+# (first character of ICD-10-CM, mapped to a broad chapter) match any
+# diagnosis billed on the same claim? This is deliberately simple -- a real
+# payer's medical-necessity edit is far more granular (specific LCD/NCD policy
+# per code, often requiring an exact diagnosis code, not just a chapter
+# match). Document the simplification.
 
-# Minimal illustrative mapping -- extend this table once you've inspected the
-# actual HCPCS/ICD-10 distribution in your downloaded data (Phase 1 Step 4 EDA
-# will show you the real top codes to prioritize).
+# Built 2026-09-12 from this project's ACTUAL top-30 HCPCS codes
+# (df["HCPCS_CD"].value_counts() on the real downloaded data), each verified
+# against real Medicare coverage/billing documentation -- not guessed. Full
+# citations in data/TARGET_DEFINITION.md's "Real HCPCS mapping" addendum.
+# Supersedes the original 3-code illustrative placeholder (93000/71046/80053),
+# none of which actually appeared in this project's real data at any
+# meaningful volume.
+#
+# Codes NOT in this table are simply never flagged by this rule (see
+# docstring below) -- several other high-volume real codes (96156, 99408,
+# 99495, 99401, M1069, and others) were deliberately left unmapped rather
+# than guessed: either the code's required diagnosis is too broad to reduce
+# to a single ICD-10 chapter check (e.g. 99495 transitional care management
+# can legitimately follow almost any admitting diagnosis), or the mapping
+# wasn't independently verified against a real source. Extend this table
+# only when you can cite where a specific code's required diagnosis is
+# coming from -- the whole point of this rule losing its 3-illustrative-code
+# placeholder status was verification, not just volume.
 PROCEDURE_TO_EXPECTED_DX_PREFIX = {
-    # HCPCS/CPT prefix or code -> plausible ICD-10-CM chapter prefixes (partial, illustrative)
-    "93000": ("I",),   # EKG -> circulatory system diagnoses
-    "71046": ("J",),   # Chest X-ray -> respiratory diagnoses
-    "80053": ("E", "K", "N"),  # Comprehensive metabolic panel -> broad
+    # Medicare Annual Wellness Visit screening add-ons -- require a
+    # screening/encounter Z-code, not a disease-specific code. Verified:
+    # Z13.31 (preferred since Oct 2021), Z13.39, Z13.89, Z00.00 all accepted.
+    "G0444": ("Z",),  # Annual depression screening
+    "G0442": ("Z",),  # Annual alcohol misuse screening
+
+    # Brief emotional/behavioral assessment (e.g. depression inventory) --
+    # Z-code if used as a screening tool, F-code (mental/behavioral chapter)
+    # if a positive result is what's being coded.
+    "96127": ("Z", "F"),
+
+    # Hemodialysis, single physician evaluation -- requires an ESRD/CKD
+    # diagnosis (N18.x, ICD-10 genitourinary chapter). Hypertensive CKD
+    # (I12.x/I13.x) or diabetic nephropathy (E11.22) are legitimate comorbid
+    # alternates/additions per nephrology billing guidance, not substitutes.
+    "90935": ("N", "I", "E"),
+
+    # CPAP/PAP therapy supplies -- near-universally require G47.33
+    # (obstructive sleep apnea, ICD-10 nervous-system chapter) per CMS LCD
+    # L33718 and its companion policy article. Billing with the unspecified
+    # sleep-apnea code (G47.30) instead is a documented, common cause of
+    # denial specifically for these codes.
+    "A7030": ("G",),  # Full face CPAP mask
+    "A7031": ("G",),  # Full face mask cushion, replacement
+    "A7034": ("G",),  # Nasal CPAP interface
+    "A7035": ("G",),  # CPAP headgear
+    "A7037": ("G",),  # CPAP tubing
+    "A7038": ("G",),  # CPAP disposable filter
+    "A4604": ("G",),  # Heated tubing, used with CPAP
+    "E0601": ("G",),  # CPAP device (purchase/rental)
 }
 
 
@@ -145,12 +187,12 @@ def rule_dx_procedure_mismatch(
     dx_cols: tuple[str, ...] = ("PRNCPAL_DGNS_CD",),
 ) -> pd.Series:
     """Flag claims where none of the billed diagnosis codes fall in the
-    procedure's expected ICD-10-CM chapter range, for the small illustrative
-    procedure set in PROCEDURE_TO_EXPECTED_DX_PREFIX.
+    procedure's expected ICD-10-CM chapter range, for the procedures in
+    PROCEDURE_TO_EXPECTED_DX_PREFIX.
 
     Returns False (not flagged) for any procedure code not in the mapping --
-    extend the table before relying on this rule as a primary signal; as
-    written it only covers a handful of illustrative codes.
+    this rule only ever evaluates the codes it has a verified mapping for;
+    everything else passes through unflagged rather than being guessed at.
     """
     hcpcs = df[hcpcs_col].astype(str)
     flagged = pd.Series(False, index=df.index)
@@ -360,10 +402,12 @@ def build_is_denied(
     `zero_payment` is excluded from the default `use_rules` -- it's a raw
     leakage risk (CLM_PMT_AMT would need to be dropped from features if used
     as a label input; see the note above rule_zero_payment). `dx_procedure_mismatch`
-    is excluded because its illustrative mapping only covers 3 codes -- extend
-    PROCEDURE_TO_EXPECTED_DX_PREFIX from your real HCPCS distribution first.
-    `duplicate_claim` (Rule 6) and `deprecated_code` (Rule 7) aren't wired into
-    this deprecated function -- use denial_reasons.sample_denials() to get them.
+    is excluded here by default for consistency with the original scope of this
+    deprecated function -- pass it in use_rules if you want it; its mapping now
+    covers real verified codes (see PROCEDURE_TO_EXPECTED_DX_PREFIX above), not
+    illustrative placeholders. `duplicate_claim` (Rule 6) and `deprecated_code`
+    (Rule 7) aren't wired into this deprecated function at all -- use
+    denial_reasons.sample_denials() to get them.
     """
     flags = pd.DataFrame(index=df.index)
 
