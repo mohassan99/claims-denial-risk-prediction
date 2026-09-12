@@ -47,18 +47,21 @@ then the actual outcome is Bernoulli-sampled from that probability. This produce
 realistic multi-reason denials (when 2+ factors are active, their probabilities compound) without
 requiring a real joint-probability table, which doesn't exist publicly (see below).
 
-Risk factors (with each one's illustrative CARC code and base conditional probability):
+Risk factors (with each one's illustrative CARC code and base conditional probability). Updated
+2026-09-12 to 4 factors (see Addendum #4 for the 4th):
 
-1. **Missing prior authorization proxy** (CARC 197, `base_prob=0.22`) — high-cost procedure
+1. **Duplicate claim** (CARC 18, `base_prob=0.35`) — same beneficiary + procedure + service date +
+   provider recorded under more than one distinct claim ID. Added 2026-09-11; see Addendum #4.
+2. **Missing prior authorization proxy** (CARC 197, `base_prob=0.22`) — high-cost procedure
    categories (DME, certain outpatient procedure codes) with no linked prior encounter/diagnosis
    support in the beneficiary history.
-2. **Diagnosis–procedure mismatch** (CARC 11, `base_prob=0.15`) — procedure code's typical
+3. **Diagnosis–procedure mismatch** (CARC 11, `base_prob=0.15`) — procedure code's typical
    diagnosis category doesn't match any diagnosis billed on the same claim (coarse
    medical-necessity proxy).
-3. **Provider outlier billing pattern** (CARC 16, `base_prob=0.08`) — provider bills in the top
+4. **Provider outlier billing pattern** (CARC 16, `base_prob=0.08`) — provider bills in the top
    percentile of claim volume or payment amount relative to peers (rough proxy for audit-flagged
    providers, weakest-grounded rule, deliberately given the lowest base rate).
-4. **Timely filing violation** — not implemented; `FI_CLM_PROC_DT` (claim processing date) is
+5. **Timely filing violation** — not implemented; `FI_CLM_PROC_DT` (claim processing date) is
    blank/fixed in this synthetic release, so days-between-service-and-submission can't be
    computed. Documented as a disclosed limitation, not silently dropped.
 
@@ -75,10 +78,10 @@ marginal benchmarks but are ultimately reasoned, disclosed assumptions — a sin
 `CALIBRATION_SCALE` knob tunes them uniformly to hit the target 10-15% overall rate rather than
 hand-tuning each one to a number that would falsely imply real-world precision.
 
-**Multi-reason assignment:** for denied claims, the recorded reason(s) are sampled from the active
-risk factors, weighted by each factor's contribution — claims with 2+ active factors have a
-documented 30% chance of carrying a second CARC code. This is also a disclosed assumption, not a
-measured multi-reason rate.
+**Multi-reason assignment:** for denied claims, the recorded reason(s) are assigned by fixed
+processing-order priority (changed 2026-09-11 from weighted-random — see Addendum #3), and claims
+with 2+ active factors have a documented 30% chance of carrying a second CARC code. The 30% figure
+is a disclosed assumption, not a measured multi-reason rate.
 
 **Leakage note this design surfaces:** `CLM_PMT_AMT` is overwritten to ~$0 for denied claims
 (`apply_payment_consequence()`) for internal consistency — this makes it a near-deterministic
@@ -114,13 +117,13 @@ the follow-up questions a hiring manager might ask.
 
 ### 1. Noisy-OR independence assumption — disclosed limitation, not previously named
 
-`P(denied) = 1 − Π(1 − pᵢ)` treats `missing_prior_auth`, `dx_procedure_mismatch`, and
-`provider_outlier` as **statistically independent** given each is active. This was implicit in
-the math above but never stated as a limitation. It should be: in reality these are plausibly
-correlated (a provider with an outlier billing pattern is plausibly *more* likely to also produce
-diagnosis/procedure mismatches — same underlying sloppy-billing cause), so the true joint denial
-probability when multiple factors co-occur may differ from what independence implies. This is a
-disclosed modeling simplification, not a measured fact.
+`P(denied) = 1 − Π(1 − pᵢ)` treats all active risk factors as **statistically independent** given
+each is active. This was implicit in the math above but never stated as a limitation. It should
+be: in reality these are plausibly correlated (a provider with an outlier billing pattern is
+plausibly *more* likely to also produce diagnosis/procedure mismatches — same underlying
+sloppy-billing cause), so the true joint denial probability when multiple factors co-occur may
+differ from what independence implies. This is a disclosed modeling simplification, not a
+measured fact.
 
 ### 2. `CALIBRATION_SCALE` mechanics — where in the pipeline scaling actually happens
 
@@ -146,7 +149,9 @@ even under aggressive scaling.
 gives exactly 12%" — the population-level rate depends on the calibrated `pᵢ` values *and* the
 distribution of how many claims have 0/1/2/3 active factors, which is itself a property of the
 real CMS data. Calibration is empirical: guess a `calibration_scale`, run `calibration_report()`,
-check `is_denied.mean()`, adjust, repeat — not something the formula guarantees on its own.
+check `is_denied.mean()`, adjust, repeat — not something the formula guarantees on its own. **This
+was confirmed concretely on real data 2026-09-12 — see Addendum #6: the first real run landed at
+1.4%, nowhere near 10-15%, and the cause was NOT the calibration scale itself; see #6 for why.**
 
 ### 3. Reason-code selection — moved from weighted-random to deterministic priority
 
@@ -169,10 +174,10 @@ recorded when several fire.
 adjudication runs format/eligibility checks first, then medical-policy edits (prior auth, medical
 necessity), then bundling/frequency edits, with provider-level audit/outlier review happening
 **retrospectively** (post-payment), not as a real-time adjudication edit at all. This gives a
-principled fixed order:
+principled fixed order, implemented as `REASON_PRIORITY` in `src/denial_reasons.py`:
 
-1. `duplicate_claim` (if implemented — see #4 below) — earliest, typically one of the cheapest/
-   first system checks, ahead of most medical-policy edits.
+1. `duplicate_claim` — earliest, typically one of the cheapest/first system checks, ahead of most
+   medical-policy edits.
 2. `missing_prior_auth` (CARC 197) — front-end, pre/early-adjudication gate.
 3. `dx_procedure_mismatch` (CARC 11) — medical-policy/medical-necessity edit, mid-adjudication.
 4. `provider_outlier` (CARC 16) — **always last**, not because it's the lowest-probability
@@ -190,12 +195,13 @@ proportion is driven entirely by each rule's *activation rate* on the actual CMS
 `calibration_report()`'s per-rule activation rates against Experian's ~35%-cite-prior-auth
 framing empirically — don't assume the tie-break choice moves that number, because it doesn't.
 
-**Status: recommended, not yet implemented in `denial_reasons.py`.** The weighted-random sampling
-code is still what's running. This section documents the design decision and rationale; the code
-change (replace weighted `rng.choice` with a fixed-priority argmax over active factors) is still
-open.
+**Status: implemented 2026-09-11/12** in `src/denial_reasons.py` — `REASON_PRIORITY` constant plus
+a deterministic walk down it in `sample_denials()`, replacing the weighted `rng.choice` call. The
+~30% second-reason chance is kept (see the "Multi-reason assignment" note above the addendum) —
+that's the one piece of randomness kept because it reflects real population variety in *how many*
+factors are active, not *which* one is blamed.
 
-### 4. Candidate additional risk factor: duplicate claim — recommended, not yet implemented
+### 4. Candidate additional risk factor: duplicate claim — implemented
 
 **Why:** duplicate-claim denials (CARC 18) are one of the best-grounded categories available —
 stronger than `provider_outlier`'s grounding. A Louisiana Medicaid transparency report showed
@@ -207,27 +213,36 @@ real-world CARC drivers are 197/11/16 — i.e. exactly the three factors already
 source reads as aggregator/SEO content rather than a primary report like Kodiak/HFMA, so treat as
 a nice-to-have citation to verify, not load-bearing.)
 
-**Why it's cheap:** `load_data.py` already loads and correctly dtypes `BENE_ID`, `HCPCS_CD`, and
+**Why it was cheap:** `load_data.py` already loads and correctly dtypes `BENE_ID`, `HCPCS_CD`, and
 `CLM_FROM_DT`; `data_dictionary.md` confirms `CLM_ID` (unique claim identifier) is present in
-every claim file. A duplicate rule is: group by `(BENE_ID, HCPCS_CD, CLM_FROM_DT, PRVDR_NUM)`,
-flag any group with more than one distinct `CLM_ID`. No new fields to source.
+every claim file. The rule is: group by `(BENE_ID, HCPCS_CD, CLM_FROM_DT, PRVDR_NUM)`, flag any
+group with more than one distinct `CLM_ID`. No new fields needed.
 
-**Caveat to document if implemented:** not every same-code/same-date repeat billing is a true
-duplicate — recurring services (dialysis, physical therapy, some DME rentals) legitimately repeat.
-Real duplicate-detection logic typically also checks exact-match units/modifiers. Document this
-as a simplification, same pattern as the existing three rules.
+**Caveat, still open:** not every same-code/same-date repeat billing is a true duplicate —
+recurring services (dialysis, physical therapy, some DME rentals) legitimately repeat. Real
+duplicate-detection logic typically also checks exact-match units/modifiers, not available here.
+**On real data (2026-09-12) the activation rate came out at 0.057% — not exactly zero, which is
+expected, but low enough that a row-level inspection of the flagged claims is warranted to
+determine whether it's catching genuine coincidental duplicates or exactly this false-positive
+pattern. Result not yet recorded here — see Addendum #6.**
 
-**Why not implement every plausible factor instead of stopping at 3–4:** each additional factor
-is another `base_prob` anchored to the same thin marginal survey data the existing three already
+**Status: implemented 2026-09-11/12** — `rule_duplicate_claim()` in `src/denial_rules.py`, wired
+into `REASON_CATALOG`/`RISK_FACTOR_FUNCS`/`compute_risk_factors()` in `src/denial_reasons.py`.
+
+**Why not implement every plausible factor instead of stopping at 4:** each additional factor is
+another `base_prob` anchored to the same thin marginal survey data the existing ones already
 stretch, another `risk_*` column requiring leakage-inventory discipline, and time spent on
 marginal realism that doesn't change the modeling task (Phase 1 is already running over its
-original estimate). Duplicate-claim clears the bar because it's both unusually well-grounded *and*
-free given fields already loaded — that combination doesn't generalize to "add more."
+original estimate). Duplicate-claim cleared the bar because it was both unusually well-grounded
+*and* free given fields already loaded — that combination doesn't generalize to "add more."
 
 **Also considered, more effort, not "cheap":** an eligibility/coverage-lapse check (claim date
 outside the beneficiary's enrollment window, CARC 27) is well-grounded but requires joining the
 `beneficiary_2015.csv`…`beneficiary_2023.csv` enrollment files, which `load_data.py` doesn't
-currently load. Documented as possible future work, not pursued now.
+currently load. Documented as possible future work, not pursued now — and deliberately NOT
+downloaded "just in case" (2026-09-11 decision): downloading data against a speculative,
+not-yet-decided feature is the same scope creep this section already argues against for risk
+factors generally.
 
 ### 5. Why `CLM_PMT_AMT` cannot be used as the label — heuristic *or* target
 
@@ -253,10 +268,94 @@ already encode anything resembling `missing_prior_auth`, `dx_procedure_mismatch`
 `provider_outlier`-style risk. This is a reasoned expectation, not a verified fact about Synthea's
 internals.
 
-**Recommended validation (not yet run):** before any engineered `is_denied` logic is applied,
-cross-tabulate native, unmodified `CLM_PMT_AMT ≈ 0` claims against the three (or four, if
-duplicate-claim is added) risk-factor flags. If native zero-pay claims already correlate with
-these factors, that's a genuinely interesting, reportable finding. If not, it's direct empirical
-evidence — stronger than reasoning alone — for why the native payment field can't be used as
-either a detection heuristic or a target. **Action item: run this check during Phase 1 EDA and
-record the result here.**
+**Validation check: implemented, not yet run.** `validate_native_payment_vs_risk_factors()` in
+`src/run_eda.py` (added 2026-09-11) cross-tabulates native, unmodified `CLM_PMT_AMT ≈ 0` claims
+against the risk-factor flags, using `combined_claims_raw.parquet` before `apply_payment_consequence()`
+has touched it. **Action item still open: run `python src/run_eda.py` and record the actual
+result here** — it hasn't been executed against real data as of this writing.
+
+---
+
+## Addendum: Phase 1 real-data run log (2026-09-11 to 2026-09-12)
+
+First run of the pipeline against real downloaded CMS data (`carrier.csv` + `outpatient.csv`,
+1,696,096 combined rows). Two bugs found and fixed, one open diagnostic question, one design
+confirmation — kept here in full since this is exactly the kind of debugging narrative worth
+having ready for an interview ("walk me through a bug you hit and how you found it").
+
+### Bug 1: parquet write failure on `PRVDR_STATE_CD` dtype mismatch
+
+`load_data.py`'s first real run raised `pyarrow.lib.ArrowTypeError: ("Expected bytes, got a 'int'
+object", ...)` writing `combined_claims_raw.parquet`. Root cause: `PRVDR_STATE_CD` (an SSA state
+code, can carry a leading zero) wasn't on the explicit `CODE_DTYPE_COLS` list, so pandas inferred
+its dtype independently per source file — `carrier.csv` and `outpatient.csv` disagreed (one int,
+one not), and `pd.concat` produced a mixed-type object column pyarrow couldn't serialize.
+
+**Fix:** generalized the dtype-forcing rule in `load_claim_file()` — force `str` on every column
+ending in `_CD` or `_NUM`, not just the explicit list, since CMS RIF fields with that suffix
+pattern are always categorical identifiers, never numeric quantities. This closes the whole
+category rather than requiring a one-off fix per column as more claim files get added later
+(inpatient/SNF/hospice/hha still to come).
+
+### Bug 2: `missing_prior_auth` fired at exactly 0.000000%
+
+Not a code bug — a data-coverage gap. `rule_missing_prior_auth` flags HCPCS codes starting with
+`"E"`/`"K"` (DME Level II codes), but only `carrier.csv` and `outpatient.csv` were loaded, and
+those claim types essentially never use DME coding.
+
+**Fix:** added `dme.csv` (already downloaded, not yet loaded) to `load_data.py`'s default claim
+file set. Reasoned as more realistic, not just a patch: CMS's actual "Required Prior Authorization
+for Certain DMEPOS Items" program is a real prior-auth mechanism specifically for DME, so pairing
+`missing_prior_auth` with DME claims is arguably a *better* fit than the original carrier/
+outpatient-only scope, not merely a bug workaround.
+
+### First real calibration numbers (pre-DME-fix, for the record)
+
+```
+Overall is_denied rate: 1.4%  (target: 10-15%, hard bound 5-20%)
+
+Risk factor activation rates (all claims):
+risk_provider_outlier         12.7107%
+risk_duplicate_claim           0.0571%
+risk_dx_procedure_mismatch     0.0184%
+risk_missing_prior_auth        0.0000%
+
+Of denied claims, 0.2% carry a second reason code
+
+Primary reason distribution (of denied claims):
+16 (provider_outlier)    97.87%
+18 (duplicate_claim)      1.87%
+11 (dx_procedure_mismatch) 0.26%
+```
+
+**Why the fix wasn't "just raise `CALIBRATION_SCALE`":** with 3 of 4 factors nearly inert,
+`provider_outlier` was carrying the entire signal alone. Hitting 10-15% by scaling
+`provider_outlier` alone would have pushed its calibrated `pᵢ` toward the `min(p, 0.95)` clamp
+ceiling — i.e. "provider_outlier active" predicting denial ~95% of the time, which is exactly the
+near-deterministic, suspiciously-clean-rule problem the whole noisy-OR design (see main body
+above) was built to avoid, just relocated from a hard boolean-OR to one dominant soft factor
+instead of four genuinely contributing ones. Fixing the two under-firing factors (DME for
+`missing_prior_auth`; real HCPCS frequency data still needed for `dx_procedure_mismatch`, whose
+`PROCEDURE_TO_EXPECTED_DX_PREFIX` mapping only covers 3 illustrative placeholder codes) is the
+correct fix; calibration-scale tuning is the right *next* step only after all 4 factors are
+genuinely contributing. **Numbers need to be re-run and recorded here once `dme.csv` is loaded and
+`dx_procedure_mismatch`'s code mapping is built from real `df["HCPCS_CD"].value_counts()` output.**
+
+### `provider_outlier` at 12.7% (claim-level) — explained, not a bug
+
+The rule flags *providers* in the top 5th percentile by claim count OR total paid, but 12.7% is
+measured at the *claim* level. These diverge because claim-volume is itself one of the flagging
+criteria: a provider flagged partly *for* being high-volume then contributes disproportionately
+many claim-level rows, so ~5% of providers can plausibly account for >12% of claims. Not
+necessarily unrealistic (real audit-flagged providers often are disproportionately high-volume in
+practice too) — but it's the direct explanation for why this factor was carrying nearly the whole
+`is_denied` signal pre-DME-fix. Revisit whether the percentile cutoff needs adjusting only after
+re-running with all 4 factors genuinely contributing, not before.
+
+### Split logic — confirmed correct as designed, no change made
+
+Reviewed `build_target_and_split.py`'s split logic against the question "why not just check if a
+time-based split is possible, and fall back to random if not" — that's exactly what the existing
+code already does (checks whether `CLM_FROM_DT` parses for >90% of rows before choosing a branch).
+The real run against real data took the time-based branch, confirming dates were usable. No code
+change needed; this was a design-review confirmation, not a bug.
