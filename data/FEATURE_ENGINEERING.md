@@ -219,9 +219,20 @@ paradox describes). **The scientifically correct practice is not to pick one bla
 every variable, but to test the assumption per shared variable** — fit the claim-type interaction
 for a candidate variable, run a likelihood-ratio test (or check the interaction term's
 significance / compare AIC) against the version without it, and only impose a shared coefficient
-where that assumption survives the test. Variables that pass get one shared coefficient
-(efficient, and correct if the test supports it); variables that fail get their own per-claim-type
-coefficient, structurally no different from what full stratification would have given them anyway.
+where that assumption survives the test. Variables that pass get one shared coefficient; variables
+that fail get their own per-claim-type coefficient, structurally no different from what full
+stratification would have given them anyway.
+
+**A note on precisely what "efficient" means for the variables that pass — a distinct, technical
+sense of the word, not the runtime/effort sense retracted above.** When a shared coefficient is
+statistically justified (the interaction test doesn't support letting the effect vary), estimating
+it as one pooled parameter is more *statistically* efficient: it draws on the full training set
+(~1.15M rows) rather than only one claim type's subset, so its standard error is smaller — a lower-
+variance estimate of the same true effect, in the formal sense tied to the Cramér-Rao bound on
+minimum achievable estimator variance. This is a real, separate benefit from anything about human
+effort or code runtime, and it only applies *when the homogeneity assumption is actually correct*
+for that variable — if the test fails, there is no efficiency benefit to weigh against anything;
+pooling would just be wrong (misspecified), not efficient-but-biased.
 
 **Combining three claim-type-specific models into one PR-AUC is standard, defensible evaluation
 practice, not a hack.** Route every held-out test claim to its matching claim-type model (hard,
