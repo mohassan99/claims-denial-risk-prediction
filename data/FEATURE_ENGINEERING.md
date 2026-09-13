@@ -85,6 +85,9 @@ conventions in this specific dataset — some may appear in only one. **Don't as
 expected post-fix count in advance; run the crosswalk and read off the actual number**, the same
 verify-before-asserting discipline applied everywhere else in this project.
 
+**Status: implemented and pushed** — `SSA_STATE_CROSSWALK` + presence-flag/drop logic in
+`src/build_features.py`.
+
 ---
 
 ## 2. Structural missingness across claim-type-specific fields
@@ -125,11 +128,39 @@ need different treatment:
   informative (which claim type a row belongs to) and dropping these columns would throw away real
   claim-type-specific signal, not just noise.
 
-**Still open, not yet checked:** `PRVDR_SPCLTY` showed a suspicious constant mean of exactly
-`1.0` in the `.describe()` output, and `ICD_DGNS_VRSN_CD1`-`CD12` all showed a mean of exactly
-`0.0` — both patterns consistent with zero-variance (constant-value) columns, which would make them
-droppable too, but this hasn't been directly confirmed with `.value_counts()` yet. **Action item:
-run that check before finalizing the drop list.**
+**`PRVDR_SPCLTY` and `ICD_DGNS_VRSN_CD1`-`CD12` — confirmed zero-variance via `.value_counts()`,
+and their real-world meanings looked up rather than assumed, since a statistical fact alone
+doesn't tell you whether a constant is a data limitation or an expected, correct value.** Both
+were flagged from `.describe()` (suspicious constant means) and confirmed via `.value_counts()`:
+`PRVDR_SPCLTY` is `1.0` for every one of its 784,409 populated (carrier-only) rows; every
+`ICD_DGNS_VRSN_CD` column is `0.0` for every populated row. The two constants tell genuinely
+different stories once their official CMS meanings are checked, not one story:
+
+- **`PRVDR_SPCLTY` — a real, meaningful field, and the constant is a genuine Synthea limitation.**
+  Confirmed against official CMS/CCW documentation: this is "CMS specialty code used for pricing
+  the line item service," and `01` (which is what `1.0` represents) specifically means **General
+  Practice** — not a null/placeholder code (that would be `00`, "Carrier wide"). Every carrier
+  claim in this dataset being coded `01` means Synthea assigns every provider the same specialty
+  regardless of what care was actually delivered. This is the same category of limitation as the
+  fixed denial-status fields already documented in the "Decision" section of `TARGET_DEFINITION.md`
+  (`CARR_CLM_PMT_DNL_CD`, `CLM_DISP_CD`, etc.) — a real gap in what this synthetic release can
+  represent, worth a line in the Phase 5 report's limitations section.
+- **`ICD_DGNS_VRSN_CD1`-`CD12` — constant, but expected and correct, not a limitation.** This field
+  flags whether each diagnosis code is ICD-9 or ICD-10, with `0` meaning ICD-10 (confirmed against
+  ResDAC/CMS documentation). The real ICD-9-to-ICD-10 transition occurred exactly October 1, 2015,
+  and this project's beneficiary data spans 2015-2023 — almost entirely after that cutover. A
+  constant `0` here simply reflects that every diagnosis in this dataset genuinely is ICD-10-coded,
+  which is exactly what a modern synthetic-data generator working against a mostly-post-2015
+  timeframe should produce. Nothing wrong with this field; it's telling the truth and there's
+  just no variation left to learn from in this particular timeframe.
+
+Both remain correctly droppable for modeling — zero variance means zero predictive signal either
+way — but the *why* differs and is worth having straight under questioning: one is "Synthea
+couldn't model this realistically," the other is "the real world genuinely doesn't vary here in
+this timeframe."
+
+**Status: implemented and pushed** — all 13 columns added to `DROP_COLUMNS` in
+`src/build_features.py`.
 
 ---
 
@@ -234,6 +265,20 @@ anything about human effort or code runtime, and it only applies *when the homog
 is actually correct* for that variable — if it's wrong, there is no efficiency benefit to weigh
 against anything; pooling would just be wrong (misspecified), not efficient-but-biased.
 
+**A worked, honest caveat on the practical magnitude of this benefit, prompted directly by a
+challenge that the "efficiency" argument might be overstated at this sample size — worth
+addressing head-on rather than defending the point abstractly.** Standard errors shrink roughly
+proportional to `1/√n`, so pooling the full ~1.15M rows versus using only DME's ~66,700-row subset
+gives roughly a `√(1.15M / 66,700) ≈ 4.1×` reduction in standard error for a DME-specific estimate
+— a real, calculable difference. But for the two larger claim types (carrier ~62%, outpatient
+~32%), each subset is already large enough on its own that pooling likely buys only marginal
+additional precision. So the efficiency argument is real but **unevenly distributed** — it matters
+most for DME-specific estimates and least for carrier/outpatient ones, not a uniform justification
+across the board. Worth being honest, too, that for a portfolio project (rather than a deployed
+system), the practical value of chasing this rigor is mainly demonstrating correct methodology in
+an interview conversation — the final PR-AUC is unlikely to meaningfully hinge on which choice is
+made here.
+
 **Combining three claim-type-specific models into one PR-AUC (Precision-Recall Area Under the
 Curve, the metric this project uses instead of plain accuracy given the minority-class denial
 rate) is standard, defensible evaluation practice, not a hack.** Route every held-out test claim to
@@ -255,18 +300,40 @@ runs that testing in two stages rather than jumping straight to per-variable che
 econometrics, after economist Gregory Chow, who introduced it in 1960) checks a single global
 question — "do the coefficients differ across claim-type subgroups for *any* of the shared
 variables at once?" — rather than testing each variable one at a time. Practically: fit the
-fully-pooled model (no claim-type interactions on any shared variable) and the fully-interacted
-model (every shared variable gets its own claim-type-specific coefficient), then compare their fit
-with a **likelihood-ratio test** (a statistical test comparing two nested models by looking at the
-difference in their **log-likelihood** — a number measuring how well a model fits the observed
-data, with higher/less-negative values indicating better fit — where that difference follows a
-known chi-squared distribution if the simpler model is actually adequate). If the omnibus test does
-**not** reject, there is direct statistical justification to use the fully-pooled model for every
-shared variable and stop there — no per-variable testing needed at all.
+fully-pooled model (`claim_type` dummies + every shared covariate included once, with one shared
+coefficient each) and the fully-interacted model (`claim_type` dummies + every shared covariate
+replaced by its 3 claim-type-interaction terms), then compare their fit with a **likelihood-ratio
+test** (a statistical test comparing two nested models by looking at the difference in their
+**log-likelihood** — a number measuring how well a model fits the observed data, with
+higher/less-negative values indicating better fit — where that difference follows a known
+chi-squared distribution if the simpler model is actually adequate). Note that the `claim_type`
+main effects (the dummies themselves) are present in **both** models regardless — what's being
+tested is only whether those dummies *interact* with the other covariates, not whether they're
+included at all.
+
+**The precise null and alternative hypotheses, and what's actually varying between the two
+models.** `H₀`: for every shared covariate, its coefficient is equal across all three claim types
+simultaneously (`β_carrier = β_outpatient = β_dme` for each shared variable, jointly across all of
+them at once — not just one variable). `H₁`: at least one covariate's coefficient differs across
+at least one pair of claim types, somewhere in the set. For `k` shared covariates, the unrestricted
+(fully-interacted) model has `3k` covariate coefficients versus the restricted (pooled) model's
+`k`, giving the test `2k` degrees of freedom.
+
+**A note on the ANOVA parallel drawn earlier — corrected, since the original comparison was too
+loose.** Plain one-way ANOVA (Analysis of Variance) tests whether group *means* differ from a
+single grand mean — a comparison concerning intercepts only, not the slopes of other covariates.
+That's not quite the right analogy for testing whether *other variables' effects* differ by group.
+The more precise parallel, from the ANCOVA (Analysis of Covariance) literature, is a **test of
+homogeneity of regression slopes** — and the Chow test is exactly this test, generalized to more
+than two groups. The **Tukey's HSD** part of the earlier parallel should also be dropped: Tukey's
+HSD does pairwise comparisons of group *means* specifically, which isn't the right tool for
+per-variable slope testing (Stage 2, below) — the correct framing is that Stage 1 and Stage 2 are
+the *same* likelihood-ratio technique applied at two different levels of granularity (jointly
+across all covariates, then one covariate at a time), not two different named techniques.
 
 **Stage 2 — only if Stage 1 rejects.** A rejection means real evidence that *something* differs by
 claim type somewhere, but not *which* specific variables carry it. That's when per-variable testing
-becomes necessary: test each shared variable's own claim-type interaction individually (or use a
+becomes necessary: run the same likelihood-ratio comparison one covariate at a time (or use a
 model-selection criterion like **AIC**, the Akaike Information Criterion — a fit-quality score that
 penalizes extra parameters so added complexity has to earn its place rather than being rewarded by
 default — to decide which specific interactions are worth keeping).
@@ -283,15 +350,21 @@ interaction; it does **not** mean *every* shared variable does. Jumping straight
 rejection to full stratification would give every shared variable its own separate coefficient,
 including any that are genuinely homogeneous — needlessly discarding the statistical-efficiency
 benefit established above for exactly those variables, for zero gain in correctness, since pooling
-was already valid for them. **A close, well-known parallel:** this is the identical logic behind
-why a significant ANOVA (Analysis of Variance) F-test is followed by post-hoc tests (e.g. Tukey's
-HSD) rather than treated as the final answer — a significant ANOVA F-test only shows "not all
-group means are equal" somewhere, not which specific groups differ, and post-hoc tests exist
-precisely to pinpoint that. Per-variable testing after a Chow rejection plays the same role: using
-the omnibus result as a "look further" signal, not as the final model specification. Full
+was already valid for them. Per-variable testing after a Chow rejection plays the role of
+localizing exactly where the heterogeneity lives, rather than assuming it's everywhere. Full
 stratification remains a legitimate, defensible shortcut after a Chow rejection if the analyst-time
 cost of per-variable testing isn't worth paying — it's a real time-vs-precision tradeoff, not a
 question of correctness either way.
+
+**How a mixed model (some variables shared, some claim-type-specific) is actually built — a
+concrete design-matrix construction, not exotic machinery.** `claim_type` dummies (3 of them, cell-
+means, no intercept) are always included, representing the baseline shift. A variable that *passes*
+its homogeneity test appears once, as a single plain column, one shared coefficient. A variable
+that *fails* is replaced by its three interaction columns instead (`variable × claim_type_carrier`,
+`× claim_type_outpatient`, `× claim_type_dme`), with its raw column dropped entirely — keeping both
+would recreate the same collinearity problem discussed under `claim_type`'s encoding scheme below.
+The final design matrix is simply a mix of plain columns and triple-interaction columns, decided
+per variable by its own test result.
 
 **Why staging it this way is better than testing every variable individually from the start:** if
 nothing is actually heterogeneous, the omnibus test settles that in one step instead of running a
@@ -300,6 +373,15 @@ that in one step, and the resulting fully-interacted pooled model is mathematica
 stratified regression anyway (the point already established above) — so Approaches 2 and 3 aren't
 really a choice to make blind up front; they're the two endpoints of this one staged testing
 procedure, discovered by the data rather than assumed in advance.
+
+**Implementation note, decided alongside this refinement:** actually running Chow's test means
+fitting two logistic regression models and comparing their log-likelihoods directly — this is
+naturally done with **`statsmodels`**, not `sklearn`. `statsmodels` exposes log-likelihood,
+coefficient p-values, and built-in likelihood-ratio-test support; `sklearn`'s logistic regression
+is built for prediction, not this kind of inferential model comparison. This also means the Chow
+test itself is arguably the first genuinely *Phase 2* step (Build Guide Step 12, the baseline
+logistic regression) rather than Phase 1 — Phase 1's job ends at handing off a properly-prepared
+feature set; deciding how to fit the baseline model on it is Phase 2's.
 
 **This will be decided when the Phase 2 baseline script is actually built**, with this document
 providing the reasoning trail — not decided speculatively now, ahead of writing that code.
@@ -400,6 +482,9 @@ above) is what's ultimately implemented.** Under pure Approach 3 (stratified reg
 routing key used to split the data beforehand, and none of the cell-means/dummy discussion applies
 there.
 
+**Status: implemented and pushed** — `claim_type_carrier`/`claim_type_outpatient`/`claim_type_dme`
+cell-means dummies built in `src/build_features.py`.
+
 ---
 
 ## 4. Scope correction: feature engineering is Phase 1 work, not Phase 2 spillover
@@ -420,22 +505,14 @@ permanent transformations that must apply identically to train/val/test every ti
 runs. **Decision: consolidate all of them into one new script, `src/build_features.py`**, run
 after `build_target_and_split.py`, rather than reconstructing each fix by hand per session.
 
-**Implication:** the remaining items below are Phase 1 completion work for that script, not scope
-creep:
+**Status of the consolidated script:** `src/build_features.py` implemented and pushed 2026-09-13,
+covering the state crosswalk, NPI presence flags + drops, `claim_type` cell-means encoding, and all
+confirmed-droppable columns (always-null + zero-variance) from Sections 1-2 above. Produces
+`train_model.parquet`/`val_model.parquet`/`test_model.parquet` from `train`/`val`/`test.parquet`.
 
-- Derive `claim_type` from `_source_file`, encoded as cell-means (full `k`-dummy, `0/1`,
-  no-intercept) one-hot, not reference-cell one-hot and not integer/ordinal coding
-- Drop raw NPI values (all 6 fields) and `PRVDR_ZIP`; retain binary presence flags for the 5 NPI
-  role-fields (`has_referring_physician`, `has_operating_physician`, etc.) as their own features
-- Normalize `PRVDR_STATE_CD` through the official SSA-numeric-to-alpha crosswalk (confirmed
-  necessary — the raw column mixes both conventions for the same states; the crosswalk covers 53
-  jurisdictions — 50 states + DC + Puerto Rico + Virgin Islands — not 51, so don't assume a
-  specific post-normalization unique-value count in advance) before using it for any
-  MAC-jurisdiction or regional feature
-- Drop the always-100%-null columns listed in Section 2
-- Confirm (or refute) the `PRVDR_SPCLTY`/`ICD_DGNS_VRSN_CD*` zero-variance suspicion
+**Remaining, genuinely open:**
+
 - Decide the claim-type-specific field handling strategy for Phase 2's baseline logistic
-  regression via the staged omnibus-then-per-variable testing procedure in Section 3, not a single
-  blanket strategy chosen in advance
-- If using the interaction/missing-indicator construction, use `claim_type` dummies as the sole
-  "which claim type" encoding — do not also add separate per-field-group applicability indicators
+  regression via the staged omnibus-then-per-variable Chow-test procedure in Section 3 — this is
+  the first real Phase 2 step (fitting models with `statsmodels` to compare), not Phase 1's job to
+  resolve in advance
