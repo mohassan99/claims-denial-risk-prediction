@@ -271,6 +271,28 @@ model-selection criterion like **AIC**, the Akaike Information Criterion — a f
 penalizes extra parameters so added complexity has to earn its place rather than being rewarded by
 default — to decide which specific interactions are worth keeping).
 
+**A precise clarification on what a Chow-test rejection actually implies, prompted directly by a
+sharp follow-up question — it's easy to over-read the rejection, and worth spelling out exactly
+what it does and doesn't establish.** In the classic Chow-test construction, the two models being
+compared *are* literally the fully-pooled model and the fully-stratified model — so a rejection
+does mean "the fully-stratified alternative fits significantly better than the fully-pooled one."
+But that comparison is between two extremes, and a rejection only tells you the true answer lies
+*somewhere between them* — not that the extreme (full stratification for every shared variable) is
+itself the best answer. A rejection means *at least one* shared variable has a real claim-type
+interaction; it does **not** mean *every* shared variable does. Jumping straight from a Chow
+rejection to full stratification would give every shared variable its own separate coefficient,
+including any that are genuinely homogeneous — needlessly discarding the statistical-efficiency
+benefit established above for exactly those variables, for zero gain in correctness, since pooling
+was already valid for them. **A close, well-known parallel:** this is the identical logic behind
+why a significant ANOVA (Analysis of Variance) F-test is followed by post-hoc tests (e.g. Tukey's
+HSD) rather than treated as the final answer — a significant ANOVA F-test only shows "not all
+group means are equal" somewhere, not which specific groups differ, and post-hoc tests exist
+precisely to pinpoint that. Per-variable testing after a Chow rejection plays the same role: using
+the omnibus result as a "look further" signal, not as the final model specification. Full
+stratification remains a legitimate, defensible shortcut after a Chow rejection if the analyst-time
+cost of per-variable testing isn't worth paying — it's a real time-vs-precision tradeoff, not a
+question of correctness either way.
+
 **Why staging it this way is better than testing every variable individually from the start:** if
 nothing is actually heterogeneous, the omnibus test settles that in one step instead of running a
 separate test per shared variable. If everything is heterogeneous, the omnibus test also catches
