@@ -85,8 +85,24 @@ conventions in this specific dataset — some may appear in only one. **Don't as
 expected post-fix count in advance; run the crosswalk and read off the actual number**, the same
 verify-before-asserting discipline applied everywhere else in this project.
 
+**Verified after implementation, 2026-09-13:** running the crosswalk on real data merged the
+duplicate codes correctly — `CA` came back at 119,970, exactly matching `78,354 (CA) + 41,616 (05)`
+from the original raw `value_counts()`, direct confirmation the fix worked as intended, not just
+run without erroring.
+
+**Still open — the crosswalk table is incomplete.** Checking the full official SSA code range
+(00-80, not just 01-53) turned up more duplicate-coding risk: codes `55` (California again), `67`
+and `74` (Texas again), `68`/`69` (Florida again), `70` (Kansas again), `71` (Louisiana again), `72`
+(Ohio again), `73` (Pennsylvania again), and `80` (Maryland again) all exist in the official table
+— a documented artifact of CMS Certification Number exhaustion over time. `54` and `56`-`66` cover
+non-US regions (Africa, Canada, Mexico, Guam, the Philippines, etc.), not states. **Action item:
+check the full post-normalization `value_counts()` on `provider_state` for any leftover bare
+numbers** (not yet done) — if any of these secondary codes are present in this dataset, they'd
+currently pass through unmapped and silently recreate the same double-counting bug at a different
+code. `src/build_features.py`'s crosswalk needs extending to cover these if so.
+
 **Status: implemented and pushed** — `SSA_STATE_CROSSWALK` + presence-flag/drop logic in
-`src/build_features.py`.
+`src/build_features.py`. Crosswalk table itself may need extending per the open item above.
 
 ---
 
@@ -132,19 +148,38 @@ need different treatment:
 and their real-world meanings looked up rather than assumed, since a statistical fact alone
 doesn't tell you whether a constant is a data limitation or an expected, correct value.** Both
 were flagged from `.describe()` (suspicious constant means) and confirmed via `.value_counts()`:
-`PRVDR_SPCLTY` is `1.0` for every one of its 784,409 populated (carrier-only) rows; every
-`ICD_DGNS_VRSN_CD` column is `0.0` for every populated row. The two constants tell genuinely
-different stories once their official CMS meanings are checked, not one story:
+`PRVDR_SPCLTY` is `1.0` for every one of its 784,409 populated rows; every `ICD_DGNS_VRSN_CD`
+column is `0.0` for every populated row. The two constants tell genuinely different stories once
+their official CMS meanings are checked, not one story:
 
-- **`PRVDR_SPCLTY` — a real, meaningful field, and the constant is a genuine Synthea limitation.**
-  Confirmed against official CMS/CCW documentation: this is "CMS specialty code used for pricing
-  the line item service," and `01` (which is what `1.0` represents) specifically means **General
-  Practice** — not a null/placeholder code (that would be `00`, "Carrier wide"). Every carrier
-  claim in this dataset being coded `01` means Synthea assigns every provider the same specialty
-  regardless of what care was actually delivered. This is the same category of limitation as the
-  fixed denial-status fields already documented in the "Decision" section of `TARGET_DEFINITION.md`
-  (`CARR_CLM_PMT_DNL_CD`, `CLM_DISP_CD`, etc.) — a real gap in what this synthetic release can
-  represent, worth a line in the Phase 5 report's limitations section.
+- **`PRVDR_SPCLTY` — a real, meaningful field, and the constant is a genuine Synthea limitation,
+  now verified across its full applicable domain rather than a single claim type.** Confirmed
+  against official CMS/CCW documentation: this is "CMS specialty code used for pricing the line
+  item service," and `01` (which is what `1.0` represents) specifically means **General Practice**
+  — not a null/placeholder code (that would be `00`, "Carrier wide"). Every carrier claim in this
+  dataset being coded `01` means Synthea assigns every provider the same specialty regardless of
+  what care was actually delivered.
+
+  **First verification attempt was set up wrong, and the failure is worth keeping visible.** The
+  initial check filtered by specific procedure codes plausibly requiring specialists — `90935`
+  (hemodialysis), `45378` (colonoscopy), `88155` (Pap smear) — expecting either their absence from
+  the data or a non-`01` specialty when present. All three came back **100% NaN** on `PRVDR_SPCLTY`
+  in `train.parquet`. This looked inconclusive but was actually a test-design error: it also
+  surfaced that `PRVDR_SPCLTY`'s 784,409 populated rows had been mischaracterized earlier as
+  "carrier-only" — checking again against ResDAC documentation, the field is populated in **both**
+  Carrier and DME RIF files (`718,074 + 66,335 = 784,409`, confirmed by direct row counts), not
+  carrier alone. The three test procedure codes turned out to route entirely through *outpatient*
+  claims in this dataset, where `PRVDR_SPCLTY` doesn't exist at all — the test never touched
+  populated data in either direction.
+
+  **Corrected verification: compare `PRVDR_SPCLTY` directly between the two claim types where it
+  actually applies.** `carrier.csv`: 718,074 claims, 100% `1.0`. `dme.csv`: 66,335 claims, 100%
+  `1.0`. Constant across the *entire* domain where the field is meant to carry information, not
+  just one slice of it — a stronger, more thorough confirmation of the Synthea-limitation reading
+  than the original (flawed) test would have given even if it had worked as designed. This is the
+  same category of limitation as the fixed denial-status fields already documented in the
+  "Decision" section of `TARGET_DEFINITION.md` (`CARR_CLM_PMT_DNL_CD`, `CLM_DISP_CD`, etc.) — worth
+  a line in the Phase 5 report's limitations section.
 - **`ICD_DGNS_VRSN_CD1`-`CD12` — constant, but expected and correct, not a limitation.** This field
   flags whether each diagnosis code is ICD-9 or ICD-10, with `0` meaning ICD-10 (confirmed against
   ResDAC/CMS documentation). The real ICD-9-to-ICD-10 transition occurred exactly October 1, 2015,
@@ -512,6 +547,9 @@ confirmed-droppable columns (always-null + zero-variance) from Sections 1-2 abov
 
 **Remaining, genuinely open:**
 
+- Check the full `provider_state` `value_counts()` for leftover bare-number codes not covered by
+  the current `01`-`53` crosswalk (see Section 1 — codes `55`, `67`-`74`, `80` are documented
+  secondary codes for states already in the table, and would need to be added if present)
 - Decide the claim-type-specific field handling strategy for Phase 2's baseline logistic
   regression via the staged omnibus-then-per-variable Chow-test procedure in Section 3 — this is
   the first real Phase 2 step (fitting models with `statsmodels` to compare), not Phase 1's job to
