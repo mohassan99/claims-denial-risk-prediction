@@ -75,6 +75,16 @@ crosswalk before re-running `value_counts()` to see the true state distribution 
 un-normalized column would silently understate concentration for any state affected by the
 dual-coding bug.
 
+**Precise expectation for the post-normalization unique-value count, corrected before it was
+asserted as fact:** the shorthand "50 states + DC = 51 jurisdictions" was floated as a sanity check
+(observed 102 raw unique values, hypothesized as 51 jurisdictions × 2 codings = 102). That
+shorthand undercounts what the official SSA crosswalk actually covers — it includes **Puerto Rico**
+(`40`) and the **Virgin Islands** (`48`) in addition to the 50 states and DC, i.e. 53 real domestic
+jurisdictions, not 51. There's also no guarantee every jurisdiction is duplicated in both coding
+conventions in this specific dataset — some may appear in only one. **Don't assert a specific
+expected post-fix count in advance; run the crosswalk and read off the actual number**, the same
+verify-before-asserting discipline applied everywhere else in this project.
+
 ---
 
 ## 2. Structural missingness across claim-type-specific fields
@@ -133,8 +143,9 @@ type" (interactions handle that fine) — it's "does this variable exist at all 
 type." You can't multiply an interaction coefficient against an undefined value; a carrier claim
 doesn't have a small or zero `REV_CNTR_TOT_CHRG_AMT`, it has *no* `REV_CNTR_TOT_CHRG_AMT`.
 
-**Three approaches were considered. The evaluation of several points changed substantially under
-challenge during this discussion — those changes are kept below, not smoothed over.**
+**Three approaches were considered. The evaluation of several points, including some terminology,
+changed substantially under challenge during this discussion — those changes are kept below, not
+smoothed over.**
 
 ### Approach 1 — Restrict the baseline to a common feature set (fields present across all claim
 types); let XGBoost use everything
@@ -168,7 +179,17 @@ situation. **See the corrected implementation note under "`claim_type` feature" 
 applicability indicator and the `claim_type` dummy are the SAME piece of information and must not
 both be included as separate terms.**
 
-### Approach 3 — Fully stratified: separate logistic regression per claim type
+### Approach 3 — Stratified regression: separate logistic regression per claim type
+
+**Correction on the name itself:** this was originally called "fully stratified" and its
+evaluation-combination step was described as "segmented/mixture-of-experts scoring." The correct
+standard statistical term for the modeling approach is **stratified regression** (or "stratified
+modeling" / "subgroup-specific models") — fitting a separate model per subgroup defined by an
+observed categorical variable. "Mixture of experts" was imprecise for the scoring step too: that
+term properly refers to a *learned, soft* gating function deciding how much weight each sub-model
+gets, whereas routing here is *hard and deterministic* — `claim_type` is already known for every
+claim, no learned gating involved. The more accurate description is "stratified models with
+deterministic routing."
 
 **Initially dismissed as "too noisy" given DME is only 5.8% of the data — this claim was wrong and
 is corrected here, not quietly dropped.** Checked against actual numbers rather than intuition:
@@ -203,11 +224,12 @@ where that assumption survives the test. Variables that pass get one shared coef
 coefficient, structurally no different from what full stratification would have given them anyway.
 
 **Combining three claim-type-specific models into one PR-AUC is standard, defensible evaluation
-practice, not a hack.** Route every held-out test claim to its matching claim-type model, pool all
-resulting probability scores and true labels together, and compute PR-AUC over that pooled set
-exactly as for a single model. This is how segmented/mixture-of-experts scoring is routinely
-evaluated in production risk models (insurance underwriting, credit scoring) — nothing
-methodologically irregular about it.
+practice, not a hack.** Route every held-out test claim to its matching claim-type model (hard,
+deterministic routing on the known `claim_type`, not a learned gate), pool all resulting
+probability scores and true labels together, and compute PR-AUC over that pooled set exactly as
+for a single model. Stratified models with deterministic routing are evaluated this way routinely
+in production risk models (insurance underwriting, credit scoring) — nothing methodologically
+irregular about it.
 
 ### Decision — left open, intentionally, as a real design choice for Phase 2 rather than resolved
 here
@@ -218,7 +240,7 @@ interaction and let the data decide, variable by variable**, per the likelihood-
 above. Structurally this is closest to Approach 2 (one pooled model, claim-type-specific fields
 handled via the interaction construction from that section) but without assuming homogeneity for
 every shared variable by default — each shared variable earns its "single coefficient" status
-through a test, not through convenience. Approach 3 (full stratification) remains the
+through a test, not through convenience. Approach 3 (stratified regression) remains the
 theoretically cleanest fallback if time doesn't allow per-variable testing, since the sample size
 comfortably supports it and it makes no homogeneity assumptions anywhere. Approach 1 is documented
 but rejected as the primary path, kept only as a time-pressure fallback of last resort.
@@ -310,6 +332,12 @@ box** (e.g. `pandas.get_dummies(..., drop_first=True)` and `sklearn`'s `OneHotEn
 both default to reference-cell coding — the `drop_first`/`drop` argument needs to be left off, and
 the model's own intercept term needs to be suppressed, to get cell-means coding instead).
 
+**This entire section's decisions assume Approach 2 (or the per-variable-tested hybrid
+recommended above) is what's ultimately implemented.** Under pure Approach 3 (stratified
+regression), `claim_type` never appears as a predictor inside any single subset's model at all —
+it's purely the routing key used to split the data beforehand, and none of the cell-means/dummy
+discussion applies there.
+
 ---
 
 ## 4. Scope correction: feature engineering is Phase 1 work, not Phase 2 spillover
@@ -323,14 +351,24 @@ member/provider, days-between-service-and-submission, whether prior authorizatio
 Feature engineering was Phase 1 scope from the original plan, not something being pulled forward
 from Phase 2.
 
-**Implication:** the remaining items below are Phase 1 completion work, not scope creep:
+**Implementation note: these decisions belong in saved, versioned pipeline code, not repeated ad
+hoc terminal checks.** Diagnostic one-off checks (e.g. `.value_counts()` to confirm a hypothesis)
+are appropriately run interactively and discarded. The decisions below are different — they're
+permanent transformations that must apply identically to train/val/test every time the pipeline
+runs. **Decision: consolidate all of them into one new script, `src/build_features.py`**, run
+after `build_target_and_split.py`, rather than reconstructing each fix by hand per session.
+
+**Implication:** the remaining items below are Phase 1 completion work for that script, not scope
+creep:
 
 - Derive `claim_type` from `_source_file`, encoded as cell-means (full `k`-dummy, `0/1`,
   no-intercept) one-hot, not reference-cell one-hot and not integer/ordinal coding
 - Drop raw NPI values (all 6 fields) and `PRVDR_ZIP`; retain binary presence flags for the 5 NPI
   role-fields (`has_referring_physician`, `has_operating_physician`, etc.) as their own features
 - Normalize `PRVDR_STATE_CD` through the official SSA-numeric-to-alpha crosswalk (confirmed
-  necessary — the raw column mixes both conventions for the same states) before using it for any
+  necessary — the raw column mixes both conventions for the same states; the crosswalk covers 53
+  jurisdictions — 50 states + DC + Puerto Rico + Virgin Islands — not 51, so don't assume a
+  specific post-normalization unique-value count in advance) before using it for any
   MAC-jurisdiction or regional feature
 - Drop the always-100%-null columns listed in Section 2
 - Confirm (or refute) the `PRVDR_SPCLTY`/`ICD_DGNS_VRSN_CD*` zero-variance suspicion
