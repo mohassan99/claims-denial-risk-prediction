@@ -59,14 +59,21 @@ directly (already string-typed from the earlier `_CD` fix). `PRVDR_ZIP` dropped 
 
 **Corrected a second time — the whole premise was unverified.** The MAC-jurisdiction reasoning
 implicitly assumed this dataset spans multiple states/jurisdictions the way a real national payer
-dataset would. That was never actually checked, and there's a specific reason to doubt it by
-default: other project work (the separate RAG/Agents/Prompt-Engineering build) used data scoped to
-a single jurisdiction, and this dataset's actual state coverage hasn't been confirmed either way.
-**Action item, cheap to resolve, not yet run:** check `df["PRVDR_STATE_CD"].value_counts()` on
-`train.parquet`. If it returns one dominant or single value, the entire MAC-jurisdiction feature
-idea is moot — there's no cross-state variation to model, and `PRVDR_STATE_CD` should be dropped
-alongside `PRVDR_ZIP` rather than promoted as a feature. Don't build on an assumption that hasn't
-been checked, the same standing rule this project has applied everywhere else.
+dataset would. That was checked directly against the actual CMS user guide for this dataset
+(which includes a "Beneficiaries Per State Code" figure, confirming multi-state coverage by
+design) — so the premise holds at the dataset level. **A separate, real data-quality issue
+surfaced during this check, though:** `PRVDR_STATE_CD`'s `value_counts()` on real data showed a mix
+of alpha USPS codes (`CA`, `FL`, `NY`) and numeric codes (`05`, `09`, `53`) for what are very
+plausibly the *same* states represented two different ways. Confirmed against the official CMS/CCW
+code system spec: `PRVDR_STATE_CD` is documented as a two-digit **numeric** SSA state code
+(`05 = California`, `09 = District of Columbia`, `53 = Wyoming`, etc.) — the alpha values in this
+dataset are not part of the official spec, and are almost certainly the same states double-counted
+across two coding conventions (likely inconsistent handling across the carrier/outpatient/DME RIF
+layouts during Synthea's generation). **Action item before this field is usable for anything,
+MAC-jurisdiction or otherwise:** normalize every value through the official SSA-numeric-to-alpha
+crosswalk before re-running `value_counts()` to see the true state distribution — using the raw,
+un-normalized column would silently understate concentration for any state affected by the
+dual-coding bug.
 
 ---
 
@@ -249,6 +256,60 @@ into the three per-claim-type subsets — no collinearity risk there, since each
 sees its own claim type and the variable never appears as a predictor inside any single subset's
 model.
 
+### `claim_type`'s encoding scheme — nominal, not ordinal, and a specific dummy-coding variant is
+required, not just any one-hot scheme
+
+**Nominal, not ordinal.** Carrier/outpatient/DME have no real ordering, so a single integer-coded
+variable (`0`/`1`/`2`) would be wrong for a linear model — it silently imposes a false
+interval-scale assumption (that DME is "twice as far" from carrier as outpatient is), which is a
+meaningless claim about billing-category membership. One-hot (nominal) encoding is the correct
+family of choices; the question is which specific *variant* of one-hot encoding.
+
+**Standard one-hot (`k−1` dummies + intercept, "reference-cell coding") isn't quite right either —
+it silently breaks the interaction construction for whichever category is dropped.** If 3
+categories are one-hot encoded but the model keeps its usual shared intercept, the 3 dummies sum to
+exactly `1` for every row — a perfect linear dependency on the intercept (the "dummy variable
+trap"), so standard practice drops one category as the reference. But that's specifically
+incompatible with what this project needs the dummies to do: if `outpatient` is the dropped
+reference category, its effect gets absorbed into the intercept, and there's no explicit
+`claim_type_outpatient` dummy left to interact `REV_CNTR_*` fields against.
+
+**The correct scheme: cell-means coding — all `k` dummies, no shared intercept.** With the
+intercept dropped and all 3 dummies kept, there's no dummy-variable-trap collinearity (nothing for
+the 3 dummies to be collinear against), and every claim type has its own explicit `0/1` dummy to
+interact its exclusive fields against, with none singled out as an implicit reference.
+
+**A definitional correction worth being precise about, since it's easy to conflate with a different
+scheme:** cell-means coding does **not** mean "each coefficient represents that group's deviation
+from the overall mean." That description is actually **effect coding** (also called deviation or
+sum-to-zero contrast coding), which uses `−1/0/1`-style contrasts specifically constructed so
+coefficients sum to zero and each represents a difference from the grand mean — a different,
+distinct scheme. Under cell-means coding, each dummy's coefficient **is that group's own value
+directly** (its own log-odds baseline), not a difference from anything — there's no subtraction
+happening at all.
+
+**Why cell-means specifically is required here, not a preference — two independent reasons, both
+pointing to the same answer:**
+1. **Need an explicit `0/1` dummy for every one of the 3 claim types**, not `k−1` — reference-cell
+   coding drops exactly one, breaking the interaction construction for whichever claim type lost
+   its dummy (the reason established above).
+2. **The dummy has to be plain `0/1`, not effect coding's `−1/0/1`.** The interaction construction
+   depends on `value × dummy` cleanly zeroing out for claims where a field doesn't apply — that
+   only works if "not this claim type" is coded as `0`. Effect coding assigns at least one category
+   `−1` for some contrasts, which would flip the sign of a zero-filled value rather than zero it
+   out, corrupting the interaction term instead of correctly suppressing it.
+
+Both constraints are satisfied only by full-`k`, `0/1`, no-intercept cell-means coding — not chosen
+for interpretability preference, but because it's the only one of the three standard schemes
+(reference-cell, effect, cell-means) that works at all given the interaction-based construction
+these dummies are being built for. **Conclusion for the earlier question: no separate `claim_type`
+variable beyond the dummy set itself is needed — each dummy's own coefficient *is* that claim
+type's main effect — but the specific dummy-coding variant used matters, and must be cell-means,
+not the more commonly-defaulted reference-cell scheme most one-hot encoders produce out of the
+box** (e.g. `pandas.get_dummies(..., drop_first=True)` and `sklearn`'s `OneHotEncoder(drop="first")`
+both default to reference-cell coding — the `drop_first`/`drop` argument needs to be left off, and
+the model's own intercept term needs to be suppressed, to get cell-means coding instead).
+
 ---
 
 ## 4. Scope correction: feature engineering is Phase 1 work, not Phase 2 spillover
@@ -264,12 +325,13 @@ from Phase 2.
 
 **Implication:** the remaining items below are Phase 1 completion work, not scope creep:
 
-- Derive `claim_type` from `_source_file`
+- Derive `claim_type` from `_source_file`, encoded as cell-means (full `k`-dummy, `0/1`,
+  no-intercept) one-hot, not reference-cell one-hot and not integer/ordinal coding
 - Drop raw NPI values (all 6 fields) and `PRVDR_ZIP`; retain binary presence flags for the 5 NPI
   role-fields (`has_referring_physician`, `has_operating_physician`, etc.) as their own features
-- Check `PRVDR_STATE_CD`'s actual variation before deciding whether it's a usable feature or should
-  be dropped alongside `PRVDR_ZIP` — the MAC-jurisdiction rationale for keeping it hasn't been
-  verified against this dataset yet
+- Normalize `PRVDR_STATE_CD` through the official SSA-numeric-to-alpha crosswalk (confirmed
+  necessary — the raw column mixes both conventions for the same states) before using it for any
+  MAC-jurisdiction or regional feature
 - Drop the always-100%-null columns listed in Section 2
 - Confirm (or refute) the `PRVDR_SPCLTY`/`ICD_DGNS_VRSN_CD*` zero-variance suspicion
 - Decide the claim-type-specific field handling strategy for Phase 2's baseline logistic
