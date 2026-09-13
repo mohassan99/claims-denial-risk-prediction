@@ -28,21 +28,45 @@ change any actual values (just how they're read) wasn't worth the time cost — 
 explicitly to `str` when building the Phase 2 feature matrix instead. Documented here as a known
 gap in the "generalized" `_CD`/`_NUM` rule, since it wasn't actually fully general.
 
-**NPI fields — considered, then dropped.** Initially proposed keeping and encoding these
-(frequency encoding, since raw NPI has no repeat structure to one-hot). Retracted once confirmed
-`PRVDR_NUM` already captures the provider-level grouping information these fields would add, at
-lower cardinality and with real repeat structure `provider_outlier`/`dx_procedure_mismatch` already
-use. Five NPI role-fields (referring/performing/attending/operating/rendering) pointing at
-essentially the same redundancy wasn't worth the added complexity. **All 6 NPI fields dropped from
-the Phase 2 feature set.**
+**NPI *values* — considered, then dropped. NPI *presence/absence* — a separate decision, kept.**
+Initially proposed keeping and encoding the raw NPI values (frequency encoding, since raw NPI has
+no repeat structure to one-hot). Retracted once confirmed `PRVDR_NUM` already captures the
+provider-level grouping information these fields would add, at lower cardinality and with real
+repeat structure `provider_outlier`/`dx_procedure_mismatch` already use. **But this only argues
+against the raw NPI *value* — whether a given NPI role-field is populated at all is a separate,
+genuinely useful question that got conflated with it initially.** Whether `RFR_PHYSN_NPI` is
+populated plausibly indicates a referral-based encounter (different coordination/prior-auth
+pattern than a direct visit); whether `OP_PHYSN_NPI` is populated indicates a procedural/surgical
+claim versus not. **Decision: drop the raw NPI values (all 6 fields), but keep a binary presence
+flag per role** (`has_referring_physician`, `has_operating_physician`, etc.) as its own engineered
+feature, since the *fact* of population carries information the *value* doesn't.
+
+**Can NPI be rolled up to specialty/sub-specialty instead? Considered and rejected, precisely.** In
+the real world this crosswalk exists — NPPES (the actual national NPI registry) publishes a
+taxonomy/specialty code per real NPI. Two things break it for this project: (1) these are
+Synthea-generated synthetic NPIs with no reason to resolve to real NPPES records — a join against
+the real registry would fail or return meaningless matches; (2) even if it worked, it would be
+redundant, since `PRVDR_SPCLTY` already exists natively in the carrier file as a direct, more
+reliable field. Not pursued.
 
 **`PRVDR_ZIP` — considered, corrected, replaced.** Initially proposed binning to ZIP3 to capture
 regional Medicare Administrative Contractor (MAC) jurisdiction effects — MACs administer different
 LCDs and can have genuinely different denial patterns across jurisdictions, so this wasn't an
-implausible hypothesis. **Corrected:** MAC jurisdiction is assigned by *state*, not ZIP code, so
-ZIP3 would be a noisier, redundant proxy for information `PRVDR_STATE_CD` already carries directly
-and correctly (already string-typed from the earlier `_CD` fix). **`PRVDR_ZIP` dropped; use
-`PRVDR_STATE_CD` for any regional/MAC-jurisdiction feature instead.**
+implausible hypothesis. **Corrected once:** MAC jurisdiction is assigned by *state*, not ZIP code,
+so ZIP3 would be a noisier, redundant proxy for information `PRVDR_STATE_CD` already carries
+directly (already string-typed from the earlier `_CD` fix). `PRVDR_ZIP` dropped in favor of
+`PRVDR_STATE_CD`.
+
+**Corrected a second time — the whole premise was unverified.** The MAC-jurisdiction reasoning
+implicitly assumed this dataset spans multiple states/jurisdictions the way a real national payer
+dataset would. That was never actually checked, and there's a specific reason to doubt it by
+default: other project work (the separate RAG/Agents/Prompt-Engineering build) used data scoped to
+a single jurisdiction, and this dataset's actual state coverage hasn't been confirmed either way.
+**Action item, cheap to resolve, not yet run:** check `df["PRVDR_STATE_CD"].value_counts()` on
+`train.parquet`. If it returns one dominant or single value, the entire MAC-jurisdiction feature
+idea is moot — there's no cross-state variation to model, and `PRVDR_STATE_CD` should be dropped
+alongside `PRVDR_ZIP` rather than promoted as a feature. Don't build on an assumption that hasn't
+been checked, the same standing rule this project has applied everywhere else.
 
 ---
 
@@ -102,8 +126,8 @@ type" (interactions handle that fine) — it's "does this variable exist at all 
 type." You can't multiply an interaction coefficient against an undefined value; a carrier claim
 doesn't have a small or zero `REV_CNTR_TOT_CHRG_AMT`, it has *no* `REV_CNTR_TOT_CHRG_AMT`.
 
-**Three approaches were considered. The evaluation of two of them changed substantially under
-challenge during this discussion — both changes are kept below, not smoothed over.**
+**Three approaches were considered. The evaluation of several points changed substantially under
+challenge during this discussion — those changes are kept below, not smoothed over.**
 
 ### Approach 1 — Restrict the baseline to a common feature set (fields present across all claim
 types); let XGBoost use everything
@@ -122,19 +146,20 @@ properly implemented.
 
 **Reframed more precisely during this discussion than in the first pass at it.** This is not
 "missing-indicator plus a separate strategy" — the construction *is* literally an interaction term:
-for each claim-type-specific field, include both an `applicable` binary indicator and the
-interaction `value × applicable`, with the raw value zero-filled where not applicable. When not
-applicable, both terms vanish (contribute nothing to the log-odds); when applicable, the
-interaction term reduces to a normal linear effect and the indicator absorbs any baseline shift for
-"this claim type doesn't have this field."
+for each claim-type-specific field, include both an applicability indicator and the interaction
+`value × applicable`, with the raw value zero-filled where not applicable. When not applicable,
+both terms vanish (contribute nothing to the log-odds); when applicable, the interaction term
+reduces to a normal linear effect and the indicator absorbs any baseline shift for "this claim type
+doesn't have this field."
 
 This is the textbook "missing indicator method." It's genuinely controversial and often
 discouraged for *ordinary* missing data, where the missingness mechanism is uncertain or itself
 informative in unclear ways — but it's specifically well-justified for **deterministic, structural
 missingness**, which is exactly this case (claim type determines applicability with 100%
 certainty). This isn't a compromise or a simplification; it's the correct tool for this specific
-situation, applied inside one pooled model that shares statistical power across claim types for
-any effect that behaves consistently across them.
+situation. **See the corrected implementation note under "`claim_type` feature" below — the
+applicability indicator and the `claim_type` dummy are the SAME piece of information and must not
+both be included as separate terms.**
 
 ### Approach 3 — Fully stratified: separate logistic regression per claim type
 
@@ -146,15 +171,29 @@ uses an events-per-variable (EPV) rule of thumb of ≥10 — with ~6,270 events,
 could reliably support **hundreds** of predictors, far more than would realistically be used. The
 original "too small/noisy" claim does not survive contact with the actual arithmetic.
 
-Is this the theoretically best approach, or just an easier-to-explain one? In the
-statistics/econometrics literature, when a data-generating process is genuinely structurally
-different across subgroups — which this is, given different applicable variables and different
-institutional billing mechanisms per claim type, not merely a superficial difference — a fully
-stratified model is considered the *most* flexible, least-biased option, not a simplification made
-for narrative convenience. The real tradeoff is **statistical efficiency, not correctness**: any
-effect that behaves similarly across all three claim types gets independently re-estimated three
-times on smaller subsets instead of once on the full pooled data, which is a real, quantifiable
-cost, but not a validity problem.
+**The "efficiency vs. correctness" framing of the tradeoff was also wrong, and this is a more
+substantive correction than the arithmetic one above.** The original framing said the cost of
+stratifying was "recomputing shared effects three times on smaller subsets" — that's a
+runtime/effort cost, not a statistical one, and it understated what's actually at stake. The
+precise version: **a fully claim-type-interacted pooled model and three separately-fit stratified
+models are mathematically identical** — same fit, same coefficients, same predictions, just
+organized differently in code. So "pooled vs. separate" is not itself a bias/efficiency tradeoff
+when both are fully saturated with interactions.
+
+The real tradeoff is **per-variable, not per-modeling-strategy**: does a given shared field's
+effect on denial actually vary by claim type, or not? Take `dx_procedure_mismatch` specifically —
+it's entirely plausible that a mismatch means something different in a DME billing context than in
+a carrier consultation context, in which case forcing one shared coefficient across all three claim
+types (as Approach 2 does by default for any variable *not* given its own claim-type interaction)
+is not merely inefficient, it's **model misspecification** — a real bias, potentially even
+producing the wrong sign in the pooled estimate (the kind of aggregation distortion Simpson's
+paradox describes). **The scientifically correct practice is not to pick one blanket strategy for
+every variable, but to test the assumption per shared variable** — fit the claim-type interaction
+for a candidate variable, run a likelihood-ratio test (or check the interaction term's
+significance / compare AIC) against the version without it, and only impose a shared coefficient
+where that assumption survives the test. Variables that pass get one shared coefficient
+(efficient, and correct if the test supports it); variables that fail get their own per-claim-type
+coefficient, structurally no different from what full stratification would have given them anyway.
 
 **Combining three claim-type-specific models into one PR-AUC is standard, defensible evaluation
 practice, not a hack.** Route every held-out test claim to its matching claim-type model, pool all
@@ -166,30 +205,49 @@ methodologically irregular about it.
 ### Decision — left open, intentionally, as a real design choice for Phase 2 rather than resolved
 here
 
-**Approach 2 is the current lean as a default**, since it shares statistical power across claim
-types for effects that behave consistently, while still giving claim-type-unique fields their own
-genuinely separate coefficients through the interaction structure, all inside one coherent,
-easier-to-maintain model. **Approach 3 is an equally legitimate alternative**, not a fallback, if
-the goal is letting *every* variable — including the ones shared across claim types — have fully
-claim-type-specific effects; the sample size comfortably supports it, and "let each claim type have
-its own model" has a real theoretical grounding, not just a practical convenience one. Approach 1
-is documented but rejected as the primary path, kept only as a time-pressure fallback.
+**Revised recommendation, given the correction above:** rather than picking Approach 2 or Approach
+3 as a blanket strategy, **test each shared (non-claim-type-exclusive) variable for a claim-type
+interaction and let the data decide, variable by variable**, per the likelihood-ratio approach
+above. Structurally this is closest to Approach 2 (one pooled model, claim-type-specific fields
+handled via the interaction construction from that section) but without assuming homogeneity for
+every shared variable by default — each shared variable earns its "single coefficient" status
+through a test, not through convenience. Approach 3 (full stratification) remains the
+theoretically cleanest fallback if time doesn't allow per-variable testing, since the sample size
+comfortably supports it and it makes no homogeneity assumptions anywhere. Approach 1 is documented
+but rejected as the primary path, kept only as a time-pressure fallback of last resort.
 
 **This will be decided when the Phase 2 baseline script is actually built**, with this document
 providing the reasoning trail — not decided speculatively now, ahead of writing that code.
 
-### `claim_type` feature — derive from already-computed data, not from field-presence patterns
+### `claim_type` feature — derive from already-computed data; corrected implementation note on
+avoiding perfect collinearity
 
 `load_data.py` already tags every row with `_source_file` (the origin CSV name) at concatenation
 time — this is free, already-computed claim-type information that hasn't been used yet. **Decision:
 map `_source_file` to a clean `claim_type` categorical (`carrier`/`outpatient`/`dme`) for Phase 2**,
 rather than having the model infer claim type indirectly from which fields happen to be populated.
 
-Its role differs by which approach from above is chosen: under Approach 2, the collection of
-per-field `applicable` indicators already collectively encodes claim type (their 1/0 pattern is
-unique per claim type), but an explicit `claim_type` main-effect term is still useful for a single,
-cleanly interpretable "baseline shift by claim type" coefficient. Under Approach 3, `claim_type` is
-the literal routing key used to split the training data into the three per-claim-type subsets.
+**Corrected implementation detail — this was wrong in the first draft and needed fixing, not just
+softening.** The original text suggested keeping *both* a set of per-field-group applicability
+indicators (`applicable_REV_CNTR`, `applicable_DMERC`, etc.) *and* a separate `claim_type`
+main-effect dummy "for interpretability." That's not merely redundant — since each applicability
+indicator is a perfect 1-to-1 proxy for one specific claim type (`applicable_REV_CNTR` is 1 if and
+only if `claim_type == outpatient`), including a separate `claim_type` dummy alongside it creates
+an **exactly rank-deficient design matrix**, not just high correlation. Standard unregularized
+logistic regression (Newton-Raphson/IRLS) would hit a singular matrix and fail to converge;
+`sklearn`'s default L2-regularized version wouldn't error, but would arbitrarily split the
+coefficient between the two redundant terms in a way that's statistically meaningless.
+
+**Corrected design: use `claim_type` dummies as the ONLY encoding of "which claim type" — do not
+also create separate per-field-group applicability indicators.** Build each claim-type-specific
+field's interaction directly against the relevant `claim_type` dummy (e.g.
+`REV_CNTR_TOT_CHRG_AMT × claim_type_outpatient`, value zero-filled where not applicable) rather
+than inventing a redundant `applicable_REV_CNTR` term alongside it — the `claim_type` dummy already
+*is* the applicability indicator for that field group; no separate one is needed or valid to add.
+Under Approach 3, `claim_type` is instead the literal routing key used to split the training data
+into the three per-claim-type subsets — no collinearity risk there, since each subset only ever
+sees its own claim type and the variable never appears as a predictor inside any single subset's
+model.
 
 ---
 
@@ -207,9 +265,15 @@ from Phase 2.
 **Implication:** the remaining items below are Phase 1 completion work, not scope creep:
 
 - Derive `claim_type` from `_source_file`
-- Re-type NPI fields (drop) and `PRVDR_ZIP` (drop, use `PRVDR_STATE_CD` instead) correctly
+- Drop raw NPI values (all 6 fields) and `PRVDR_ZIP`; retain binary presence flags for the 5 NPI
+  role-fields (`has_referring_physician`, `has_operating_physician`, etc.) as their own features
+- Check `PRVDR_STATE_CD`'s actual variation before deciding whether it's a usable feature or should
+  be dropped alongside `PRVDR_ZIP` — the MAC-jurisdiction rationale for keeping it hasn't been
+  verified against this dataset yet
 - Drop the always-100%-null columns listed in Section 2
 - Confirm (or refute) the `PRVDR_SPCLTY`/`ICD_DGNS_VRSN_CD*` zero-variance suspicion
-- Decide between Approach 2 and Approach 3 for claim-type-specific field handling (can be finalized
-  either now or deferred to the start of Phase 2's baseline script, but the analysis above is
-  Phase 1's output either way)
+- Decide the claim-type-specific field handling strategy for Phase 2's baseline logistic
+  regression via the per-variable interaction-testing approach in Section 3, not a single blanket
+  strategy chosen in advance
+- If using the interaction/missing-indicator construction, use `claim_type` dummies as the sole
+  "which claim type" encoding — do not also add separate per-field-group applicability indicators
