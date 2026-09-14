@@ -90,19 +90,16 @@ duplicate codes correctly — `CA` came back at 119,970, exactly matching `78,35
 from the original raw `value_counts()`, direct confirmation the fix worked as intended, not just
 run without erroring.
 
-**Still open — the crosswalk table is incomplete.** Checking the full official SSA code range
-(00-80, not just 01-53) turned up more duplicate-coding risk: codes `55` (California again), `67`
-and `74` (Texas again), `68`/`69` (Florida again), `70` (Kansas again), `71` (Louisiana again), `72`
-(Ohio again), `73` (Pennsylvania again), and `80` (Maryland again) all exist in the official table
-— a documented artifact of CMS Certification Number exhaustion over time. `54` and `56`-`66` cover
-non-US regions (Africa, Canada, Mexico, Guam, the Philippines, etc.), not states. **Action item:
-check the full post-normalization `value_counts()` on `provider_state` for any leftover bare
-numbers** (not yet done) — if any of these secondary codes are present in this dataset, they'd
-currently pass through unmapped and silently recreate the same double-counting bug at a different
-code. `src/build_features.py`'s crosswalk needs extending to cover these if so.
+**Checked and closed, 2026-09-13.** The full official SSA code range (00-80, not just 01-53) has
+documented secondary duplicate codes for states already in the table (`55`=CA again, `67`/`74`=TX
+again, `68`/`69`=FL again, `70`=KS again, `71`=LA again, `72`=OH again, `73`=PA again, `80`=MD
+again — an artifact of CMS Certification Number exhaustion over time), plus non-US region codes
+(`54`, `56`-`66`). Checked directly against `provider_state`'s full `value_counts()` on real data:
+**51 unique values, no leftover bare numbers, no territories present in this download.** The
+crosswalk is complete for this dataset as-is — confirmed, not just assumed; no extension needed.
 
-**Status: implemented and pushed** — `SSA_STATE_CROSSWALK` + presence-flag/drop logic in
-`src/build_features.py`. Crosswalk table itself may need extending per the open item above.
+**Status: implemented, pushed, and fully verified** — `SSA_STATE_CROSSWALK` + presence-flag/drop
+logic in `src/build_features.py`. Nothing further open on this item.
 
 ---
 
@@ -421,6 +418,43 @@ feature set; deciding how to fit the baseline model on it is Phase 2's.
 **This will be decided when the Phase 2 baseline script is actually built**, with this document
 providing the reasoning trail — not decided speculatively now, ahead of writing that code.
 
+### Pre-flight checklist — read this before writing any Chow-test or baseline fitting code
+
+**Added 2026-09-13 after a handoff to a new chat missed one of these points — the fix isn't to
+retype this reasoning into every handoff message, it's to name the specific traps explicitly, once,
+here, and have handoffs point at this checklist by name.** Four distinct risks, each capable of
+silently invalidating the test or crashing the fit if skipped:
+
+1. **The `claim_type` dummies must appear identically (cell-means, all 3, no intercept) in both
+   the pooled and interacted models.** This isn't optional styling — it's what makes the two
+   models properly *nested*, which the likelihood-ratio test's validity depends on. If the pooled
+   model uses a normal intercept instead and omits the `claim_type` dummies entirely, the test
+   conflates "does claim type shift the baseline" with "do the interactions matter" into one
+   number, rather than isolating the interaction question. See the null/alternative hypotheses
+   above — both are stated assuming this shared structure.
+2. **Claim-type-*exclusive* fields (the structural-missingness columns from Section 2) are not
+   Chow-test subjects — don't let them leak into the "shared feature set."** The Chow test is
+   scoped to covariates present across all three claim types. A field like
+   `REV_CNTR_TOT_CHRG_AMT` (outpatient-only) has no coherent "shared coefficient" to test in the
+   first place — it must appear identically, zero-filled and interacted against its one applicable
+   `claim_type` dummy, in *both* models, entirely outside the hypothesis being tested. Conflating
+   this category with the shared-covariate list breaks the nesting the same way point 1 does.
+3. **`train_model.parquet` still has raw `NaN`s for claim-type-exclusive fields — the zero-fill
+   step described in point 2 has not been implemented yet.** `src/build_features.py` does not
+   perform this transformation; it's still open work, not a finished prerequisite. Fitting
+   directly against the raw parquet risks `statsmodels` erroring or silently dropping every row
+   with any `NaN` present, which — depending on which columns end up in the design matrix — could
+   catastrophically shrink the effective sample (e.g. collapsing to only the DME subset without
+   anyone noticing).
+4. **The shared-vs-claim-type-exclusive column split hasn't actually been enumerated yet — it
+   needs to be derived empirically, not assumed from field names.** Check null-rate by
+   `claim_type` per column (the same technique Phase 1's EDA already used) before writing the
+   Chow-test feature list. Separately, `HCPCS_CD`, `PRNCPAL_DGNS_CD`, and `PRVDR_NUM` all need
+   their documented cardinality treatment (top-20 + "other" bucket for the first two; frequency or
+   target encoding for `PRVDR_NUM`, per `data_dictionary.md`) before *any* logistic regression —
+   Chow test included — can be fit on them; raw high-cardinality strings will either error or
+   blow up the design matrix.
+
 ### `claim_type` feature — derive from already-computed data; corrected implementation note on
 avoiding perfect collinearity
 
@@ -544,13 +578,11 @@ after `build_target_and_split.py`, rather than reconstructing each fix by hand p
 covering the state crosswalk, NPI presence flags + drops, `claim_type` cell-means encoding, and all
 confirmed-droppable columns (always-null + zero-variance) from Sections 1-2 above. Produces
 `train_model.parquet`/`val_model.parquet`/`test_model.parquet` from `train`/`val`/`test.parquet`.
+Phase 1 is complete — the state-crosswalk verification is fully closed (Section 1), and nothing
+remains open from Phase 1 itself.
 
-**Remaining, genuinely open:**
-
-- Check the full `provider_state` `value_counts()` for leftover bare-number codes not covered by
-  the current `01`-`53` crosswalk (see Section 1 — codes `55`, `67`-`74`, `80` are documented
-  secondary codes for states already in the table, and would need to be added if present)
-- Decide the claim-type-specific field handling strategy for Phase 2's baseline logistic
-  regression via the staged omnibus-then-per-variable Chow-test procedure in Section 3 — this is
-  the first real Phase 2 step (fitting models with `statsmodels` to compare), not Phase 1's job to
-  resolve in advance
+**Remaining, genuinely open — this is Phase 2's starting point, not Phase 1's:** see the pre-flight
+checklist in Section 3 above (four numbered items — the nesting requirement, claim-type-exclusive
+field scoping, the unimplemented zero-fill step, and the unenumerated shared/exclusive column
+split + cardinality treatment). Point any new-chat handoff at that checklist by name rather than
+re-deriving it.
