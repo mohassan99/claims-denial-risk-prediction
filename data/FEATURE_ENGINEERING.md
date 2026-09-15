@@ -334,7 +334,7 @@ question — "do the coefficients differ across claim-type subgroups for *any* o
 variables at once?" — rather than testing each variable one at a time. Practically: fit the
 fully-pooled model (`claim_type` dummies + every shared covariate included once, with one shared
 coefficient each) and the fully-interacted model (`claim_type` dummies + every shared covariate
-replaced by its 3 claim-type-interaction terms), then compare their fit with a **likelihood-ratio
+replaced by its claim-type-interaction terms), then compare their fit with a **likelihood-ratio
 test** (a statistical test comparing two nested models by looking at the difference in their
 **log-likelihood** — a number measuring how well a model fits the observed data, with
 higher/less-negative values indicating better fit — where that difference follows a known
@@ -343,13 +343,72 @@ main effects (the dummies themselves) are present in **both** models regardless 
 tested is only whether those dummies *interact* with the other covariates, not whether they're
 included at all.
 
-**The precise null and alternative hypotheses, and what's actually varying between the two
-models.** `H₀`: for every shared covariate, its coefficient is equal across all three claim types
-simultaneously (`β_carrier = β_outpatient = β_dme` for each shared variable, jointly across all of
-them at once — not just one variable). `H₁`: at least one covariate's coefficient differs across
-at least one pair of claim types, somewhere in the set. For `k` shared covariates, the unrestricted
-(fully-interacted) model has `3k` covariate coefficients versus the restricted (pooled) model's
-`k`, giving the test `2k` degrees of freedom.
+**The precise null and alternative hypotheses, stated as explicit equations.** Using
+`j ∈ {carrier, outpatient, dme}` for the three claim-type cells, `D_j` for the corresponding 0/1
+claim-type dummy (all 3 present, no shared intercept — see the encoding-scheme discussion below),
+and `x_1, ..., x_k` for the shared covariates:
+
+*Restricted (pooled) model:*
+```
+logit(P(denied)) = γ_carrier·D_carrier + γ_outpatient·D_outpatient + γ_dme·D_dme
+                    + Σ_i β_i · x_i
+```
+Each shared covariate `x_i` gets exactly one coefficient `β_i`, used across all three claim types.
+
+*Unrestricted (fully-interacted) model:*
+```
+logit(P(denied)) = γ_carrier·D_carrier + γ_outpatient·D_outpatient + γ_dme·D_dme
+                    + Σ_i ( β_i,carrier · x_i·D_carrier
+                          + β_i,outpatient · x_i·D_outpatient
+                          + β_i,dme · x_i·D_dme )
+```
+Each shared covariate gets one coefficient per claim type in which it's actually populated (see
+the degrees-of-freedom correction below for covariates that aren't populated in all three).
+
+`H₀`: for every shared covariate, its claim-type-specific coefficients are all equal to each other
+(`β_i,carrier = β_i,outpatient = β_i,dme` for each `i`, jointly across all shared covariates at
+once — not just one variable). `H₁`: at least one covariate's coefficient differs across at least
+one pair of claim types, somewhere in the set. The `γ_j` terms are identical in structure in both
+models and are never restricted — only the `β` terms are being tested for homogeneity.
+
+**Correction, 2026-09-14 — the degrees-of-freedom formula below was wrong as originally stated,
+and the error is provable from logic alone, independent of any specific dataset.** The original
+version of this section assumed every shared covariate is populated across all 3 claim types
+uniformly, giving a flat `3k − k = 2k` degrees of freedom for `k` shared covariates. That
+assumption breaks the moment a covariate is populated in only 2 of the 3 claim types.
+`PRNCPAL_DGNS_CD` (populated for Carrier + DME only, structurally absent from outpatient per
+`data_dictionary.md`) is a concrete example, surfaced while scoping the shared-feature audit (see
+the pre-flight checklist's item 4, below). For such a covariate there is no `β_outpatient` term at
+all in the unrestricted model — including one would be identically zero for every row in the
+dataset, not a real, identifiable parameter — so the restricted-vs-unrestricted comparison for that
+one covariate is `1` coefficient vs. `2`, not `1` vs. `3`.
+
+**The general, correct formula.** For a covariate present in `n_i` claim types (`n_i ∈ {2, 3}` for
+any covariate actually scoped into the Chow test — a covariate present in only 1 claim type is
+claim-type-exclusive by definition and isn't a shared-covariate-test subject in the first place,
+per checklist item 2 below), the restricted model always gives it exactly 1 shared coefficient, and
+the unrestricted model gives it `n_i` coefficients — one per claim type it's actually populated in.
+That contributes `n_i − 1` degrees of freedom per covariate. Total degrees of freedom for the
+omnibus test:
+```
+df = Σ_i (n_i - 1)
+```
+This collapses to the original `2k` only in the special case where every shared covariate is a
+full 3-of-3 field. If the pending shared-feature audit (checklist item 4) turns up any 2-of-3
+covariates beyond `PRNCPAL_DGNS_CD`, the flat `2k` figure would overstate the true degrees of
+freedom, producing an incorrect chi-squared critical value and an invalid significance judgment for
+the whole omnibus test — a real error in the test itself, not a cosmetic one. The test statistic
+itself is unaffected by this correction:
+```
+LR = -2 · (ℓ_pooled - ℓ_interacted)   ~   χ²(df)      where df = Σ_i (n_i - 1)
+```
+
+**Practical implication for the design matrix, restated precisely given this correction:** for a
+covariate present in only 2 of 3 claim types, build interaction terms against only its 2 applicable
+`claim_type` dummies — omitting the third dummy's interaction term entirely, rather than
+zero-filling-and-interacting a term that would be structurally constant at zero for the whole
+dataset (which would silently inflate the apparent parameter count without adding any real,
+estimable information).
 
 **A note on the ANOVA parallel drawn earlier — corrected, since the original comparison was too
 loose.** Plain one-way ANOVA (Analysis of Variance) tests whether group *means* differ from a
@@ -392,11 +451,11 @@ question of correctness either way.
 concrete design-matrix construction, not exotic machinery.** `claim_type` dummies (3 of them, cell-
 means, no intercept) are always included, representing the baseline shift. A variable that *passes*
 its homogeneity test appears once, as a single plain column, one shared coefficient. A variable
-that *fails* is replaced by its three interaction columns instead (`variable × claim_type_carrier`,
-`× claim_type_outpatient`, `× claim_type_dme`), with its raw column dropped entirely — keeping both
-would recreate the same collinearity problem discussed under `claim_type`'s encoding scheme below.
-The final design matrix is simply a mix of plain columns and triple-interaction columns, decided
-per variable by its own test result.
+that *fails* is replaced by its interaction columns instead (one per claim type it's actually
+populated in — see the degrees-of-freedom correction above for covariates not populated in all
+three), with its raw column dropped entirely — keeping both would recreate the same collinearity
+problem discussed under `claim_type`'s encoding scheme below. The final design matrix is simply a
+mix of plain columns and interaction columns, decided per variable by its own test result.
 
 **Why staging it this way is better than testing every variable individually from the start:** if
 nothing is actually heterogeneous, the omnibus test settles that in one step instead of running a
@@ -434,7 +493,7 @@ silently invalidating the test or crashing the fit if skipped:
    above — both are stated assuming this shared structure.
 2. **Claim-type-*exclusive* fields (the structural-missingness columns from Section 2) are not
    Chow-test subjects — don't let them leak into the "shared feature set."** The Chow test is
-   scoped to covariates present across all three claim types. A field like
+   scoped to covariates present across more than one claim type. A field like
    `REV_CNTR_TOT_CHRG_AMT` (outpatient-only) has no coherent "shared coefficient" to test in the
    first place — it must appear identically, zero-filled and interacted against its one applicable
    `claim_type` dummy, in *both* models, entirely outside the hypothesis being tested. Conflating
@@ -453,7 +512,15 @@ silently invalidating the test or crashing the fit if skipped:
    their documented cardinality treatment (top-20 + "other" bucket for the first two; frequency or
    target encoding for `PRVDR_NUM`, per `data_dictionary.md`) before *any* logistic regression —
    Chow test included — can be fit on them; raw high-cardinality strings will either error or
-   blow up the design matrix.
+   blow up the design matrix. **Confirmed 2026-09-14, from documentation alone: `HCPCS_CD` and
+   `PRVDR_NUM` are populated across all 3 claim types (3-of-3, standard case). `PRNCPAL_DGNS_CD` is
+   populated for Carrier + DME only (2-of-3) — the concrete case driving the degrees-of-freedom
+   correction above. Whether `provider_state` and the 5 NPI-presence flags are genuinely 3-of-3, or
+   have their own claim-type-conditional nullness (which would additionally risk collinearity with
+   the `claim_type` dummies, the same bug already caught and fixed once for the applicability-
+   indicator case), is not yet verified — pending an empirical null-rate-by-claim_type audit
+   across every remaining column, since Section 2's "most... lines up with claim-type proportions"
+   finding explicitly allows for exceptions beyond the one already found.**
 
 ### `claim_type` feature — derive from already-computed data; corrected implementation note on
 avoiding perfect collinearity
@@ -585,4 +652,9 @@ remains open from Phase 1 itself.
 checklist in Section 3 above (four numbered items — the nesting requirement, claim-type-exclusive
 field scoping, the unimplemented zero-fill step, and the unenumerated shared/exclusive column
 split + cardinality treatment). Point any new-chat handoff at that checklist by name rather than
-re-deriving it.
+re-deriving it. **2026-09-14: item 4 is partially resolved from documentation alone (`HCPCS_CD`,
+`PRVDR_NUM` confirmed 3-of-3; `PRNCPAL_DGNS_CD` confirmed 2-of-3) — the remaining open piece is an
+empirical null-rate-by-`claim_type` audit across every column in `train_model.parquet`, to confirm
+`provider_state`/the NPI-presence flags and to catch any other 2-of-3-style exceptions beyond
+`PRNCPAL_DGNS_CD`. The degrees-of-freedom formula above (`df = Σ(n_i − 1)`) is written to be correct
+regardless of what that audit finds.**
