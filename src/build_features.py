@@ -83,6 +83,15 @@ DROP_COLUMNS = [
     # reproduce the exact rank-deficiency bug already documented for the
     # applicability-indicator case.
     "NCH_CLM_TYPE_CD", "NCH_NEAR_LINE_REC_IDENT_CD",
+    # Added 2026-09-16: LINE_CMS_TYPE_SRVC_CD. Confirmed constant ("1") on
+    # BOTH carrier LINE_NUM=1 and carrier's other lines, and confirmed as an
+    # officially-documented fixed value for Carrier (CMS User Guide, May
+    # 2023, Table 6-4: "Line HCFA Type Service Code" = 1). NOT independently
+    # verified for DME, where this field is also populated (2-of-3 pattern,
+    # per the shared-feature audit) but has no corresponding entry in the
+    # User Guide's DME table (6-6) -- if DME later shows real variance here,
+    # this drop decision needs revisiting for that claim type specifically.
+    "LINE_CMS_TYPE_SRVC_CD",
 ]
 
 # ---------------------------------------------------------------------------

@@ -111,7 +111,14 @@ REASON_CATALOG = {
         "documented policy fact. This CARC (16, 'claim/service lacks information') "
         "deliberately overlaps with provider_outlier's CARC below -- both are legitimate, "
         "independent real-world reasons a payer might cite the same generic code; real "
-        "EOBs routinely reuse CARC 16 across genuinely distinct root causes.",
+        "EOBs routinely reuse CARC 16 across genuinely distinct root causes. UPDATED "
+        "2026-09-16: carrier's LINE_NUM=1 is excluded from this rule's detection entirely "
+        "(see rule_missing_hcpcs in denial_rules.py) -- it's a confirmed, structurally "
+        "distinct pattern (100% null on HCPCS_CD, zero exceptions across 58,040 rows) that "
+        "is NOT sparse otherwise (diagnosis/payment/service-count fields are populated at "
+        "comparable or higher rates than other lines), so treating it as a real missing-code "
+        "denial trigger would have been wrong. The root cause of WHY it's isolated to line 1 "
+        "is not established -- see that docstring for exactly what is and isn't known.",
     },
     "deprecated_code": {
         "carc_code": "181",
@@ -218,6 +225,8 @@ def compute_risk_factors(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
     out["missing_hcpcs"] = RISK_FACTOR_FUNCS["missing_hcpcs"](
         df,
         kwargs.get("hcpcs_col", "HCPCS_CD"),
+        kwargs.get("source_file_col", "_source_file"),
+        kwargs.get("line_num_col", "LINE_NUM"),
     )
     out["deprecated_code"] = RISK_FACTOR_FUNCS["deprecated_code"](
         df,
@@ -279,15 +288,13 @@ def sample_denials(
     that's not the same thing and why there's no closed-form guarantee this
     lands the population rate exactly in 10-15%; check calibration_report().
 
-    IMPORTANT, added 2026-09-16: missing_hcpcs fires on 62.5% of carrier
-    claims alone in this project's real data -- a much larger-volume trigger
-    than any prior rule. The CALIBRATION_SCALE value tuned before this rule
-    existed (1.4, in build_target_and_split.py) almost certainly needs to
-    come DOWN, not stay the same. Run calibration_report() immediately after
-    regenerating the target and expect to iterate on CALIBRATION_SCALE (or,
-    if that alone overcorrects other factors, on missing_hcpcs's own
-    base_prob specifically) before the population rate lands back in the
-    documented 10-15% range.
+    IMPORTANT, updated 2026-09-16: the first real-data run WITHOUT the
+    carrier-LINE_NUM=1 exclusion showed missing_hcpcs firing on 38.9% of ALL
+    claims, driving overall is_denied to 46.4% -- far outside range. The
+    exclusion (denial_rules.py rule_missing_hcpcs) should shrink this
+    materially, but CALIBRATION_SCALE (1.4, in build_target_and_split.py)
+    will still very likely need to come down. Run calibration_report() after
+    this fix and expect to iterate.
     """
     rng = np.random.default_rng(seed)
 

@@ -431,11 +431,42 @@ def rule_deprecated_code(
 # check -- which is also why it's placed FIRST in REASON_PRIORITY below: a
 # real adjudication system verifies a procedure code is present before it
 # can meaningfully ask anything else about it.
+#
+# CORRECTION 2026-09-16 -- carrier's LINE_NUM=1 excluded, and the reason is
+# stated carefully, not overclaimed. Carrier's LINE_NUM="1" rows are 100%
+# null on HCPCS_CD across all 58,040 rows checked, zero exceptions -- but
+# they are NOT sparse/placeholder rows: diagnosis fields (ICD_DGNS_CD1-12,
+# their version-code companions) are populated on line 1 at rates comparable
+# to (sometimes higher than) other lines, and LINE_SRVC_CNT/LINE_NCH_PMT_AMT
+# both have real, non-null values there too -- just with somewhat different
+# distributions (LINE_SRVC_CNT can be 0 on line 1, unlike every other line's
+# minimum of 1; LINE_NCH_PMT_AMT has no mass at $0 and a narrower range than
+# other lines' heavy-tailed pattern). WHAT WE ACTUALLY KNOW: this is a real,
+# populated line that structurally, deterministically lacks a procedure
+# code. WHAT WE DON'T KNOW: why it's isolated to line 1 specifically, or why
+# those two distributions differ -- no claim is made here about WHAT kind of
+# record line 1 "really is." One genuine, cited structural explanation for
+# the general phenomenon (a carrier record existing with a diagnosis but no
+# procedure code): the CMS User Guide for this dataset (May 2023, Table 3-2,
+# "Filter for Non-Exportable Events") documents that Synthea's RIF exporter
+# only requires a mappable DIAGNOSIS for Carrier records to be exportable --
+# unlike Outpatient/Inpatient, procedure presence is never a Carrier export
+# condition. Real Medicare billing rules require every carrier line to carry
+# a procedure code (CMS BSA Carrier Line Items PUF documentation), but
+# Synthea's own exporter logic doesn't enforce that -- a documented gap
+# between the synthetic generator and the real-world rule it approximates.
+# DME was checked directly and shows the ordinary ~0% missing rate on both
+# line 1 and other lines -- this exclusion is carrier-specific, not a
+# general LINE_NUM=1 rule across claim types.
 def rule_missing_hcpcs(
     df: pd.DataFrame,
     hcpcs_col: str = "HCPCS_CD",
+    source_file_col: str = "_source_file",
+    line_num_col: str = "LINE_NUM",
 ) -> pd.Series:
-    """Flag claims with no procedure code at all.
+    """Flag lines with no procedure code at all, EXCLUDING carrier's
+    LINE_NUM=1 -- a confirmed, structurally distinct pattern (see the module
+    comment above this function for exactly what's confirmed and what isn't).
 
     base_prob for this rule (see REASON_CATALOG in denial_reasons.py) is a
     REASONED JUDGMENT, not sourced to a specific published benchmark the way
@@ -445,7 +476,9 @@ def rule_missing_hcpcs(
     one), so it's set high, but disclosed as design reasoning, not measured
     fact.
     """
-    return df[hcpcs_col].isna()
+    is_missing = df[hcpcs_col].isna()
+    is_carrier_line_1 = (df[source_file_col] == "carrier.csv") & (df[line_num_col] == "1")
+    return is_missing & ~is_carrier_line_1
 
 
 # ---------------------------------------------------------------------------
@@ -524,10 +557,11 @@ def report_rule_hit_rates(flags: pd.DataFrame) -> pd.Series:
 # wrangling, before moving on to Phase 2 -- don't discover an off-spec class
 # balance after you've already built the train/val/test split.
 #
-# UPDATED 2026-09-16: rule_missing_hcpcs (Rule 8) fires on 62.5% of carrier
-# claims alone -- this is a MUCH larger-volume trigger than any prior rule.
-# CALIBRATION_SCALE (in build_target_and_split.py) was tuned before this rule
-# existed and almost certainly needs to come DOWN after adding it, not stay
-# at 1.4 -- rerun calibration_report() immediately after regenerating the
-# target and expect to iterate, not to land in the 10-15% range on the first
-# try.
+# UPDATED 2026-09-16: rule_missing_hcpcs (Rule 8) fired on 38.9% of ALL
+# claims at first real-data run (before the carrier-LINE_NUM=1 exclusion
+# above), driving is_denied to 46.4% overall -- far outside the 5-20% hard
+# bound. The exclusion should shrink this materially (carrier's LINE_NUM=1
+# rows are roughly an eighth of the previously-counted missing-HCPCS carrier
+# rows), but CALIBRATION_SCALE (in build_target_and_split.py, currently 1.4)
+# will still likely need to come DOWN -- rerun calibration_report() after
+# this fix and expect to iterate, not to land in range on the first try.
