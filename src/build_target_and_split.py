@@ -1,5 +1,5 @@
 """
-Phase 1 Step 2/3 — build is_denied, split before any target-leaking transform.
+Phase 1 Step 2/3 -- build is_denied, split before any target-leaking transform.
 
 Run after load_data.py has produced data/processed/combined_claims_raw.parquet.
 """
@@ -43,16 +43,23 @@ def main() -> None:
         )
 
     # Persist a slim side-file with the label-construction columns before
-    # they're dropped below. Two consumers need this, and a single saved file
-    # beats each one recomputing sample_denials() separately (which risks
-    # drift from a different CALIBRATION_SCALE, a different seed, or a stale
-    # pull -- see the pull-lag incident logged in TARGET_DEFINITION.md):
+    # they're dropped below. Three consumers need this, and a single saved
+    # file beats each one recomputing sample_denials() separately (which
+    # risks drift from a different CALIBRATION_SCALE, a different seed, or a
+    # stale pull -- see the pull-lag incident logged in TARGET_DEFINITION.md):
     #   1. Phase 4/5: denial_reason_carc_1/2 for the SHAP-narrative demo and
     #      the report's "top denial reasons" chart.
     #   2. Phase 1 EDA (run_eda.py): risk-factor co-occurrence and per-factor
     #      lift charts, which need risk_*/is_denied together -- unavailable
     #      once leakage_cols are dropped from train/val/test below.
-    eda_cols = ["BENE_ID", "CLM_ID"] + [c for c in df.columns if c.startswith("risk_")] + [
+    #   3. Any future cross-file check needing risk_*/p_denied_model/is_denied
+    #      joined back against train/val/test.parquet -- _row_id (added
+    #      2026-09-16 in load_data.py) is the safe join key for this, not
+    #      CLM_ID (which repeats across claim lines) or a reconstructed
+    #      composite key.
+    eda_cols = ["_row_id", "BENE_ID", "CLM_ID"] + [
+        c for c in df.columns if c.startswith("risk_")
+    ] + [
         "p_denied_model",
         "is_denied",
         "denial_reason_carc_1",

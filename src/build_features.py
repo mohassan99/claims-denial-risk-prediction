@@ -1,5 +1,5 @@
 """
-Phase 1 completion — apply the feature-engineering decisions documented in
+Phase 1 completion -- apply the feature-engineering decisions documented in
 data/FEATURE_ENGINEERING.md to train/val/test.parquet, consistently, in one
 place, rather than reconstructing each fix by hand per session.
 
@@ -52,8 +52,8 @@ NPI_ROLE_FIELDS = {
 
 # ---------------------------------------------------------------------------
 # Decision: columns dropped outright -- raw NPI values, PRVDR_ZIP, always-
-# 100%-null columns, and zero-variance columns confirmed 2026-09-13 via
-# .value_counts() (FEATURE_ENGINEERING.md Sections 1-2).
+# 100%-null columns, and zero-variance/collinear-with-claim_type columns
+# (FEATURE_ENGINEERING.md Sections 1-3).
 # ---------------------------------------------------------------------------
 DROP_COLUMNS = [
     # Raw NPI values -- presence already captured above.
@@ -70,6 +70,19 @@ DROP_COLUMNS = [
     "ICD_DGNS_VRSN_CD1", "ICD_DGNS_VRSN_CD2", "ICD_DGNS_VRSN_CD3", "ICD_DGNS_VRSN_CD4",
     "ICD_DGNS_VRSN_CD5", "ICD_DGNS_VRSN_CD6", "ICD_DGNS_VRSN_CD7", "ICD_DGNS_VRSN_CD8",
     "ICD_DGNS_VRSN_CD9", "ICD_DGNS_VRSN_CD10", "ICD_DGNS_VRSN_CD11", "ICD_DGNS_VRSN_CD12",
+    # Added 2026-09-16: PRNCPAL_DGNS_VRSN_CD is a 13th zero-variance field in
+    # the same family as the ICD_DGNS_VRSN_CD group above -- populated (2 of
+    # 3 claim types: carrier + DME) with a constant ICD-10 flag value, no
+    # variance to model. See FEATURE_ENGINEERING.md Section 2.
+    "PRNCPAL_DGNS_VRSN_CD",
+    # Added 2026-09-16: confirmed via crosstab (FEATURE_ENGINEERING.md
+    # Section 3, pre-flight checklist item 4) to be a perfect 1-to-1
+    # re-encoding of claim_type under CMS's own coding scheme
+    # (carrier->71/O, outpatient->40/W, dme->82/M). Including either would
+    # recreate the claim_type dummy set under a different label and
+    # reproduce the exact rank-deficiency bug already documented for the
+    # applicability-indicator case.
+    "NCH_CLM_TYPE_CD", "NCH_NEAR_LINE_REC_IDENT_CD",
 ]
 
 # ---------------------------------------------------------------------------
@@ -84,6 +97,98 @@ SOURCE_FILE_TO_CLAIM_TYPE = {
     "outpatient.csv": "outpatient",
     "dme.csv": "dme",
 }
+
+_CLAIM_TYPE_COLS = ["claim_type_carrier", "claim_type_outpatient", "claim_type_dme"]
+
+# ---------------------------------------------------------------------------
+# Fields explicitly EXCLUDED from the generic claim-type-exclusive fill below
+# -- these are either genuinely shared/multi-claim-type fields already given
+# their own dedicated encoding (see FEATURE_ENGINEERING.md Section 3's
+# finalized shared-feature audit), or non-feature/date columns that need
+# their own transformation, not a fill.
+#
+# CARR_NUM and PRVDR_NUM specifically: confirmed 2-of-3 shared covariates.
+# Per FEATURE_ENGINEERING.md's degrees-of-freedom correction, these should be
+# LEFT with their real NaN for the one claim type where they're structurally
+# absent -- the Chow-test design omits that claim type's interaction term
+# entirely rather than zero-filling a column that would be constant at zero
+# for the whole dataset. Zero-filling them here would be the exact mistake
+# that correction was written to prevent.
+#
+# HCPCS_CD specifically: has its own, still-undecided within-carrier
+# missingness question (62.5% null WITHIN carrier, not structural by claim
+# type -- FEATURE_ENGINEERING.md Section 3 checklist item 4). Excluded here
+# so that decision stays its own explicit commit once made, rather than
+# silently absorbed into this generic pass.
+# ---------------------------------------------------------------------------
+_ALREADY_HANDLED = {
+    "BENE_ID", "CLM_ID", "_row_id", "is_denied",
+    "HCPCS_CD", "PRNCPAL_DGNS_CD", "PRVDR_NUM", "CARR_NUM",
+    "provider_state",
+    "has_referring_physician", "has_performing_physician", "has_attending_physician",
+    "has_operating_physician", "has_rendering_physician",
+}
+_DATE_LIKE_COLS = {"CLM_FROM_DT", "CLM_THRU_DT", "NCH_WKLY_PROC_DT"}
+
+
+def fill_claim_type_exclusive_fields(df: pd.DataFrame) -> pd.DataFrame:
+    """Fill every column whose nullness is structurally determined by
+    claim_type, so no raw NaN reaches the Phase 2 design matrix.
+    (FEATURE_ENGINEERING.md Section 3, pre-flight checklist item 3.)
+
+    Applicability is derived EMPIRICALLY at runtime -- the same
+    null-rate-by-claim_type technique used for the shared-feature audit --
+    rather than hardcoded against a fixed list of ~166 column names. This
+    project has already found the source data dictionary wrong about which
+    claim types a field applies to twice (PRNCPAL_DGNS_CD, PRVDR_NUM -- see
+    FEATURE_ENGINEERING.md Section 3), so deriving this from the data itself
+    is more reliable than trusting documentation or a hardcoded list.
+
+    Numeric columns get zero-filled for the claim type(s) where they're
+    structurally 100% null. String/object columns get an explicit
+    "NOT_APPLICABLE" sentinel instead of 0 -- a blanket zero-as-missing rule
+    already produced real false positives this session (the NPI presence
+    flags and PRNCPAL_DGNS_VRSN_CD, where 0/0.0 is a legitimate value, not a
+    missingness marker), so this function never reuses that pattern for
+    anything but genuinely numeric columns.
+
+    Only fills a column for the claim type(s) where it's structurally 100%
+    null. Genuine WITHIN-claim-type missingness (e.g. HCPCS_CD's ~62.5% null
+    rate within carrier specifically) is a different problem this function
+    does not address -- such columns belong in _ALREADY_HANDLED so this
+    function never touches them until that separate decision is made.
+    """
+    df = df.copy()
+    if not all(c in df.columns for c in _CLAIM_TYPE_COLS):
+        raise ValueError("claim_type_* dummies must exist before calling this function")
+
+    skip = _ALREADY_HANDLED | _DATE_LIKE_COLS | set(_CLAIM_TYPE_COLS)
+
+    for col in df.columns:
+        if col in skip or col.startswith("claim_type_") or col.startswith("risk_"):
+            continue
+
+        null_by_type = {}
+        for ct_col in _CLAIM_TYPE_COLS:
+            mask = df[ct_col] == 1
+            null_by_type[ct_col] = df.loc[mask, col].isna().mean() if mask.any() else 0.0
+
+        # Structurally absent for a claim type = 100% null for that type.
+        absent_types = [ct for ct, rate in null_by_type.items() if rate == 1.0]
+
+        # Nothing structurally missing (genuinely shared 3-of-3, or the
+        # column has no missingness at all) -- leave untouched.
+        if not absent_types:
+            continue
+
+        absent_mask = df[absent_types].eq(1).any(axis=1)
+
+        if pd.api.types.is_numeric_dtype(df[col]):
+            df.loc[absent_mask, col] = 0
+        else:
+            df.loc[absent_mask, col] = "NOT_APPLICABLE"
+
+    return df
 
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -113,6 +218,12 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     existing_drops = [c for c in DROP_COLUMNS if c in df.columns]
     df = df.drop(columns=existing_drops)
 
+    # Zero-fill (numeric) / sentinel-fill (categorical) every remaining
+    # claim-type-exclusive field -- see fill_claim_type_exclusive_fields()
+    # docstring above. Must run AFTER claim_type_* dummies exist and AFTER
+    # DROP_COLUMNS has removed anything that shouldn't reach this pass.
+    df = fill_claim_type_exclusive_fields(df)
+
     return df
 
 
@@ -141,6 +252,21 @@ def main() -> None:
     if ct_cols:
         print("\nclaim_type distribution (should sum to len(train) across the 3 columns):")
         print(train[ct_cols].sum())
+
+    # Sanity check on the new zero-fill/sentinel-fill step: confirm no raw
+    # NaN survives in any column outside the still-open exclusions
+    # (HCPCS_CD's within-carrier gap, CARR_NUM/PRVDR_NUM's deliberate
+    # 2-of-3 NaN, and date columns).
+    still_open = {"HCPCS_CD", "CARR_NUM", "PRVDR_NUM"} | {
+        "CLM_FROM_DT", "CLM_THRU_DT", "NCH_WKLY_PROC_DT"
+    }
+    remaining_nulls = train.drop(columns=[c for c in still_open if c in train.columns]).isna().sum()
+    remaining_nulls = remaining_nulls[remaining_nulls > 0]
+    if len(remaining_nulls):
+        print("\nWARNING: unexpected remaining NaNs outside the known-open exclusions:")
+        print(remaining_nulls)
+    else:
+        print("\nZero-fill/sentinel-fill check: no unexpected NaNs remain.")
 
 
 if __name__ == "__main__":

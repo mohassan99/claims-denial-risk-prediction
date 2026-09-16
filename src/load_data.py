@@ -1,5 +1,5 @@
 """
-Phase 1 Step 1/3 — load and wrangle the CMS Synthetic Claims PUF.
+Phase 1 Step 1/3 -- load and wrangle the CMS Synthetic Claims PUF.
 
 Download first (manual, one-time): the collection page is a JS app, so grab it
 by hand rather than scripting the fetch --
@@ -90,6 +90,22 @@ def load_and_concat(
         frames.append(df)
 
     combined = pd.concat(frames, ignore_index=True, sort=False)
+
+    # Global, synthetic row identifier -- added 2026-09-16. Neither CLM_ID
+    # nor any single native field is a safe universal join/row-identity key
+    # across claim types: CLM_ID repeats across claim lines, and the
+    # line-level identifier is split across two differently-named fields
+    # depending on RIF family (LINE_NUM for carrier/DME, CLM_LINE_NUM for
+    # outpatient -- confirmed against CMS/ResDAC documentation). This bit
+    # several downstream checks this session (a many-to-many merge blowup on
+    # CLM_ID alone, then a partial (CLM_ID, LINE_NUM) key that silently
+    # collapsed outpatient's multi-line claims via NaN-equals-NaN grouping).
+    # _row_id is assigned once, here, before any split/sort/drop, and
+    # survives every downstream transformation untouched -- any future
+    # cross-file join (e.g. back to labeled_claims_for_eda.parquet) should
+    # use this instead of reconstructing a composite key each time.
+    combined["_row_id"] = range(len(combined))
+
     print(f"\nCombined: {len(combined):,} rows across {len(claim_files)} claim types")
     return combined
 
