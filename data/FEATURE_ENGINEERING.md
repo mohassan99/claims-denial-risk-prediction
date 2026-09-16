@@ -194,6 +194,20 @@ this timeframe."
 **Status: implemented and pushed** — all 13 columns added to `DROP_COLUMNS` in
 `src/build_features.py`.
 
+**A 14th zero-variance field, found later (2026-09-15) while scoping the Chow-test shared-covariate
+list — `PRNCPAL_DGNS_VRSN_CD`.** Same category as `ICD_DGNS_VRSN_CD1`-`CD12` above: it's the
+ICD-version companion flag specifically for `PRNCPAL_DGNS_CD` (the principal diagnosis), and its
+populated values are a constant `0` (ICD-10), for the same real-world reason — this dataset's
+beneficiary data is almost entirely post-October-2015. Unlike the other version-code fields,
+though, this one is **not** populated across all claim types: it's populated for carrier + DME
+only (100% null for outpatient), the same 2-of-3 applicability pattern several other
+carrier/DME-only fields show (see Section 3's shared-feature audit). Zero variance means zero
+predictive signal regardless of which claim types it's populated in, so the applicability pattern
+doesn't change the drop decision — it just means this field cannot double as the Chow-test's
+illustrative "populated in only 2 of 3 claim types" example the way it was briefly assumed to be;
+see the correction under Section 3's degrees-of-freedom discussion. **Status: identified, not yet
+added to `DROP_COLUMNS` in `src/build_features.py` — open, small implementation item.**
+
 ---
 
 ## 3. Handling claim-type-specific features in the Phase 2 baseline logistic regression
@@ -383,6 +397,22 @@ all in the unrestricted model — including one would be identically zero for ev
 dataset, not a real, identifiable parameter — so the restricted-vs-unrestricted comparison for that
 one covariate is `1` coefficient vs. `2`, not `1` vs. `3`.
 
+**Correction to the correction, 2026-09-15 — the specific example above was itself wrong, though
+the math it illustrates is not.** An empirical null-rate-by-`claim_type` audit against
+`train_model.parquet` (see checklist item 4 below) shows `PRNCPAL_DGNS_CD` is **0% null in all
+three claim types** — genuinely 3-of-3, not 2-of-3. `data_dictionary.md`'s "Carrier, DME" claim for
+this field was wrong; it was written from general CMS/RIF schema expectations, never checked
+against this dataset's actual per-column null rates. (A follow-up value-level check confirmed this
+further: real ICD-10 codes like `Z733`, `N184`, `T7432X` appear across all three claim types with
+`dtype=str` and no `0`/`0.0`/empty-string sentinel values anywhere — this is genuinely populated
+data, not disguised missingness.) The general formula below is unaffected — it was derived from
+algebra, not from this one dataset — but the illustrative example needs to change. **`CARR_NUM`**
+is the corrected, verified 2-of-3 example: populated for carrier + DME, 100% null for outpatient,
+confirmed via the same audit, and not zero-variance (it's a real, high-cardinality provider-number
+field, unlike `PRNCPAL_DGNS_VRSN_CD`, which shows the same 2-of-3 pattern but turned out to be
+constant — see Section 2). Everywhere below that referenced `PRNCPAL_DGNS_CD` as the motivating
+2-of-3 case, read `CARR_NUM` instead.
+
 **The general, correct formula.** For a covariate present in `n_i` claim types (`n_i ∈ {2, 3}` for
 any covariate actually scoped into the Chow test — a covariate present in only 1 claim type is
 claim-type-exclusive by definition and isn't a shared-covariate-test subject in the first place,
@@ -394,11 +424,10 @@ omnibus test:
 df = Σ_i (n_i - 1)
 ```
 This collapses to the original `2k` only in the special case where every shared covariate is a
-full 3-of-3 field. If the pending shared-feature audit (checklist item 4) turns up any 2-of-3
-covariates beyond `PRNCPAL_DGNS_CD`, the flat `2k` figure would overstate the true degrees of
-freedom, producing an incorrect chi-squared critical value and an invalid significance judgment for
-the whole omnibus test — a real error in the test itself, not a cosmetic one. The test statistic
-itself is unaffected by this correction:
+full 3-of-3 field. The completed shared-feature audit (checklist item 4 below) confirms real 2-of-3
+covariates exist (`CARR_NUM`, `PRVDR_NUM`), so the flat `2k` figure would in fact overstate the true
+degrees of freedom for this project's actual design matrix — not just a hypothetical concern. The
+test statistic itself is unaffected by this correction:
 ```
 LR = -2 · (ℓ_pooled - ℓ_interacted)   ~   χ²(df)      where df = Σ_i (n_i - 1)
 ```
@@ -505,22 +534,46 @@ silently invalidating the test or crashing the fit if skipped:
    with any `NaN` present, which — depending on which columns end up in the design matrix — could
    catastrophically shrink the effective sample (e.g. collapsing to only the DME subset without
    anyone noticing).
-4. **The shared-vs-claim-type-exclusive column split hasn't actually been enumerated yet — it
-   needs to be derived empirically, not assumed from field names.** Check null-rate by
-   `claim_type` per column (the same technique Phase 1's EDA already used) before writing the
-   Chow-test feature list. Separately, `HCPCS_CD`, `PRNCPAL_DGNS_CD`, and `PRVDR_NUM` all need
-   their documented cardinality treatment (top-20 + "other" bucket for the first two; frequency or
-   target encoding for `PRVDR_NUM`, per `data_dictionary.md`) before *any* logistic regression —
-   Chow test included — can be fit on them; raw high-cardinality strings will either error or
-   blow up the design matrix. **Confirmed 2026-09-14, from documentation alone: `HCPCS_CD` and
-   `PRVDR_NUM` are populated across all 3 claim types (3-of-3, standard case). `PRNCPAL_DGNS_CD` is
-   populated for Carrier + DME only (2-of-3) — the concrete case driving the degrees-of-freedom
-   correction above. Whether `provider_state` and the 5 NPI-presence flags are genuinely 3-of-3, or
-   have their own claim-type-conditional nullness (which would additionally risk collinearity with
-   the `claim_type` dummies, the same bug already caught and fixed once for the applicability-
-   indicator case), is not yet verified — pending an empirical null-rate-by-claim_type audit
-   across every remaining column, since Section 2's "most... lines up with claim-type proportions"
-   finding explicitly allows for exceptions beyond the one already found.**
+4. **The shared-vs-claim-type-exclusive column split — now fully enumerated via an empirical
+   audit, 2026-09-15, superseding the 2026-09-14 documentation-only pass.** Two rounds of checks
+   against `train_model.parquet` (a null-rate-by-`claim_type` sweep, then a sentinel-aware
+   follow-up, then two targeted value-level/crosstab checks) settled every open item:
+
+   - **Confirmed genuinely shared (3-of-3, 0% null in all three claim types):** `PRNCPAL_DGNS_CD`
+     (data dictionary's "Carrier, DME" claim was wrong — see the correction above), `provider_state`,
+     and all 5 NPI-presence flags (`has_referring_physician`, `has_performing_physician`,
+     `has_attending_physician`, `has_operating_physician`, `has_rendering_physician`) — resolving
+     the item left open on 2026-09-14. **`HCPCS_CD`** is also 3-of-3 by presence, but with a real
+     caveat: 62.5% *within-carrier* missingness (genuine `NaN`, confirmed not a sentinel artifact)
+     that's a different kind of gap than the cross-claim-type structural pattern this whole
+     framework targets — it needs its own decision (most likely a genuine missing-indicator,
+     since this looks like ordinary rather than structural missingness) before it enters the
+     design matrix; not yet decided.
+   - **Confirmed 2-of-3, needing the omit-third-interaction treatment above:** `CARR_NUM`
+     (carrier + DME, absent outpatient — the corrected illustrative example) and `PRVDR_NUM`
+     (outpatient + DME, absent **carrier** — `data_dictionary.md`'s "All claim files" claim was
+     also wrong, in the opposite direction from its `PRNCPAL_DGNS_CD` error). Both still need
+     their documented cardinality treatment (frequency or target encoding for `PRVDR_NUM`'s 8,460
+     unique values) before entering the design matrix as a numeric covariate.
+   - **Excluded — perfectly collinear with `claim_type`, a new finding, not previously
+     considered.** `NCH_CLM_TYPE_CD` and `NCH_NEAR_LINE_REC_IDENT_CD` are native CMS fields, not
+     ones this project engineered, that happen to be CMS's own claim-classification codes. A
+     crosstab confirmed each claim type maps to exactly one distinct value with zero overlap
+     (carrier→`71`/`O`, outpatient→`40`/`W`, DME→`82`/`M`) — including either would recreate the
+     `claim_type` dummy set under a different label and reproduce the exact rank-deficiency bug
+     already documented once for the applicability-indicator case. Excluded from the shared list
+     entirely.
+   - **A methodological note on how these were verified, worth keeping for the same reason as the
+     rest of this document's error trail.** An initial sentinel-detection pass (treating `0`,
+     `0.0`, `"0"`, and empty string as possible disguised-missingness placeholders, prompted by
+     the question "is `0.0` a valid diagnosis code?") produced a batch of false positives on the
+     5 NPI-presence flags and on `PRNCPAL_DGNS_VRSN_CD` — because `0` is a legitimate, meaningful
+     value for a binary indicator (role not populated) and for `PRNCPAL_DGNS_VRSN_CD`'s own
+     constant ICD-10 flag, not a placeholder for missing data in either case. The lesson: a
+     blanket zero-as-sentinel rule is only valid for genuine code/ID-type columns where `0` isn't
+     a valid domain value (which is exactly why it correctly resolved the `PRNCPAL_DGNS_CD`
+     question) — it must not be applied to engineered binary flags or, by the same logic, to
+     dollar-amount/count fields where `$0` or a `0` count is a real, common outcome.
 
 ### `claim_type` feature — derive from already-computed data; corrected implementation note on
 avoiding perfect collinearity
@@ -649,12 +702,11 @@ Phase 1 is complete — the state-crosswalk verification is fully closed (Sectio
 remains open from Phase 1 itself.
 
 **Remaining, genuinely open — this is Phase 2's starting point, not Phase 1's:** see the pre-flight
-checklist in Section 3 above (four numbered items — the nesting requirement, claim-type-exclusive
-field scoping, the unimplemented zero-fill step, and the unenumerated shared/exclusive column
-split + cardinality treatment). Point any new-chat handoff at that checklist by name rather than
-re-deriving it. **2026-09-14: item 4 is partially resolved from documentation alone (`HCPCS_CD`,
-`PRVDR_NUM` confirmed 3-of-3; `PRNCPAL_DGNS_CD` confirmed 2-of-3) — the remaining open piece is an
-empirical null-rate-by-`claim_type` audit across every column in `train_model.parquet`, to confirm
-`provider_state`/the NPI-presence flags and to catch any other 2-of-3-style exceptions beyond
-`PRNCPAL_DGNS_CD`. The degrees-of-freedom formula above (`df = Σ(n_i − 1)`) is written to be correct
-regardless of what that audit finds.**
+checklist in Section 3 above. **2026-09-15: item 4 (the shared/exclusive column split) is now fully
+resolved** — see the checklist's updated item 4 for the final shared (3-of-3), 2-of-3, and
+excluded-as-collinear lists. What's left before Chow-test fitting code can be written: (a) add
+`PRNCPAL_DGNS_VRSN_CD` to `DROP_COLUMNS` (Section 2, newly identified zero-variance field), (b)
+decide `HCPCS_CD`'s within-carrier-missingness treatment, and (c) implement the zero-fill
+transformation for claim-type-exclusive fields (checklist item 3, still not done in
+`src/build_features.py`). The degrees-of-freedom formula (`df = Σ(n_i − 1)`) remains correct
+regardless of these remaining items — it was derived from algebra, not from any specific column.
