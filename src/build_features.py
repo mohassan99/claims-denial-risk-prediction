@@ -132,25 +132,38 @@ _DATE_LIKE_COLS = {"CLM_FROM_DT", "CLM_THRU_DT", "NCH_WKLY_PROC_DT"}
 
 
 def fill_claim_type_exclusive_fields(df: pd.DataFrame) -> pd.DataFrame:
-    """Fill every column whose nullness is structurally determined by
-    claim_type, so no raw NaN reaches the Phase 2 design matrix.
-    (FEATURE_ENGINEERING.md Section 3, pre-flight checklist item 3.)
+    """Sentinel-fill CATEGORICAL (string/object) columns whose nullness is
+    structurally determined by claim_type. Does NOT touch numeric columns --
+    see the correction below.
 
-    Applicability is derived EMPIRICALLY at runtime -- the same
-    null-rate-by-claim_type technique used for the shared-feature audit --
-    rather than hardcoded against a fixed list of ~166 column names. This
-    project has already found the source data dictionary wrong about which
-    claim types a field applies to twice (PRNCPAL_DGNS_CD, PRVDR_NUM -- see
-    FEATURE_ENGINEERING.md Section 3), so deriving this from the data itself
-    is more reliable than trusting documentation or a hardcoded list.
+    CORRECTED 2026-09-16 (originally also zero-filled numeric columns; that
+    was wrong and has been removed). 0 is a legitimate real value for
+    numeric CMS dollar/count fields (a genuine $0 charge, a genuine 0
+    count) -- zero-filling the raw column conflates "genuinely $0" with
+    "field doesn't apply to this claim type," the same distinct-value-vs-
+    missingness conflation already caught for the NPI presence flags and
+    PRNCPAL_DGNS_VRSN_CD (Section 2). It also actively discards information:
+    XGBoost handles real NaN natively and can treat "this field is absent"
+    as its own signal, which a zero-fill silently removes. General
+    principle: 0 is a value, NaN is the absence of one -- never use the
+    former to represent the latter, for any field type.
 
-    Numeric columns get zero-filled for the claim type(s) where they're
-    structurally 100% null. String/object columns get an explicit
-    "NOT_APPLICABLE" sentinel instead of 0 -- a blanket zero-as-missing rule
-    already produced real false positives this session (the NPI presence
-    flags and PRNCPAL_DGNS_VRSN_CD, where 0/0.0 is a legitimate value, not a
-    missingness marker), so this function never reuses that pattern for
-    anything but genuinely numeric columns.
+    Numeric claim-type-exclusive columns are therefore left with their real
+    NaN in train_model.parquet. The zero-fill-for-interaction trick this was
+    originally trying to implement (value * claim_type_dummy, so the
+    interaction term cleanly zeroes out where a field doesn't apply) is
+    still correct -- but it belongs ONLY inside the script that actually
+    builds the Chow-test/logistic-regression design matrix (Phase 2, not yet
+    written), applied there on a COPY, scoped to that one multiplication --
+    never baked upstream into this shared file, which XGBoost also reads
+    from natively. See FEATURE_ENGINEERING.md's "Remaining, genuinely open"
+    note in Section 4.
+
+    String/object columns don't have this problem -- "NOT_APPLICABLE" is an
+    explicit new category, not an overloaded existing value -- so those are
+    still sentinel-filled here, derived empirically at runtime (same
+    null-rate-by-claim_type technique as the shared-feature audit) rather
+    than a hardcoded column list.
 
     Only fills a column for the claim type(s) where it's structurally 100%
     null. Genuine WITHIN-claim-type missingness (e.g. HCPCS_CD's ~62.5% null
@@ -168,6 +181,12 @@ def fill_claim_type_exclusive_fields(df: pd.DataFrame) -> pd.DataFrame:
         if col in skip or col.startswith("claim_type_") or col.startswith("risk_"):
             continue
 
+        # Numeric columns: leave real NaN in place -- see docstring
+        # correction above. The zero-fill trick belongs in Phase 2's
+        # design-matrix code, not here.
+        if pd.api.types.is_numeric_dtype(df[col]):
+            continue
+
         null_by_type = {}
         for ct_col in _CLAIM_TYPE_COLS:
             mask = df[ct_col] == 1
@@ -182,11 +201,7 @@ def fill_claim_type_exclusive_fields(df: pd.DataFrame) -> pd.DataFrame:
             continue
 
         absent_mask = df[absent_types].eq(1).any(axis=1)
-
-        if pd.api.types.is_numeric_dtype(df[col]):
-            df.loc[absent_mask, col] = 0
-        else:
-            df.loc[absent_mask, col] = "NOT_APPLICABLE"
+        df.loc[absent_mask, col] = "NOT_APPLICABLE"
 
     return df
 
@@ -218,10 +233,11 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     existing_drops = [c for c in DROP_COLUMNS if c in df.columns]
     df = df.drop(columns=existing_drops)
 
-    # Zero-fill (numeric) / sentinel-fill (categorical) every remaining
-    # claim-type-exclusive field -- see fill_claim_type_exclusive_fields()
-    # docstring above. Must run AFTER claim_type_* dummies exist and AFTER
-    # DROP_COLUMNS has removed anything that shouldn't reach this pass.
+    # Sentinel-fill (categorical only, see docstring) every remaining
+    # claim-type-exclusive field. Must run AFTER claim_type_* dummies exist
+    # and AFTER DROP_COLUMNS has removed anything that shouldn't reach this
+    # pass. Numeric claim-type-exclusive columns intentionally keep real NaN
+    # -- see fill_claim_type_exclusive_fields()'s docstring.
     df = fill_claim_type_exclusive_fields(df)
 
     return df
@@ -253,20 +269,31 @@ def main() -> None:
         print("\nclaim_type distribution (should sum to len(train) across the 3 columns):")
         print(train[ct_cols].sum())
 
-    # Sanity check on the new zero-fill/sentinel-fill step: confirm no raw
-    # NaN survives in any column outside the still-open exclusions
-    # (HCPCS_CD's within-carrier gap, CARR_NUM/PRVDR_NUM's deliberate
-    # 2-of-3 NaN, and date columns).
-    still_open = {"HCPCS_CD", "CARR_NUM", "PRVDR_NUM"} | {
-        "CLM_FROM_DT", "CLM_THRU_DT", "NCH_WKLY_PROC_DT"
-    }
-    remaining_nulls = train.drop(columns=[c for c in still_open if c in train.columns]).isna().sum()
-    remaining_nulls = remaining_nulls[remaining_nulls > 0]
-    if len(remaining_nulls):
-        print("\nWARNING: unexpected remaining NaNs outside the known-open exclusions:")
-        print(remaining_nulls)
+    # Sanity check on the sentinel-fill step (2026-09-16, corrected):
+    # categorical columns should have NO remaining NaN after the fill -- any
+    # that do indicate a bug in fill_claim_type_exclusive_fields, since that
+    # function is now the only thing responsible for clearing NaN from
+    # string/object columns. Numeric columns are EXPECTED to retain real NaN
+    # now (see that function's docstring) -- reported separately below as
+    # informational, not a warning.
+    categorical_cols = [c for c in train.columns if not pd.api.types.is_numeric_dtype(train[c])]
+    remaining_cat_nulls = train[categorical_cols].isna().sum()
+    remaining_cat_nulls = remaining_cat_nulls[remaining_cat_nulls > 0]
+    if len(remaining_cat_nulls):
+        print("\nWARNING: categorical columns still have NaN after sentinel-fill (unexpected):")
+        print(remaining_cat_nulls)
     else:
-        print("\nZero-fill/sentinel-fill check: no unexpected NaNs remain.")
+        print("\nSentinel-fill check: no unexpected NaNs remain in categorical columns.")
+
+    numeric_cols = [c for c in train.columns if pd.api.types.is_numeric_dtype(train[c])]
+    numeric_nulls = train[numeric_cols].isna().sum()
+    numeric_nulls = numeric_nulls[numeric_nulls > 0]
+    print(
+        f"\n{len(numeric_nulls)} numeric columns retain real (intentional) NaN -- "
+        "expected for claim-type-exclusive fields; the zero-fill needed for "
+        "Chow-test/logistic-regression interaction terms happens later, in "
+        "Phase 2's design-matrix code, scoped to a copy -- not here."
+    )
 
 
 if __name__ == "__main__":
