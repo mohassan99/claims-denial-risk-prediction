@@ -205,8 +205,10 @@ carrier/DME-only fields show (see Section 3's shared-feature audit). Zero varian
 predictive signal regardless of which claim types it's populated in, so the applicability pattern
 doesn't change the drop decision — it just means this field cannot double as the Chow-test's
 illustrative "populated in only 2 of 3 claim types" example the way it was briefly assumed to be;
-see the correction under Section 3's degrees-of-freedom discussion. **Status: identified, not yet
-added to `DROP_COLUMNS` in `src/build_features.py` — open, small implementation item.**
+see the correction under Section 3's degrees-of-freedom discussion. **Status: implemented and
+pushed 2026-09-16** — added to `DROP_COLUMNS` in `src/build_features.py` alongside
+`NCH_CLM_TYPE_CD`/`NCH_NEAR_LINE_REC_IDENT_CD` (the perfectly-collinear-with-`claim_type` fields
+identified in Section 3's checklist item 4).
 
 ---
 
@@ -527,13 +529,36 @@ silently invalidating the test or crashing the fit if skipped:
    first place — it must appear identically, zero-filled and interacted against its one applicable
    `claim_type` dummy, in *both* models, entirely outside the hypothesis being tested. Conflating
    this category with the shared-covariate list breaks the nesting the same way point 1 does.
-3. **`train_model.parquet` still has raw `NaN`s for claim-type-exclusive fields — the zero-fill
-   step described in point 2 has not been implemented yet.** `src/build_features.py` does not
-   perform this transformation; it's still open work, not a finished prerequisite. Fitting
-   directly against the raw parquet risks `statsmodels` erroring or silently dropping every row
-   with any `NaN` present, which — depending on which columns end up in the design matrix — could
-   catastrophically shrink the effective sample (e.g. collapsing to only the DME subset without
-   anyone noticing).
+   **Correction, 2026-09-16 — this zero-fill is scoped to the design-matrix-building step itself,
+   not to `train_model.parquet`.** An earlier version of `build_features.py` zero-filled these
+   columns' raw values in the shared parquet file directly — that was wrong (see point 3's
+   correction below) and has been reverted. The zero-fill described here happens on a copy, inside
+   whichever script actually builds the Chow-test/logistic-regression design matrix, never in the
+   file XGBoost also reads from.
+3. **`train_model.parquet` deliberately still has raw `NaN`s for NUMERIC claim-type-exclusive
+   fields — this is now a permanent design decision, not open work.** A first implementation
+   (2026-09-16) zero-filled these columns directly in `build_features.py`, on the reasoning that
+   the interaction construction in point 2 needs a zero-filled value. That was wrong and has been
+   reverted: `0` is a legitimate real value for these fields (a genuine `$0` charge, a genuine `0`
+   count), so zero-filling the raw column conflates "genuinely `$0`" with "doesn't apply to this
+   claim type" — the same distinct-value-vs-missingness conflation already caught for the NPI
+   presence flags and `PRNCPAL_DGNS_VRSN_CD` (Section 2), recurring in a new place. It also
+   discards information XGBoost could use natively, since XGBoost branches on real `NaN` and can
+   treat "this field is absent" as its own signal — a zero-fill silently removes that. **General
+   principle: `0` is a value, `NaN` is the absence of one — never use the former to represent the
+   latter, for any field type.**
+
+   `build_features.py`'s `fill_claim_type_exclusive_fields()` now only sentinel-fills
+   **categorical/string** claim-type-exclusive columns (`"NOT_APPLICABLE"`, an explicit new
+   category rather than an overloaded existing value — this doesn't have the 0-vs-missing problem
+   and is correctly implemented). **Numeric claim-type-exclusive columns keep their real `NaN` in
+   `train_model.parquet` — this is intentional, not unfinished.** The zero-fill-for-interaction
+   trick from point 2 is still correct and still needed, but belongs ONLY inside Phase 2's actual
+   Chow-test/design-matrix-building script (not yet written), applied there on a **copy** of the
+   relevant columns, scoped to that one multiplication — never baked upstream into the shared file
+   both the linear model and XGBoost read from. Fitting `statsmodels` directly against
+   `train_model.parquet`'s raw `NaN`s will still error or silently drop rows exactly as originally
+   warned here — that risk is unchanged; only *where* the fill happens has moved.
 4. **The shared-vs-claim-type-exclusive column split — now fully enumerated via an empirical
    audit, 2026-09-15, superseding the 2026-09-14 documentation-only pass.** Two rounds of checks
    against `train_model.parquet` (a null-rate-by-`claim_type` sweep, then a sentinel-aware
@@ -573,7 +598,9 @@ silently invalidating the test or crashing the fit if skipped:
      blanket zero-as-sentinel rule is only valid for genuine code/ID-type columns where `0` isn't
      a valid domain value (which is exactly why it correctly resolved the `PRNCPAL_DGNS_CD`
      question) — it must not be applied to engineered binary flags or, by the same logic, to
-     dollar-amount/count fields where `$0` or a `0` count is a real, common outcome.
+     dollar-amount/count fields where `$0` or a `0` count is a real, common outcome. **This same
+     lesson recurred once more, 2026-09-16, in `build_features.py`'s numeric zero-fill — see point
+     3's correction above.**
 
 ### `claim_type` feature — derive from already-computed data; corrected implementation note on
 avoiding perfect collinearity
@@ -704,9 +731,28 @@ remains open from Phase 1 itself.
 **Remaining, genuinely open — this is Phase 2's starting point, not Phase 1's:** see the pre-flight
 checklist in Section 3 above. **2026-09-15: item 4 (the shared/exclusive column split) is now fully
 resolved** — see the checklist's updated item 4 for the final shared (3-of-3), 2-of-3, and
-excluded-as-collinear lists. What's left before Chow-test fitting code can be written: (a) add
-`PRNCPAL_DGNS_VRSN_CD` to `DROP_COLUMNS` (Section 2, newly identified zero-variance field), (b)
-decide `HCPCS_CD`'s within-carrier-missingness treatment, and (c) implement the zero-fill
-transformation for claim-type-exclusive fields (checklist item 3, still not done in
-`src/build_features.py`). The degrees-of-freedom formula (`df = Σ(n_i − 1)`) remains correct
+excluded-as-collinear lists. **2026-09-16: (a) and most of (c) are now done** —
+`PRNCPAL_DGNS_VRSN_CD`, `NCH_CLM_TYPE_CD`, and `NCH_NEAR_LINE_REC_IDENT_CD` are added to
+`DROP_COLUMNS`, and `fill_claim_type_exclusive_fields()` sentinel-fills categorical
+claim-type-exclusive columns. What's genuinely still open: (b) `HCPCS_CD`'s
+within-carrier-missingness treatment, and (c') the zero-fill-for-interaction step for NUMERIC
+claim-type-exclusive columns, which belongs in **Phase 2's design-matrix-building script**
+specifically — not in `build_features.py` — see checklist item 3's 2026-09-16 correction above for
+why that boundary matters. The degrees-of-freedom formula (`df = Σ(n_i − 1)`) remains correct
 regardless of these remaining items — it was derived from algebra, not from any specific column.
+
+**Also, separately: a real target-construction fix, not a feature-engineering one, worth flagging
+here because it changes what every prior audit in this document was computed against.**
+`denial_reasons.py`/`denial_rules.py` gained a 6th risk factor, `missing_hcpcs`, on 2026-09-16 —
+every prior rule taking `hcpcs_col` was structurally unable to fire when `HCPCS_CD` was missing,
+which mechanically forced `is_denied` toward 0% for the 62.5% of carrier claims missing that field
+(confirmed empirically at exactly 0/448,567 denials), backwards from a real payer system where a
+missing procedure code is itself a denial trigger (CARC 16). This requires rerunning
+`build_target_and_split.py` and very likely lowering `CALIBRATION_SCALE` from 1.4 — not yet done as
+of this note. Full writeup in `data/TARGET_DEFINITION.md` and this project's decisions-and-learnings
+notes. Once `is_denied` is regenerated and recalibrated, the EDA figures, `data_dictionary.md`'s
+null-rate numbers, and this document's shared-feature audit above should all be treated as computed
+against the *old* label until spot-checked against the new one — the underlying column-applicability
+facts (which claim types a field is populated in) won't change, since that's a property of the raw
+CMS data, not of `is_denied`, but any is_denied-dependent number quoted anywhere in this repo's docs
+predates this fix.
