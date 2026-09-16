@@ -4,8 +4,8 @@ Probabilistic, multi-reason denial label engine.
 Supersedes the pure boolean-OR combination in denial_rules.py (the individual
 risk-factor detector functions there -- rule_missing_prior_auth,
 rule_dx_procedure_mismatch, rule_provider_outlier, rule_duplicate_claim,
-rule_deprecated_code -- are still used here as inputs; only the combination
-logic changes).
+rule_deprecated_code, rule_missing_hcpcs -- are still used here as inputs;
+only the combination logic changes).
 
 WHY PROBABILISTIC, NOT DETERMINISTIC (see chat for full discussion, keep the
 short version here since it's the answer to an obvious review question):
@@ -34,15 +34,25 @@ adjudication systems and isn't published, for the same reason no public CMS
 PUF has a real denial field. Most per-rule base rates below are therefore
 documented, reasoned ASSUMPTIONS anchored loosely to those marginal
 benchmarks, not measured facts -- tunable knobs, disclosed as such in the
-README/report, not presented as ground truth. `deprecated_code` is the one
+README/report, not presented as ground truth. `deprecated_code` is one
 exception -- see its entry below and data/TARGET_DEFINITION.md Addendum #6.
+`missing_hcpcs` is a second exception, for the opposite reason: no published
+benchmark exists for it AT ALL (it's not a scenario survey data covers), so
+its base_prob is a disclosed structural-reasoning judgment, not even a
+scaled-down survey anchor -- see its entry below.
 
 NOTE ON NOISY-OR INDEPENDENCE ASSUMPTION: the noisy-OR combination below
 treats all active risk factors as statistically independent given they're
 active. This is a disclosed simplification, not a measured fact -- e.g. a
 provider outlier is plausibly correlated with dx/procedure mismatches (same
 underlying sloppy-billing cause), which independence doesn't capture. See
-data/TARGET_DEFINITION.md Addendum #1.
+data/TARGET_DEFINITION.md Addendum #1. `missing_hcpcs` makes this assumption
+mostly moot for the claims it fires on, though: by construction (see
+denial_rules.py Rule 8's docstring), none of the other four HCPCS-dependent
+rules can be simultaneously active on the same claim, so there's no
+independence violation to worry about between missing_hcpcs and those four
+specifically -- only provider_outlier (which doesn't use HCPCS_CD) can
+co-occur with it.
 
 Sources for the anchoring (see full citations in chat / Phase 5 report):
 - Kodiak Solutions / HFMA 2024: ~11.8% industry-wide initial denial rate
@@ -58,6 +68,12 @@ Sources for the anchoring (see full citations in chat / Phase 5 report):
   Part B no longer recognizes CPT consultation codes 99241-99245/99251-99255
   for payment (added 2026-09-12, backs deprecated_code below -- this is an
   exact federal policy citation, not a survey estimate)
+- CARC 16 ("Claim/service lacks information or has submission/billing
+  error(s) which is needed for adjudication") -- standard X12/WPC
+  Claim Adjustment Reason Code, backs missing_hcpcs below (added
+  2026-09-16). No marginal survey/frequency benchmark exists for this
+  specific scenario -- the base_prob is structural reasoning, not a scaled
+  survey anchor.
 """
 
 from __future__ import annotations
@@ -69,6 +85,7 @@ from denial_rules import (
     rule_deprecated_code,
     rule_dx_procedure_mismatch,
     rule_duplicate_claim,
+    rule_missing_hcpcs,
     rule_missing_prior_auth,
     rule_provider_outlier,
 )
@@ -78,6 +95,24 @@ from denial_rules import (
 # probability of denial GIVEN the risk factor is active, source note)
 # ---------------------------------------------------------------------------
 REASON_CATALOG = {
+    "missing_hcpcs": {
+        "carc_code": "16",
+        "label": "Claim/service lacks information (no procedure code submitted)",
+        "base_prob": 0.80,
+        "source_note": "Added 2026-09-16, discovered via a real-data anomaly during "
+        "Phase 2 feature engineering, not planned in advance -- see "
+        "data/FEATURE_ENGINEERING.md and denial_rules.py Rule 8's docstring for the full "
+        "investigation. No published marginal-survey benchmark exists for this exact "
+        "scenario (unlike most other factors here) -- base_prob is a disclosed structural "
+        "judgment: a missing procedure code is a fundamental adjudication blocker for "
+        "professional/DME claims in real Medicare processing, so set high, but explicitly "
+        "NOT claimed as a measured rate. Set just below deprecated_code's 0.85 (which HAS "
+        "an exact federal-policy citation) since this one is reasoned inference, not a "
+        "documented policy fact. This CARC (16, 'claim/service lacks information') "
+        "deliberately overlaps with provider_outlier's CARC below -- both are legitimate, "
+        "independent real-world reasons a payer might cite the same generic code; real "
+        "EOBs routinely reuse CARC 16 across genuinely distinct root causes.",
+    },
     "deprecated_code": {
         "carc_code": "181",
         "label": "Procedure code was invalid on the date of service",
@@ -126,11 +161,14 @@ REASON_CATALOG = {
         "base_prob": 0.08,
         "source_note": "No direct published benchmark for this specific proxy -- "
         "set low deliberately since it's the weakest-grounded rule (rough outlier "
-        "proxy, not a real audit flag)",
+        "proxy, not a real audit flag). Shares CARC 16 with missing_hcpcs (added "
+        "2026-09-16) -- see that entry's source_note for why the overlap is "
+        "intentional, not an oversight.",
     },
 }
 
 RISK_FACTOR_FUNCS = {
+    "missing_hcpcs": rule_missing_hcpcs,
     "deprecated_code": rule_deprecated_code,
     "duplicate_claim": rule_duplicate_claim,
     "missing_prior_auth": rule_missing_prior_auth,
@@ -142,15 +180,22 @@ RISK_FACTOR_FUNCS = {
 # are active on the same denied claim -- DETERMINISTIC, not weighted-random
 # (changed 2026-09-11; see data/TARGET_DEFINITION.md Addendum #3 for the full
 # rationale). Ordered by real-world adjudication stage:
-#   1. deprecated_code -- added 2026-09-12, placed FIRST: code-validity/
-#      recognition is a harder, more upfront system check than even duplicate
-#      detection -- a claims system needs a currently-recognized procedure
-#      code before it's even meaningful to check whether that code has been
-#      billed twice.
-#   2. duplicate_claim -- early/front-end system check.
-#   3. missing_prior_auth (CARC 197) -- front-end, pre/early-adjudication gate.
-#   4. dx_procedure_mismatch (CARC 11) -- mid-adjudication medical-policy edit.
-#   5. provider_outlier -- ALWAYS last. It's structurally a retrospective/
+#   1. missing_hcpcs -- added 2026-09-16, placed FIRST, ahead of even
+#      deprecated_code: a real adjudication system verifies a procedure code
+#      is PRESENT before it can meaningfully ask whether that code is
+#      deprecated, mismatched with the diagnosis, or duplicated. This isn't
+#      just a priority-ordering choice -- it's a precondition. See
+#      denial_rules.py Rule 8's docstring for the full reframe: the other
+#      four HCPCS-dependent rules were never buggy for failing to fire on a
+#      missing code; they each presuppose one exists.
+#   2. deprecated_code -- added 2026-09-12: code-validity/recognition is a
+#      harder, more upfront system check than even duplicate detection -- a
+#      claims system needs a currently-recognized procedure code before it's
+#      even meaningful to check whether that code has been billed twice.
+#   3. duplicate_claim -- early/front-end system check.
+#   4. missing_prior_auth (CARC 197) -- front-end, pre/early-adjudication gate.
+#   5. dx_procedure_mismatch (CARC 11) -- mid-adjudication medical-policy edit.
+#   6. provider_outlier -- ALWAYS last. It's structurally a retrospective/
 #      post-payment audit mechanism, not a same-stage adjudication edit, so by
 #      the time it could fire, any real-time reason would already have been
 #      recorded. This ordering doesn't affect modeling (denial_reason_carc_1/2
@@ -158,6 +203,7 @@ RISK_FACTOR_FUNCS = {
 #      claims are reproducible ("same active factors -> same recorded reason")
 #      rather than exhibiting spurious run-to-run attribution randomness.
 REASON_PRIORITY = [
+    "missing_hcpcs",
     "deprecated_code",
     "duplicate_claim",
     "missing_prior_auth",
@@ -169,6 +215,10 @@ REASON_PRIORITY = [
 def compute_risk_factors(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
     """Run each risk-factor detector, return one boolean column per factor."""
     out = pd.DataFrame(index=df.index)
+    out["missing_hcpcs"] = RISK_FACTOR_FUNCS["missing_hcpcs"](
+        df,
+        kwargs.get("hcpcs_col", "HCPCS_CD"),
+    )
     out["deprecated_code"] = RISK_FACTOR_FUNCS["deprecated_code"](
         df,
         kwargs.get("hcpcs_col", "HCPCS_CD"),
@@ -228,6 +278,16 @@ def sample_denials(
     p_denied afterward -- see data/TARGET_DEFINITION.md Addendum #2 for why
     that's not the same thing and why there's no closed-form guarantee this
     lands the population rate exactly in 10-15%; check calibration_report().
+
+    IMPORTANT, added 2026-09-16: missing_hcpcs fires on 62.5% of carrier
+    claims alone in this project's real data -- a much larger-volume trigger
+    than any prior rule. The CALIBRATION_SCALE value tuned before this rule
+    existed (1.4, in build_target_and_split.py) almost certainly needs to
+    come DOWN, not stay the same. Run calibration_report() immediately after
+    regenerating the target and expect to iterate on CALIBRATION_SCALE (or,
+    if that alone overcorrects other factors, on missing_hcpcs's own
+    base_prob specifically) before the population rate lands back in the
+    documented 10-15% range.
     """
     rng = np.random.default_rng(seed)
 

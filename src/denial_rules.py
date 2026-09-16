@@ -97,6 +97,13 @@ def rule_missing_prior_auth(
     This is a coarse proxy, not real auth data -- document it as such. False
     positives are expected for beneficiaries whose supporting encounter fell
     just outside the lookback window or in a claim file this rule doesn't scan.
+
+    NOTE (2026-09-16): like every other rule below that takes hcpcs_col, this
+    is STRUCTURALLY unable to flag a claim with missing HCPCS_CD -- a NaN
+    cast via .astype(str) becomes "nan", which never starts with "E"/"K". See
+    rule_missing_hcpcs below for why that's correct (this rule checks a
+    property OF a procedure code; missing_hcpcs checks whether one exists at
+    all), not a gap in this rule specifically.
     """
     is_high_cost = df[hcpcs_col].astype(str).str.startswith(HIGH_COST_HCPCS_PREFIXES)
 
@@ -193,6 +200,11 @@ def rule_dx_procedure_mismatch(
     Returns False (not flagged) for any procedure code not in the mapping --
     this rule only ever evaluates the codes it has a verified mapping for;
     everything else passes through unflagged rather than being guessed at.
+
+    NOTE (2026-09-16): also structurally unable to flag a claim with missing
+    HCPCS_CD (a NaN cast to "nan" never equals any mapped code) -- see
+    rule_missing_hcpcs below for why that's the correct division of labor,
+    not a gap here.
     """
     hcpcs = df[hcpcs_col].astype(str)
     flagged = pd.Series(False, index=df.index)
@@ -296,6 +308,12 @@ def rule_provider_outlier(
 # 968 of which were HCPCS code 99241 -- investigated and traced to Rule 7
 # below, not a duplicate-billing pattern. See data/TARGET_DEFINITION.md's
 # Phase 1 real-data run log for the full investigation.
+#
+# NOTE (2026-09-16): also structurally unable to flag a claim with missing
+# HCPCS_CD -- groupby() drops NaN keys by default, so those rows never join
+# any group and .transform("nunique") returns NaN for them, which compares
+# False against > 1. See rule_missing_hcpcs below for why that's the correct
+# division of labor, not a gap here.
 def rule_duplicate_claim(
     df: pd.DataFrame,
     bene_id_col: str = "BENE_ID",
@@ -350,6 +368,11 @@ def rule_duplicate_claim(
 # check whether something about code 99241 itself was unusual -- which led
 # directly to this rule. See data/TARGET_DEFINITION.md's Phase 1 real-data
 # run log for the full investigation trail.
+#
+# NOTE (2026-09-16): also structurally unable to flag a claim with missing
+# HCPCS_CD (codes.isin(...) is False for the literal string "nan") -- see
+# rule_missing_hcpcs below for why that's the correct division of labor, not
+# a gap here.
 MEDICARE_NONPAYABLE_CONSULT_CODES = {
     "99241", "99242", "99243", "99244", "99245",  # office/outpatient consultations
     "99251", "99252", "99253", "99254", "99255",  # inpatient consultations
@@ -379,6 +402,53 @@ def rule_deprecated_code(
 
 
 # ---------------------------------------------------------------------------
+# Rule 8 — Missing procedure code
+# ---------------------------------------------------------------------------
+# Added 2026-09-16. Discovered via a real-data anomaly during Phase 2
+# feature-engineering work, not planned in advance -- see
+# data/TARGET_DEFINITION.md's real-data run log for the full investigation.
+#
+# THE PROBLEM THIS FIXES: every other rule in this file that takes hcpcs_col
+# (rule_missing_prior_auth, rule_dx_procedure_mismatch, rule_duplicate_claim,
+# rule_deprecated_code) is STRUCTURALLY UNABLE to fire when HCPCS_CD is
+# missing -- each one either casts NaN to the literal string "nan" (which
+# never matches any trigger condition) or drops NaN group keys entirely
+# (rule_duplicate_claim's groupby). Before this rule existed, that meant a
+# missing procedure code mechanically forced is_denied toward 0% for those
+# claims, independent of anything real about them -- empirically confirmed
+# at exactly 0 denials out of 448,567 real HCPCS-missing carrier rows (62.5%
+# of all carrier claims in this dataset). That's not a real-world pattern,
+# it's a target-construction artifact -- and it's backwards from reality: a
+# claim submitted with NO procedure code at all is a textbook denial trigger
+# in an actual payer system (CARC 16, "claim/service lacks information"),
+# not a safe one.
+#
+# THE REFRAME, not just the patch: the other four rules' inability to
+# evaluate a missing HCPCS was never a bug in THEM -- each checks a property
+# OF a procedure code (is it deprecated? does it match the diagnosis? is it
+# duplicated?), which presupposes one exists. The actual gap was that
+# nothing checked the precondition itself. This rule is that precondition
+# check -- which is also why it's placed FIRST in REASON_PRIORITY below: a
+# real adjudication system verifies a procedure code is present before it
+# can meaningfully ask anything else about it.
+def rule_missing_hcpcs(
+    df: pd.DataFrame,
+    hcpcs_col: str = "HCPCS_CD",
+) -> pd.Series:
+    """Flag claims with no procedure code at all.
+
+    base_prob for this rule (see REASON_CATALOG in denial_reasons.py) is a
+    REASONED JUDGMENT, not sourced to a specific published benchmark the way
+    rule_deprecated_code's federal-policy citation is -- a missing procedure
+    code is a fundamental adjudication blocker in real Medicare claims
+    processing (professional/DME line items cannot be priced or paid without
+    one), so it's set high, but disclosed as design reasoning, not measured
+    fact.
+    """
+    return df[hcpcs_col].isna()
+
+
+# ---------------------------------------------------------------------------
 # Combined label
 # ---------------------------------------------------------------------------
 def build_is_denied(
@@ -405,9 +475,9 @@ def build_is_denied(
     is excluded here by default for consistency with the original scope of this
     deprecated function -- pass it in use_rules if you want it; its mapping now
     covers real verified codes (see PROCEDURE_TO_EXPECTED_DX_PREFIX above), not
-    illustrative placeholders. `duplicate_claim` (Rule 6) and `deprecated_code`
-    (Rule 7) aren't wired into this deprecated function at all -- use
-    denial_reasons.sample_denials() to get them.
+    illustrative placeholders. `duplicate_claim` (Rule 6), `deprecated_code`
+    (Rule 7), and `missing_hcpcs` (Rule 8) aren't wired into this deprecated
+    function at all -- use denial_reasons.sample_denials() to get them.
     """
     flags = pd.DataFrame(index=df.index)
 
@@ -453,3 +523,11 @@ def report_rule_hit_rates(flags: pd.DataFrame) -> pd.Series:
 # Check df['is_denied'].value_counts(normalize=True) right after Step 3
 # wrangling, before moving on to Phase 2 -- don't discover an off-spec class
 # balance after you've already built the train/val/test split.
+#
+# UPDATED 2026-09-16: rule_missing_hcpcs (Rule 8) fires on 62.5% of carrier
+# claims alone -- this is a MUCH larger-volume trigger than any prior rule.
+# CALIBRATION_SCALE (in build_target_and_split.py) was tuned before this rule
+# existed and almost certainly needs to come DOWN after adding it, not stay
+# at 1.4 -- rerun calibration_report() immediately after regenerating the
+# target and expect to iterate, not to land in the 10-15% range on the first
+# try.
