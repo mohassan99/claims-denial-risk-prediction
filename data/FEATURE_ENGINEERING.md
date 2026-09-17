@@ -201,7 +201,7 @@ populated values are a constant `0` (ICD-10), for the same real-world reason —
 beneficiary data is almost entirely post-October-2015. Unlike the other version-code fields,
 though, this one is **not** populated across all claim types: it's populated for carrier + DME
 only (100% null for outpatient), the same 2-of-3 applicability pattern several other
-carrier/DME-only fields show (see Section 3's shared-feature audit). Zero variance means zero
+carrier/DME-only fields show (see Section 6's full presence audit). Zero variance means zero
 predictive signal regardless of which claim types it's populated in, so the applicability pattern
 doesn't change the drop decision — it just means this field cannot double as the Chow-test's
 illustrative "populated in only 2 of 3 claim types" example the way it was briefly assumed to be;
@@ -441,10 +441,10 @@ omnibus test:
 df = Σ_i (n_i - 1)
 ```
 This collapses to the original `2k` only in the special case where every shared covariate is a
-full 3-of-3 field. The completed shared-feature audit (checklist item 4 below) confirms real 2-of-3
-covariates exist (`CARR_NUM`, `PRVDR_NUM`), so the flat `2k` figure would in fact overstate the true
-degrees of freedom for this project's actual design matrix — not just a hypothetical concern. The
-test statistic itself is unaffected by this correction:
+full 3-of-3 field. **Section 6's complete presence audit confirms 13 real 2-of-3 covariates exist
+in this dataset, not just the 2 (`CARR_NUM`, `PRVDR_NUM`) documented here originally** — so the flat
+`2k` figure would meaningfully overstate the true degrees of freedom for this project's actual
+design matrix. The test statistic itself is unaffected by this correction:
 ```
 LR = -2 · (ℓ_pooled - ℓ_interacted)   ~   χ²(df)      where df = Σ_i (n_i - 1)
 ```
@@ -568,49 +568,17 @@ silently invalidating the test or crashing the fit if skipped:
    category rather than an overloaded existing value — this doesn't have the 0-vs-missing problem
    and is correctly implemented). **Numeric claim-type-exclusive columns keep their real `NaN` in
    `train_model.parquet` — this is intentional, not unfinished.** The zero-fill-for-interaction
-   trick from point 2 is still correct and still needed, but belongs ONLY inside Phase 2's actual
-   Chow-test/design-matrix-building script (not yet written), applied there on a **copy** of the
-   relevant columns, scoped to that one multiplication — never baked upstream into the shared file
-   both the linear model and XGBoost read from. Fitting `statsmodels` directly against
-   `train_model.parquet`'s raw `NaN`s will still error or silently drop rows exactly as originally
-   warned here — that risk is unchanged; only *where* the fill happens has moved.
-4. **The shared-vs-claim-type-exclusive column split — now fully enumerated via an empirical
-   audit, 2026-09-15, superseding the 2026-09-14 documentation-only pass.** Two rounds of checks
-   against `train_model.parquet` (a null-rate-by-`claim_type` sweep, then a sentinel-aware
-   follow-up, then two targeted value-level/crosstab checks) settled every open item:
-
-   - **Confirmed genuinely shared (3-of-3, 0% null in all three claim types):** `PRNCPAL_DGNS_CD`
-     (data dictionary's "Carrier, DME" claim was wrong — see the correction above), `provider_state`,
-     and all 5 NPI-presence flags (`has_referring_physician`, `has_performing_physician`,
-     `has_attending_physician`, `has_operating_physician`, `has_rendering_physician`) — resolving
-     the item left open on 2026-09-14. **`HCPCS_CD`** is also 3-of-3 by presence, with within-carrier
-     missingness now resolved — see Section 5.
-   - **Confirmed 2-of-3, needing the omit-third-interaction treatment above:** `CARR_NUM`
-     (carrier + DME, absent outpatient — the corrected illustrative example) and `PRVDR_NUM`
-     (outpatient + DME, absent **carrier** — `data_dictionary.md`'s "All claim files" claim was
-     also wrong, in the opposite direction from its `PRNCPAL_DGNS_CD` error). Both now have their
-     cardinality treatment implemented — see Section 5.
-   - **Excluded — perfectly collinear with `claim_type`, a new finding, not previously
-     considered.** `NCH_CLM_TYPE_CD` and `NCH_NEAR_LINE_REC_IDENT_CD` are native CMS fields, not
-     ones this project engineered, that happen to be CMS's own claim-classification codes. A
-     crosstab confirmed each claim type maps to exactly one distinct value with zero overlap
-     (carrier→`71`/`O`, outpatient→`40`/`W`, DME→`82`/`M`) — including either would recreate the
-     `claim_type` dummy set under a different label and reproduce the exact rank-deficiency bug
-     already documented once for the applicability-indicator case. Excluded from the shared list
-     entirely.
-   - **A methodological note on how these were verified, worth keeping for the same reason as the
-     rest of this document's error trail.** An initial sentinel-detection pass (treating `0`,
-     `0.0`, `"0"`, and empty string as possible disguised-missingness placeholders, prompted by
-     the question "is `0.0` a valid diagnosis code?") produced a batch of false positives on the
-     5 NPI-presence flags and on `PRNCPAL_DGNS_VRSN_CD` — because `0` is a legitimate, meaningful
-     value for a binary indicator (role not populated) and for `PRNCPAL_DGNS_VRSN_CD`'s own
-     constant ICD-10 flag, not a placeholder for missing data in either case. The lesson: a
-     blanket zero-as-sentinel rule is only valid for genuine code/ID-type columns where `0` isn't
-     a valid domain value (which is exactly why it correctly resolved the `PRNCPAL_DGNS_CD`
-     question) — it must not be applied to engineered binary flags or, by the same logic, to
-     dollar-amount/count fields where `$0` or a `0` count is a real, common outcome. **This same
-     lesson recurred once more, 2026-09-16, in `build_features.py`'s numeric zero-fill — see point
-     3's correction above.**
+   trick from point 2 is still correct and still needed, and is now implemented in
+   `src/build_chow_design_matrix.py` (Sections 5-6), applied there on a **copy** of the relevant
+   columns, scoped to that one multiplication — never baked upstream into the shared file both the
+   linear model and XGBoost read from.
+4. **The shared-vs-claim-type-exclusive column split — SUPERSEDED, see Section 6 for the final,
+   complete, empirically-verified accounting.** The version of this item that stood from
+   2026-09-15 through 2026-09-16 confirmed only 2 shared 2-of-3 covariates (`CARR_NUM`,
+   `PRVDR_NUM`) — that count was itself incomplete, caught only once the actual design-matrix code
+   produced a column-count mismatch against a hand-derived expectation. Section 6 documents the
+   full, one-time enumeration that should have been the starting artifact rather than something
+   assembled incrementally across a dozen individual-column surprises.
 
 ### `claim_type` feature — derive from already-computed data; corrected implementation note on
 avoiding perfect collinearity
@@ -738,114 +706,178 @@ confirmed-droppable columns (always-null + zero-variance) from Sections 1-2 abov
 Phase 1 is complete — the state-crosswalk verification is fully closed (Section 1), and nothing
 remains open from Phase 1 itself.
 
-**Remaining, genuinely open — this is Phase 2's starting point, not Phase 1's:** see the pre-flight
-checklist in Section 3 above. **2026-09-15: item 4 (the shared/exclusive column split) is now fully
-resolved** — see the checklist's updated item 4 for the final shared (3-of-3), 2-of-3, and
-excluded-as-collinear lists. **2026-09-16: (a) and most of (c) are now done** —
-`PRNCPAL_DGNS_VRSN_CD`, `NCH_CLM_TYPE_CD`, and `NCH_NEAR_LINE_REC_IDENT_CD` are added to
-`DROP_COLUMNS`, and `fill_claim_type_exclusive_fields()` sentinel-fills categorical
-claim-type-exclusive columns. **See Section 5 for the cardinality-encoding step that resolves (b)
-(`HCPCS_CD`'s within-carrier missingness) and `PRVDR_NUM`/`PRNCPAL_DGNS_CD`/`provider_state`'s
-cardinality treatment.** What's genuinely still open: (c') the zero-fill-for-interaction step and
-the 2-of-3 omit-third-interaction construction for `CARR_NUM`/`PRVDR_NUM`, both of which belong in
-`src/build_chow_design_matrix.py` (Section 5) but aren't written yet. The degrees-of-freedom
-formula (`df = Σ(n_i − 1)`) remains correct regardless of these remaining items — it was derived
-from algebra, not from any specific column.
+**Status as of 2026-09-17: the full Chow-test design-matrix pipeline (`src/build_chow_design_matrix.py`)
+is written and verified against real data** — cardinality encoding (Section 5), the unrestricted
+(fully-interacted) design matrix, and the restricted (pooled) design matrix (Section 6) all exist
+and pass their own sanity checks. **What's genuinely still open:** (1) the actual Chow-test
+fitting code (two `statsmodels.Logit` calls + the likelihood-ratio statistic) — not yet written;
+(2) a decision on the ~161 genuinely-shared 3-of-3 covariates' Stage-1 treatment — the current
+unrestricted/restricted matrices only build claim-type interactions for the claim-type-exclusive
+and 2-of-3 covariates (58 interaction terms total), not for the fully-shared 3-of-3 ones
+(`provider_state`'s one-hot dummies, the `HCPCS_CD`/`PRNCPAL_DGNS_CD` top-N dummies, the 5 NPI
+flags) — meaning the omnibus test as currently scoped tests homogeneity for the claim-type-
+exclusive/2-of-3 covariates only, not the full `k` covariates the original equations describe. This
+scoping decision needs to be made explicit (and possibly revisited) before the Chow test is
+actually fit, not discovered as a surprise afterward. The degrees-of-freedom formula
+(`df = Σ(n_i − 1)`) itself remains correct regardless — it was derived from algebra — but which
+covariates are included in that sum needs to be settled first.
 
-**Also, separately: a real target-construction fix, not a feature-engineering one, worth flagging
-here because it changes what every prior audit in this document was computed against.**
+**Also, separately: a real target-construction fix, not a feature-engineering one.**
 `denial_reasons.py`/`denial_rules.py` gained a 6th risk factor, `missing_hcpcs`, on 2026-09-16 —
 every prior rule taking `hcpcs_col` was structurally unable to fire when `HCPCS_CD` was missing,
 which mechanically forced `is_denied` toward 0% for the 62.5% of carrier claims missing that field
 (confirmed empirically at exactly 0/448,567 denials), backwards from a real payer system where a
-missing procedure code is itself a denial trigger (CARC 16). This requires rerunning
-`build_target_and_split.py` and very likely lowering `CALIBRATION_SCALE` from 1.4 — not yet done as
-of this note. Full writeup in `data/TARGET_DEFINITION.md` and this project's decisions-and-learnings
-notes. Once `is_denied` is regenerated and recalibrated, the EDA figures, `data_dictionary.md`'s
-null-rate numbers, and this document's shared-feature audit above should all be treated as computed
-against the *old* label until spot-checked against the new one — the underlying column-applicability
-facts (which claim types a field is populated in) won't change, since that's a property of the raw
-CMS data, not of `is_denied`, but any is_denied-dependent number quoted anywhere in this repo's docs
-predates this fix.
+missing procedure code is itself a denial trigger (CARC 16). Recalibrated 2026-09-17 (decoupled
+`missing_hcpcs` from `CALIBRATION_SCALE`, base_prob fixed at 0.08) — the resulting overall
+`is_denied` rate is 12.1%, confirmed in range. **All of this project's EDA figures,
+`data_dictionary.md`'s null-rate numbers, and the shared-feature/presence audits (Section 6) remain
+valid** — the underlying column-applicability facts (which claim types a field is populated in) are
+a property of the raw CMS data, not of `is_denied`, and were re-verified against
+`train_model.parquet` after recalibration.
 
 ---
 
 ## 5. Cardinality encoding for the Chow-test design matrix (`src/build_chow_design_matrix.py`)
 
-**Added 2026-09-17.** Four confirmed shared/2-of-3 covariates — `HCPCS_CD`, `PRNCPAL_DGNS_CD`,
-`PRVDR_NUM`, `provider_state` — have been flagged since the original pre-flight checklist as
-needing "documented cardinality treatment" before entering any regression, but that treatment was
-never actually implemented until now. This section documents the choices, and the boundary that
-governs where this code lives.
+**Added 2026-09-17.** Five confirmed shared/2-of-3 covariates — `HCPCS_CD`, `PRNCPAL_DGNS_CD`,
+`PRVDR_NUM`, `CARR_NUM`, `provider_state` — needed cardinality treatment before entering any
+regression. `CARR_NUM` was initially missed (see the correction note in
+`src/build_chow_design_matrix.py`'s docstring) — caught when the interaction-term construction
+(Section 6) hit its raw string column directly, not silently.
 
 **The boundary, restated once more because it's easy to get backwards:** every encoding below
 runs in `src/build_chow_design_matrix.py`, on a **copy** of `train_model.parquet` loaded at
 script start — never inside `build_features.py`, and `train_model.parquet` itself is never
-written to by this script. This is the same boundary established in Section 3's pre-flight
-checklist item 3 for the zero-fill step, extended to cover encoding generally: anything built
-specifically for the Chow-test/logistic-regression design matrix, and not useful (or actively
-harmful, in the zero-fill case) to XGBoost reading the same shared file, belongs here, not
-upstream.
+written to by this script.
 
 **`provider_state` (51 categories, no natural ordering) — plain reference-cell one-hot
 (`drop_first=True`).** Unlike `claim_type`, this field is never used in an interaction
-construction, so none of Section 3's cell-means requirement applies — that requirement was
-specific to needing an explicit dummy for every claim type to interact against, not a general
-rule for every categorical in the model. Ordinary reference-cell coding is the right default
-here.
+construction, so none of Section 3's cell-means requirement applies.
 
 **`HCPCS_CD` and `PRNCPAL_DGNS_CD` (144 and hundreds of distinct codes respectively) — top-20 +
-`__OTHER__` + `__MISSING__`.** Full one-hot on either would blow up the design matrix (144+
-columns for a single covariate); a fixed top-N bucket keeps the matrix tractable while preserving
-the individual identity of the codes that actually carry volume. Two buckets beyond the top-N,
-deliberately kept separate rather than merged into one:
-- `__OTHER__` — a real, populated code that didn't make the top-N cutoff.
-- `__MISSING__` — genuine `NaN`. Merging this into `__OTHER__` would silently claim "this claim
-had *some* uncommon procedure code" when the truth is closer to "this claim's procedure code is
-unknown or absent" — a materially different fact, and conflating the two would undo the same
-distinct-value-vs-missingness discipline this document has enforced everywhere else (Section 2's
-`PRNCPAL_DGNS_VRSN_CD` case, Section 3 point 3's zero-fill correction).
+`__OTHER__` + `__MISSING__`.** `__MISSING__` kept deliberately separate from `__OTHER__` (a real
+populated code that didn't make the top-N cutoff) — conflating them would claim "some uncommon
+code" when the truth is "code unknown or absent," undoing the distinct-value-vs-missingness
+discipline enforced everywhere else in this document. This is also the resolution to `HCPCS_CD`'s
+within-carrier-missingness question, left open since 2026-09-15: the `__MISSING__` dummy IS the
+missing-indicator anticipated there.
 
-**This is also the resolution to `HCPCS_CD`'s within-carrier-missingness question, left open since
-2026-09-15 (Section 3's pre-flight checklist item 4).** At the time, the anticipated fix was "most
-likely a genuine missing-indicator." The `__MISSING__` dummy produced by this general-purpose
-encoding scheme *is* that missing-indicator — it didn't need its own bespoke treatment once every
-other high-cardinality shared covariate needed the same top-N-plus-buckets scheme anyway.
+**`PRVDR_NUM`/`CARR_NUM` (8,460 and similarly high cardinality) — frequency encoding, not
+one-hot.** Real `NaN` preserved for each covariate's one absent claim type, never filled — required
+so the interaction-term construction (Section 6) can correctly build only the applicable terms.
+`PRVDR_NUM` additionally has a small genuine within-outpatient residual gap (136 rows, ~0.037%),
+caught by the script's own sanity check comparing against the sum of both real components (its
+structural carrier-null count plus this residual) rather than the structural count alone.
 
-**`PRVDR_NUM` (8,460 unique values, real repeat structure already used by `provider_outlier`/
-`dx_procedure_mismatch`) — frequency encoding, not one-hot.** One-hot at this cardinality is
-infeasible outright (8,460 columns for a single covariate); frequency encoding (each provider
-mapped to its own share of non-null `PRVDR_NUM` rows) is a standard, defensible choice for a
-high-cardinality categorical with meaningful repeat structure, and requires no target information
-(unlike target encoding, which would risk its own leakage concerns worth avoiding for a covariate
-that's also used elsewhere in this project as a fraud/outlier proxy).
+**Status: implemented and pushed, fully verified.**
 
-**Critical implementation detail: `PRVDR_NUM`'s real `NaN` (its 2-of-3 gap, absent for carrier)
-must survive the frequency encoding untouched, not get silently filled.** `frequency_encode()`
-computes its lookup table via `value_counts(dropna=True)` and maps via `.map()`, which correctly
-leaves unmapped/`NaN` inputs as `NaN` in the output. This is not incidental: `PRVDR_NUM` is a
-confirmed 2-of-3 shared covariate, and per Section 3's degrees-of-freedom correction, its NaN for
-the one absent claim type must stay NaN so the (not yet written) interaction-term construction can
-correctly omit that claim type's term entirely. Fabricating a frequency value there — even
-something as seemingly neutral as `0` — would repeat the exact 0-vs-missing mistake the
-2026-09-16 numeric zero-fill correction was written to prevent, just for a different encoding
-scheme than the one that mistake originally occurred in.
+---
 
-**Correction, 2026-09-17 — the script's own sanity check for this initially asserted a stronger
-claim than the data supports, and the failure it caught is itself a useful finding.** The first
-version of this check expected `prvdr_num_freq`'s NaN count to equal carrier's row count exactly.
-Running it produced a 136-row mismatch — investigated directly rather than dismissed: `PRVDR_NUM`
-turns out to have a small, genuine *within-outpatient* gap (136 null rows out of 367,542, ~0.037%)
-in addition to its 100%-null carrier gap. This is the same category of thing as `HCPCS_CD`'s
-within-carrier missingness described above — ordinary, non-structural missingness sitting on top
-of a structural one — just three orders of magnitude smaller, which is why it never surfaced as
-its own line item until this check caught it. The sanity check now compares against the sum of
-both real components (carrier's structural count plus outpatient's small residual) rather than
-carrier's count alone, and confirms clean.
+## 6. The claim-type interaction-term construction, the restricted design matrix, and the full
+presence audit that corrected both
 
-**Status: implemented and pushed** — `top_n_encode()`, `frequency_encode()`, and
-`build_chow_design_matrix()` in `src/build_chow_design_matrix.py`. **Not yet implemented**, and
-the next piece of this script: the claim-type interaction-term construction itself (Section 3's
-zero-fill-on-a-copy step for numeric claim-type-exclusive covariates, and the omit-third-
-interaction logic for `CARR_NUM`/`PRVDR_NUM`) — this encoding step is a prerequisite for that
-work, not a substitute for it.
+**Added 2026-09-17.** This section covers three pieces of work that turned out to be tightly
+coupled: building the unrestricted (fully-interacted) design matrix, building its restricted
+(pooled) counterpart, and — triggered by a real bug those two matrices' cross-checks surfaced — a
+complete, one-time enumeration of every column's claim-type presence pattern, replacing the
+incremental, one-column-at-a-time discovery process this document had been running on since
+Section 3 was first written.
+
+### The unrestricted (fully-interacted) design matrix
+
+`add_claim_type_interactions()` in `src/build_chow_design_matrix.py` builds `value ×
+claim_type_dummy` interaction terms for every remaining numeric claim-type-exclusive or 2-of-3
+covariate, zero-filling ONLY on this in-memory copy (never `train_model.parquet` — Section 3
+checklist item 3). Two real bugs surfaced and fixed while building this, both caught by the
+script's own sanity checks rather than assumed correct:
+
+- **An initial version raised `TypeError` unconditionally on any remaining non-numeric column**,
+  on the theory that a leftover string column was always a bug. Checked directly against real
+  data before trusting that theory: of 84 non-numeric columns still carrying real `NaN`, only
+  `CARR_NUM`/`PRVDR_NUM` were ever genuinely claim-type-exclusive (and both are already consumed
+  into numeric `carr_num_freq`/`prvdr_num_freq` before this function runs) — the other 82 are
+  ordinary, legitimate partial real-world missingness in non-claim-type-exclusive fields
+  (`ICD_DGNS_CD2`-`25`, `ICD_PRCDR_CD1`-`24`, `HCPCS_CD`, `BETOS_CD`, etc.), never in scope for
+  this treatment. The unconditional raise would have crashed on all 82 of them. Corrected to skip
+  non-numeric columns unconditionally instead.
+- **`prvdr_num_freq`/`carr_num_freq` were wrongly grouped into an "already encoded, skip" set**
+  alongside the genuinely-finished one-hot dummies (`state_*`, `hcpcs_*`, `dgns_*`). That was
+  backwards: those two were frequency-encoded SPECIFICALLY so their real `NaN` could survive into
+  this step and get interaction terms built — skipping them silently produced zero interaction
+  terms for both, caught by the script's own sanity check (empty lists where exactly 2 each were
+  expected).
+
+### The restricted (pooled) design matrix
+
+`build_restricted_design_matrix()` builds the actual counterpart the Chow test compares against:
+every genuinely shared covariate collapses to ONE plain column (a single shared coefficient)
+instead of separate per-claim-type interaction terms — this is the literal restriction under test.
+Claim-type-exclusive fields (n_i=1) get IDENTICAL treatment to the unrestricted model — one
+interaction term, no restriction possible with only one claim type to begin with, matching the
+algebra directly (n_i=1 contributes `n_i-1=0` degrees of freedom either way). Both design-matrix
+functions share one `_null_pattern()` helper for classifying each column, specifically so they can
+never silently disagree about which claim types a covariate applies to.
+
+### The bug that triggered the full audit
+
+Cross-checking the two matrices' column counts (`unrestricted - restricted` should equal exactly 1
+extra column per genuine 2-of-3 covariate) came out to **13**, not the expected **2** — the number
+that was actually wrong was the expectation, not the code. `_null_pattern()` classifies every
+column dynamically at runtime; it had already been correctly finding and interacting every real
+2-of-3 covariate, by name, regardless of whether this document had documented that name yet.
+
+### The full presence audit — the artifact that should have existed from the start
+
+Rather than chase the 13 one column at a time (the pattern this document had followed since
+`PRNCPAL_DGNS_CD` first turned out wrong on 2026-09-15), a complete enumeration was run once:
+every column's null rate computed for each of the 3 claim types, classified by `n_present` (how
+many claim types it's populated in), saved as `data/full_claim_type_presence_audit.csv`.
+
+**Results: `n_present` distribution across all 206 non-identifier/non-label columns —
+1-of-3 (claim-type-exclusive): 32. 2-of-3 (shared, needs omit-third treatment): 13.
+3-of-3 (genuinely shared): 161. 0-of-3 (populated nowhere): 0** — confirming `DROP_COLUMNS`
+already has no gaps; every column populated in zero claim types is already gone.
+`32 + 13 + 161 = 206`, plus the 6 excluded identifier/label/dummy columns (`BENE_ID`, `CLM_ID`,
+`_row_id`, `is_denied`, and the 3 `claim_type_*` dummies) = 212, matching
+`train_model.parquet`'s actual column count exactly.
+
+**The complete list of 13 confirmed 2-of-3 covariates, corrected from the 2 previously
+documented (`CARR_NUM`, `PRVDR_NUM`) in Section 3:**
+
+| Column | Absent claim type |
+|---|---|
+| `CARR_CLM_CASH_DDCTBL_APLD_AMT` | outpatient |
+| `CARR_CLM_PRMRY_PYR_PD_AMT` | outpatient |
+| `CARR_NUM` | outpatient |
+| `LINE_ALOWD_CHRG_AMT` | outpatient |
+| `LINE_BENE_PMT_AMT` | outpatient |
+| `LINE_BENE_PRMRY_PYR_PD_AMT` | outpatient |
+| `LINE_BENE_PTB_DDCTBL_AMT` | outpatient |
+| `LINE_NCH_PMT_AMT` | outpatient |
+| `LINE_SRVC_CNT` | outpatient |
+| `NCH_CARR_CLM_ALOWD_AMT` | outpatient |
+| `NCH_CARR_CLM_SBMTD_CHRG_AMT` | outpatient |
+| `NCH_CLM_BENE_PMT_AMT` | outpatient |
+| `PRVDR_NUM` | **carrier** |
+
+**Why this pattern isn't arbitrary — a real structural explanation, not a coincidence.** 12 of the
+13 share `absent_type: outpatient`, splitting into two families, both explained by real Medicare
+RIF architecture: (1) `LINE_*` fields — carrier and DME are both Part B **non-institutional** claim
+types sharing the same line-item RIF schema; outpatient is **institutional** and uses a parallel
+`REV_CNTR_*` schema for the equivalent concepts instead, by design of the RIF layout itself, not a
+data quality issue. (2) `CARR_CLM_*`/`NCH_CARR_CLM_*` fields — named for "carrier claim"
+specifically, but populated in DME too, consistent with DME's RIF layout closely mirroring
+carrier's (the same carrier+DME pairing already seen for `PRVDR_SPCLTY` and `CARR_NUM` itself).
+`PRVDR_NUM` is the one genuine outlier, absent from **carrier** rather than outpatient — the
+opposite direction from every other field in the list, worth keeping visible rather than letting it
+blend into "the usual pattern."
+
+**Status: implemented and pushed, fully verified** —
+`add_claim_type_interactions()`/`build_restricted_design_matrix()` in
+`src/build_chow_design_matrix.py`; `data/full_claim_type_presence_audit.csv` committed as the
+permanent, canonical source for every future claim-type-applicability question, superseding
+Section 3's incomplete two-covariate list. **Not yet done:** the ~161 genuinely-shared 3-of-3
+covariates are not currently interacted in either design matrix at all (see Section 4's updated
+"what's still open" note) — a scoping decision that needs to be made explicit before the Chow test
+is actually fit, since it determines whether the omnibus test covers the full `k` covariates the
+original equations describe or a narrower subset.
