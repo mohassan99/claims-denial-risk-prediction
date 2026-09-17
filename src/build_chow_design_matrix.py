@@ -149,38 +149,48 @@ def add_claim_type_interactions(df: pd.DataFrame) -> tuple[pd.DataFrame, list[st
     """
     df = df.copy()
 
+    # Columns that need NO further processing here -- the one-hot dummies
+    # from build_chow_design_matrix() are 3-of-3 SHARED covariates encoded
+    # as plain columns by design (they never get interaction terms in this
+    # step -- that's Stage 2/per-variable homogeneity-testing territory).
+    #
+    # CORRECTED 2026-09-17 -- an earlier version of this skip list wrongly
+    # also included "prvdr_num_freq" and "carr_num_freq" as an
+    # already_encoded_exact set, treating them the same as the finished
+    # one-hot dummies. That was wrong: unlike the dummies, prvdr_num_freq/
+    # carr_num_freq are 2-of-3 covariates that were frequency-encoded
+    # SPECIFICALLY so their real NaN could survive into this step and get
+    # proper interaction terms built here -- that's the entire reason they
+    # were encoded that way rather than one-hot. Skipping them silently
+    # produced zero interaction terms for both, caught by this script's own
+    # sanity check (empty interaction-term lists where exactly 2 each were
+    # expected). They now fall through to the normal numeric-column
+    # handling below, same as any other claim-type-exclusive numeric field.
     already_encoded_prefixes = ("state_", "hcpcs_", "dgns_")
-    already_encoded_exact = {"prvdr_num_freq", "carr_num_freq"}
 
     interaction_cols: list[str] = []
     cols_to_drop: list[str] = []
 
     for col in list(df.columns):
-        if col in _NEVER_INTERACT or col in already_encoded_exact:
+        if col in _NEVER_INTERACT:
             continue
         if col.startswith(already_encoded_prefixes):
             continue
         if col.startswith("risk_"):  # defensive -- should already be absent from train_model.parquet
             continue
         if not pd.api.types.is_numeric_dtype(df[col]):
-            # CORRECTED 2026-09-17 -- this used to raise TypeError
-            # unconditionally on any non-numeric column, on the theory that
-            # a remaining string column was always a bug. Checked directly
-            # against real data before shipping that theory: of 84
-            # non-numeric columns still carrying real NaN in
-            # train_model.parquet, only CARR_NUM/PRVDR_NUM are genuinely
-            # claim-type-exclusive -- and both are already consumed into
-            # numeric carr_num_freq/prvdr_num_freq by
-            # build_chow_design_matrix() before this function ever sees
-            # them. Every other flagged column (the ICD_DGNS_CD*/
+            # Non-numeric claim-type-exclusive/shared columns are out of
+            # scope here -- this treatment only ever applies to NUMERIC
+            # dollar/count fields (FEATURE_ENGINEERING.md Section 3's
+            # original framing). Checked directly against real data
+            # (2026-09-17): of 84 non-numeric columns still carrying real
+            # NaN in train_model.parquet, only CARR_NUM/PRVDR_NUM were ever
+            # claim-type-exclusive, and both are already consumed into
+            # numeric carr_num_freq/prvdr_num_freq above before this loop
+            # runs. Every other flagged column (ICD_DGNS_CD*/
             # ICD_PRCDR_CD* family, HCPCS_CD, BETOS_CD, etc.) is ordinary,
-            # legitimate partial real-world missingness in a field that is
-            # NOT claim-type-exclusive -- never a candidate for this
-            # treatment, and the old unconditional raise would have crashed
-            # on all 84 of them. This treatment only ever applies to
-            # NUMERIC dollar/count fields (FEATURE_ENGINEERING.md Section
-            # 3's original framing) -- a non-numeric column is out of scope
-            # here by definition, not a bug to surface.
+            # legitimate partial real-world missingness in a non-claim-
+            # type-exclusive field -- never a candidate for this treatment.
             continue
 
         null_by_type = {
