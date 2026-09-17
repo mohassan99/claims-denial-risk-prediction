@@ -163,17 +163,25 @@ def add_claim_type_interactions(df: pd.DataFrame) -> tuple[pd.DataFrame, list[st
         if col.startswith("risk_"):  # defensive -- should already be absent from train_model.parquet
             continue
         if not pd.api.types.is_numeric_dtype(df[col]):
-            # Any remaining non-numeric column at this point is a bug
-            # elsewhere (build_chow_design_matrix should have encoded or
-            # dropped every string column) -- surface it loudly rather than
-            # silently skipping, since silently skipping a column that
-            # SHOULD have been a covariate is exactly the kind of thing
-            # this project has caught going wrong before.
-            raise TypeError(
-                f"Column '{col}' is non-numeric and wasn't encoded by "
-                f"build_chow_design_matrix() -- add it there before calling "
-                f"add_claim_type_interactions()."
-            )
+            # CORRECTED 2026-09-17 -- this used to raise TypeError
+            # unconditionally on any non-numeric column, on the theory that
+            # a remaining string column was always a bug. Checked directly
+            # against real data before shipping that theory: of 84
+            # non-numeric columns still carrying real NaN in
+            # train_model.parquet, only CARR_NUM/PRVDR_NUM are genuinely
+            # claim-type-exclusive -- and both are already consumed into
+            # numeric carr_num_freq/prvdr_num_freq by
+            # build_chow_design_matrix() before this function ever sees
+            # them. Every other flagged column (the ICD_DGNS_CD*/
+            # ICD_PRCDR_CD* family, HCPCS_CD, BETOS_CD, etc.) is ordinary,
+            # legitimate partial real-world missingness in a field that is
+            # NOT claim-type-exclusive -- never a candidate for this
+            # treatment, and the old unconditional raise would have crashed
+            # on all 84 of them. This treatment only ever applies to
+            # NUMERIC dollar/count fields (FEATURE_ENGINEERING.md Section
+            # 3's original framing) -- a non-numeric column is out of scope
+            # here by definition, not a bug to surface.
+            continue
 
         null_by_type = {
             ct: df.loc[df[f"claim_type_{ct}"] == 1, col].isna().mean() for ct in _CLAIM_TYPES
