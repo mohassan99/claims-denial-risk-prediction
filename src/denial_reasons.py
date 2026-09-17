@@ -98,27 +98,43 @@ REASON_CATALOG = {
     "missing_hcpcs": {
         "carc_code": "16",
         "label": "Claim/service lacks information (no procedure code submitted)",
-        "base_prob": 0.80,
+        "base_prob": 0.08,
         "source_note": "Added 2026-09-16, discovered via a real-data anomaly during "
         "Phase 2 feature engineering, not planned in advance -- see "
         "data/FEATURE_ENGINEERING.md and denial_rules.py Rule 8's docstring for the full "
         "investigation. No published marginal-survey benchmark exists for this exact "
         "scenario (unlike most other factors here) -- base_prob is a disclosed structural "
-        "judgment: a missing procedure code is a fundamental adjudication blocker for "
-        "professional/DME claims in real Medicare processing, so set high, but explicitly "
-        "NOT claimed as a measured rate. Set just below deprecated_code's 0.85 (which HAS "
-        "an exact federal-policy citation) since this one is reasoned inference, not a "
-        "documented policy fact. This CARC (16, 'claim/service lacks information') "
-        "deliberately overlaps with provider_outlier's CARC below -- both are legitimate, "
-        "independent real-world reasons a payer might cite the same generic code; real "
-        "EOBs routinely reuse CARC 16 across genuinely distinct root causes. UPDATED "
-        "2026-09-16: carrier's LINE_NUM=1 is excluded from this rule's detection entirely "
-        "(see rule_missing_hcpcs in denial_rules.py) -- it's a confirmed, structurally "
-        "distinct pattern (100% null on HCPCS_CD, zero exceptions across 58,040 rows) that "
-        "is NOT sparse otherwise (diagnosis/payment/service-count fields are populated at "
-        "comparable or higher rates than other lines), so treating it as a real missing-code "
-        "denial trigger would have been wrong. The root cause of WHY it's isolated to line 1 "
-        "is not established -- see that docstring for exactly what is and isn't known.",
+        "judgment, not a measured rate.\n\n"
+        "REVISED 2026-09-17, and DECOUPLED from CALIBRATION_SCALE (see "
+        "UNCALIBRATED_FACTORS below) -- both changes forced by the same real-data finding, "
+        "not a preference. The original 0.80 value assumed missing_hcpcs would activate on "
+        "a small minority of claims, the way every other factor in this file does. Real "
+        "data broke that assumption badly: even after excluding carrier's first/last-line "
+        "synthetic-total artifact (denial_rules.py Rule 8), missing_hcpcs still activates "
+        "on ~33.9% of ALL claims -- a population share no other factor in this file comes "
+        "close to. Scaling a factor that large by the same CALIBRATION_SCALE tuned for "
+        "every other (much rarer) factor is mathematically incoherent: at the original "
+        "0.80 x 1.4 (clamped to 0.95), this single factor alone pushed overall is_denied "
+        "to 46.4%, then 41.6% after the line exclusion -- far outside the 10-15% target "
+        "no matter how CALIBRATION_SCALE is retuned, since fixing it for this factor would "
+        "break the other five, which were already correctly calibrated on their own. "
+        "0.08 is the reasoned value that lets missing_hcpcs contribute a modest, plausible "
+        "~2-3 percentage points to the population rate given its ~34% activation share -- "
+        "arithmetic: target_addition ~= 12.5% - (other five factors' ~9.6% combined "
+        "contribution) ~= 2.9%; own_prob ~= 2.9% / 33.9% ~= 0.086, rounded to 0.08. This is "
+        "a real retreat from the original 'fundamental adjudication blocker' framing -- "
+        "worth stating plainly rather than hiding the reversal: the factor is real and "
+        "correctly modeled as INCREASING risk (fixing the original backwards-from-reality "
+        "circularity, still the main point of adding this rule), but its true weight in "
+        "this dataset is closer to a moderate risk factor than a near-certain one, once its "
+        "actual population share is taken into account. This CARC (16, 'claim/service "
+        "lacks information') deliberately overlaps with provider_outlier's CARC below -- "
+        "both are legitimate, independent real-world reasons a payer might cite the same "
+        "generic code; real EOBs routinely reuse CARC 16 across genuinely distinct root "
+        "causes. Carrier's first/last line (confirmed synthetic claim-total artifacts, not "
+        "real missing-code claims) are excluded from this rule's detection entirely -- see "
+        "rule_missing_hcpcs in denial_rules.py for exactly what's confirmed and what isn't "
+        "about that pattern.",
     },
     "deprecated_code": {
         "carc_code": "181",
@@ -182,6 +198,23 @@ RISK_FACTOR_FUNCS = {
     "dx_procedure_mismatch": rule_dx_procedure_mismatch,
     "provider_outlier": rule_provider_outlier,
 }
+
+# ---------------------------------------------------------------------------
+# Factors EXCLUDED from CALIBRATION_SCALE's uniform multiplier. Added
+# 2026-09-17 -- see missing_hcpcs's REASON_CATALOG source_note above for the
+# full arithmetic behind why this was forced, not a preference. Every other
+# factor activates on a small population share (well under 25%), so a single
+# shared multiplier tuned against that group works coherently. missing_hcpcs
+# activates on ~34% of ALL claims -- large enough that scaling it by the same
+# knob as everything else makes CALIBRATION_SCALE unsolvable: any value that
+# keeps missing_hcpcs's contribution sane would undershoot the other five
+# factors, which were already correctly calibrated on their own before this
+# factor existed. missing_hcpcs's base_prob (0.08) is therefore fixed
+# directly in REASON_CATALOG and used as-is, bypassing calibration_scale
+# entirely -- add a factor here only if it shows the same
+# large-population-share property, not merely because its calibration is
+# inconvenient.
+UNCALIBRATED_FACTORS = {"missing_hcpcs"}
 
 # Fixed processing-order priority for reason-code assignment when 2+ factors
 # are active on the same denied claim -- DETERMINISTIC, not weighted-random
@@ -280,7 +313,8 @@ def sample_denials(
     sample is_denied -> assign 1+ reason(s) to each denied claim by fixed
     processing-order priority (REASON_PRIORITY), not weighted-random.
 
-    `calibration_scale` multiplies all base_prob values uniformly -- the one
+    `calibration_scale` multiplies every factor's base_prob EXCEPT those
+    listed in UNCALIBRATED_FACTORS (currently just missing_hcpcs) -- the one
     knob to turn if the resulting population denial rate lands outside the
     documented 10-15% industry range (see calibration workflow below). Note
     this scales each factor's pᵢ BEFORE noisy-OR combination, not the combined
@@ -288,18 +322,26 @@ def sample_denials(
     that's not the same thing and why there's no closed-form guarantee this
     lands the population rate exactly in 10-15%; check calibration_report().
 
-    IMPORTANT, updated 2026-09-16: the first real-data run WITHOUT the
-    carrier-LINE_NUM=1 exclusion showed missing_hcpcs firing on 38.9% of ALL
-    claims, driving overall is_denied to 46.4% -- far outside range. The
-    exclusion (denial_rules.py rule_missing_hcpcs) should shrink this
-    materially, but CALIBRATION_SCALE (1.4, in build_target_and_split.py)
-    will still very likely need to come down. Run calibration_report() after
-    this fix and expect to iterate.
+    UPDATED 2026-09-17: missing_hcpcs is now excluded from calibration_scale's
+    multiplier entirely (see UNCALIBRATED_FACTORS above and its
+    REASON_CATALOG source_note for the full arithmetic) -- its base_prob
+    (0.08) is fixed and used as-is regardless of calibration_scale's value.
+    This was forced by missing_hcpcs's ~34% population activation share,
+    which made it mathematically impossible to find one calibration_scale
+    value that works for both this factor and the other five (much rarer)
+    ones simultaneously. CALIBRATION_SCALE itself (1.4, in
+    build_target_and_split.py) was already correctly tuned for those other
+    five factors and should not need to change because of this fix -- but
+    still verify with calibration_report() after any real-data run, per this
+    project's standing practice of checking rather than assuming.
     """
     rng = np.random.default_rng(seed)
 
     risk_factors = compute_risk_factors(df, **detector_kwargs)
-    base_probs = {k: v["base_prob"] * calibration_scale for k, v in REASON_CATALOG.items()}
+    base_probs = {
+        k: (v["base_prob"] if k in UNCALIBRATED_FACTORS else v["base_prob"] * calibration_scale)
+        for k, v in REASON_CATALOG.items()
+    }
     base_probs = {k: min(p, 0.95) for k, p in base_probs.items()}  # keep sane bounds
 
     p_denied = noisy_or_probability(risk_factors, base_probs)
