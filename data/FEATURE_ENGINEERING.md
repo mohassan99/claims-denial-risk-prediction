@@ -823,14 +823,25 @@ that's also used elsewhere in this project as a fraud/outlier proxy).
 **Critical implementation detail: `PRVDR_NUM`'s real `NaN` (its 2-of-3 gap, absent for carrier)
 must survive the frequency encoding untouched, not get silently filled.** `frequency_encode()`
 computes its lookup table via `value_counts(dropna=True)` and maps via `.map()`, which correctly
-leaves unmapped/`NaN` inputs as `NaN` in the output — verified directly by the script's own sanity
-check (`prvdr_num_freq`'s NaN count must equal carrier's row count exactly). This is not
-incidental: `PRVDR_NUM` is a confirmed 2-of-3 shared covariate, and per Section 3's
-degrees-of-freedom correction, its NaN for the one absent claim type must stay NaN so the (not yet
-written) interaction-term construction can correctly omit that claim type's term entirely.
-Fabricating a frequency value there — even something as seemingly neutral as `0` — would repeat
-the exact 0-vs-missing mistake the 2026-09-16 numeric zero-fill correction was written to prevent,
-just for a different encoding scheme than the one that mistake originally occurred in.
+leaves unmapped/`NaN` inputs as `NaN` in the output. This is not incidental: `PRVDR_NUM` is a
+confirmed 2-of-3 shared covariate, and per Section 3's degrees-of-freedom correction, its NaN for
+the one absent claim type must stay NaN so the (not yet written) interaction-term construction can
+correctly omit that claim type's term entirely. Fabricating a frequency value there — even
+something as seemingly neutral as `0` — would repeat the exact 0-vs-missing mistake the
+2026-09-16 numeric zero-fill correction was written to prevent, just for a different encoding
+scheme than the one that mistake originally occurred in.
+
+**Correction, 2026-09-17 — the script's own sanity check for this initially asserted a stronger
+claim than the data supports, and the failure it caught is itself a useful finding.** The first
+version of this check expected `prvdr_num_freq`'s NaN count to equal carrier's row count exactly.
+Running it produced a 136-row mismatch — investigated directly rather than dismissed: `PRVDR_NUM`
+turns out to have a small, genuine *within-outpatient* gap (136 null rows out of 367,542, ~0.037%)
+in addition to its 100%-null carrier gap. This is the same category of thing as `HCPCS_CD`'s
+within-carrier missingness described above — ordinary, non-structural missingness sitting on top
+of a structural one — just three orders of magnitude smaller, which is why it never surfaced as
+its own line item until this check caught it. The sanity check now compares against the sum of
+both real components (carrier's structural count plus outpatient's small residual) rather than
+carrier's count alone, and confirms clean.
 
 **Status: implemented and pushed** — `top_n_encode()`, `frequency_encode()`, and
 `build_chow_design_matrix()` in `src/build_chow_design_matrix.py`. **Not yet implemented**, and
