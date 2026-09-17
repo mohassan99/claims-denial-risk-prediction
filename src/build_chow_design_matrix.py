@@ -88,14 +88,30 @@ if __name__ == "__main__":
     print(f"train_model.parquet: {train.shape[1]} columns")
     print(f"design matrix:       {design.shape[1]} columns")
 
-    # Sanity check: PRVDR_NUM is absent for carrier (confirmed 2026-09-15),
-    # so prvdr_num_freq's NaN count should equal carrier's row count exactly
-    # -- not 0 (would mean NaN got silently filled) and not some other
-    # number (would mean the encoding touched rows it shouldn't have).
+    # Sanity check on PRVDR_NUM's NaN pattern -- CORRECTED 2026-09-17.
+    # The original version of this check asserted prvdr_num_freq's NaN
+    # count must equal carrier's row count EXACTLY. That was too strong a
+    # claim: PRVDR_NUM is 100% null for carrier (structural, confirmed
+    # 2026-09-15) PLUS a tiny separate residual gap within outpatient --
+    # confirmed directly: outpatient shows 136 null PRVDR_NUM rows out of
+    # 367,542 (~0.037%), not 0. That's the SAME kind of thing as HCPCS_CD's
+    # within-carrier missingness (Section 5) -- ordinary, small,
+    # within-claim-type gap -- just three orders of magnitude smaller, so
+    # it never got its own separate note until this check caught it.
+    # Expected total is therefore carrier's full count plus that small
+    # residual, not carrier's count alone.
     n_carrier = (train["claim_type_carrier"] == 1).sum()
+    n_outpatient_residual = (
+        train.loc[train["claim_type_outpatient"] == 1, "PRVDR_NUM"].isna().sum()
+    )
+    expected_nan = n_carrier + n_outpatient_residual
     n_nan = design["prvdr_num_freq"].isna().sum()
-    status = "OK" if n_nan == n_carrier else "MISMATCH -- investigate before using this design matrix"
-    print(f"\nprvdr_num_freq NaN count: {n_nan:,} (expected: carrier row count = {n_carrier:,}) [{status}]")
+    status = "OK" if n_nan == expected_nan else "MISMATCH -- investigate before using this design matrix"
+    print(
+        f"\nprvdr_num_freq NaN count: {n_nan:,} "
+        f"(expected: carrier {n_carrier:,} + outpatient residual {n_outpatient_residual:,} "
+        f"= {expected_nan:,}) [{status}]"
+    )
 
     print(f"\nhcpcs_dummies columns: {[c for c in design.columns if c.startswith('hcpcs_')][:5]} ... ({sum(c.startswith('hcpcs_') for c in design.columns)} total)")
     print(f"dgns_dummies columns:  {[c for c in design.columns if c.startswith('dgns_')][:5]} ... ({sum(c.startswith('dgns_') for c in design.columns)} total)")
