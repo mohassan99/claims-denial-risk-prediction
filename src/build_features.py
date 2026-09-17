@@ -92,6 +92,26 @@ DROP_COLUMNS = [
     # User Guide's DME table (6-6) -- if DME later shows real variance here,
     # this drop decision needs revisiting for that claim type specifically.
     "LINE_CMS_TYPE_SRVC_CD",
+    # Added 2026-09-16: three fields confirmed EXACT duplicates of another
+    # kept field, verified via direct equality checks against train.parquet
+    # (100% exact match, diff == 0 for every row, no tolerance needed -- not
+    # just highly correlated). All three trace to the same root cause: this
+    # dataset's Synthea generation never models a provider write-off/
+    # discount (LINE_SBMTD_CHRG_AMT == LINE_ALOWD_CHRG_AMT, confirmed on
+    # 602,755 interior carrier lines, std == 0.0) or non-assignment billing
+    # (LINE_NCH_PMT_AMT == LINE_PRVDR_PMT_AMT and the claim-level rollup
+    # NCH_CLM_PRVDR_PMT_AMT == NCH_CARR_CLM_ALOWD_AMT, both 100% exact across
+    # all 718,074 carrier rows) -- i.e. every carrier claim behaves as if
+    # fully assigned and billed at exactly the allowed rate, with no
+    # exceptions in this data. This is a disclosed synthetic-data limitation
+    # (see FEATURE_ENGINEERING.md Section 2's new subsection), not a
+    # cleaning artifact -- kept field chosen as whichever one participates
+    # in the real payer payment-reconciliation identity (allowed over
+    # billed; the primary NCH payment field over its provider-payment
+    # mirror). Dropping these is not optional the way a merely-correlated
+    # pair might be: exact equality makes the design matrix singular for
+    # any linear model.
+    "LINE_SBMTD_CHRG_AMT", "LINE_PRVDR_PMT_AMT", "NCH_CLM_PRVDR_PMT_AMT",
 ]
 
 # ---------------------------------------------------------------------------
