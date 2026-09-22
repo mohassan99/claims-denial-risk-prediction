@@ -2,7 +2,7 @@
 Phase 2 -- build the design matrices for the Chow test (and, eventually, the
 Phase 2 baseline logistic regression). Operates on a COPY of
 train_model.parquet only -- never mutates the shared file XGBoost also
-reads from. See data/FEATURE_ENGINEERING.md Section 5 for the full
+reads from. See data/FEATURE_ENGINEERING.md Sections 5-6 for the full
 reasoning behind each encoding choice below.
 
 Run after build_features.py.
@@ -12,11 +12,23 @@ Three stages:
      2-of-3 covariates that needed it (HCPCS_CD, PRNCPAL_DGNS_CD, PRVDR_NUM,
      CARR_NUM, provider_state).
   2. add_claim_type_interactions() -- builds the UNRESTRICTED (fully-
-     interacted) model's design matrix: zero-fill-on-a-copy for every
-     remaining numeric claim-type-exclusive/2-of-3 covariate, building
-     value x claim_type_dummy terms only for the claim type(s) each
-     covariate is actually populated in (FEATURE_ENGINEERING.md Section 3's
-     degrees-of-freedom correction). Run via build_full_design_matrix().
+     interacted) model's design matrix. Two passes:
+       (a) numeric claim-type-exclusive/2-of-3 covariates: zero-fill-on-a-
+           copy, build value x claim_type_dummy terms only for the claim
+           type(s) each covariate is actually populated in
+           (FEATURE_ENGINEERING.md Section 3's degrees-of-freedom
+           correction).
+       (b) genuinely-3-of-3 categorical dummy groups (provider_state,
+           HCPCS_CD, PRNCPAL_DGNS_CD, the 5 NPI flags): interact against
+           ALL three claim_type dummies, but SKIP any resulting interaction
+           term that would be constant at zero across the whole dataset --
+           confirmed empirically necessary (2026-09-22): 13 of 21 HCPCS
+           top-N categories have zero DME claims in this dataset, a real
+           structural finding (DME uses a different HCPCS code family),
+           not a hypothetical edge case. Same principle as (a)'s degrees-
+           of-freedom correction, just triggered by an empirical zero
+           instead of a structural/schema one.
+     Run via build_full_design_matrix().
   3. build_restricted_design_matrix() -- builds the RESTRICTED (pooled)
      model's design matrix: every genuinely shared covariate (2-of-3 or
      3-of-3) as ONE plain column instead of separate per-claim-type
@@ -26,7 +38,11 @@ Three stages:
      no restriction possible with only one claim type to begin with --
      FEATURE_ENGINEERING.md Section 3 checklist item 2), so this function
      shares that logic with add_claim_type_interactions() rather than
-     re-deriving it.
+     re-deriving it. Genuinely-3-of-3 categorical dummies need NO change
+     here even after (2b) above -- they were always single plain columns
+     in the restricted matrix; a category with zero DME claims just means
+     that column's pooled coefficient is estimated entirely from
+     carrier+outpatient data, still a valid single coefficient.
 
 Both design matrices are built from the SAME intermediate
 (build_chow_design_matrix() output), so they cover identical rows and an
@@ -67,11 +83,11 @@ _NPI_FLAGS = {
 }
 
 # Prefixes for the one-hot dummies build_chow_design_matrix() already
-# produced -- 3-of-3 shared covariates encoded as plain columns by design,
-# with no NaN left to zero-fill. Identical in both the restricted and
-# unrestricted design matrices as currently scoped (see both functions'
-# docstrings for the Stage-2/per-variable-testing caveat on this).
-_ALREADY_ENCODED_PREFIXES = ("state_", "hcpcs_", "dgns_")
+# produced -- genuinely-3-of-3 shared covariates. ADDED 2026-09-22: these
+# now GET interaction terms too (see add_claim_type_interactions()'s second
+# pass), with a zero-variance guard, rather than being left as untested
+# plain columns.
+_GENUINELY_SHARED_PREFIXES = ("state_", "hcpcs_", "dgns_")
 
 
 def top_n_encode(series: pd.Series, n: int, prefix: str) -> pd.DataFrame:
@@ -165,40 +181,104 @@ def _null_pattern(df: pd.DataFrame, col: str) -> tuple[list[str], list[str]]:
     return absent_types, present_types
 
 
-def add_claim_type_interactions(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
-    """Builds the UNRESTRICTED (fully-interacted) model's design matrix: for
-    every remaining NUMERIC column whose nullness is structurally
-    determined by claim_type -- whether that's a claim-type-EXCLUSIVE field
-    (~166 REV_CNTR_*/DMERC_LINE_*/CARR_CLM_*-family columns, populated in
-    exactly 1 claim type) or a confirmed 2-of-3 SHARED covariate
-    (carr_num_freq, prvdr_num_freq) -- build interaction terms against only
-    the claim type(s) it's actually populated in, per
-    FEATURE_ENGINEERING.md Section 3's degrees-of-freedom correction.
+def _interact_with_zero_variance_guard(
+    df: pd.DataFrame, cols: list[str]
+) -> tuple[pd.DataFrame, list[str], list[str]]:
+    """For each column in `cols` (a genuinely-3-of-3 binary dummy -- one-hot
+    category or NPI flag), build value*claim_type_dummy for each of the 3
+    claim types, SKIPPING any resulting interaction term that would be
+    constant at zero across the entire dataset (no row has both this
+    category and this claim type).
 
-    Both cases get IDENTICAL treatment here: a claim-type-exclusive field
-    (n_i=1) and a 2-of-3 shared covariate (n_i=2) differ only in how many
-    interaction terms they get (1 vs 2) -- the mechanism (zero-fill on this
-    copy, build value*dummy for each present claim type, omit the term for
-    each absent one) is the same either way.
+    Why this guard exists, precisely: an all-zero column has no variance to
+    estimate a coefficient from -- this isn't a small-sample precision
+    issue, it's a non-identifiable parameter (quasi/complete separation).
+    Confirmed empirically necessary, not hypothetical: 13 of HCPCS_CD's 21
+    top-N one-hot categories have ZERO DME claims in this dataset (checked
+    directly, 2026-09-22) -- DME bills a structurally different HCPCS code
+    family (E/K-prefixed Level II codes) than the carrier-dominated pooled
+    top-20. `provider_state` and `PRNCPAL_DGNS_CD` showed no such zero
+    cells in the same check, so this guard is a no-op for them in practice
+    -- but it's applied uniformly rather than special-cased to HCPCS_CD
+    alone, since the underlying risk (a rare category paired with the
+    smallest claim type, DME at 66,335 rows) could in principle recur for
+    any high-cardinality dummy, not just this one.
 
-    Runs on the COPY returned by build_chow_design_matrix() -- the raw
-    zero-fill happens HERE, on this copy, never in train_model.parquet
-    itself (FEATURE_ENGINEERING.md Section 3 checklist item 3's correction).
+    Same principle as add_claim_type_interactions()'s degrees-of-freedom
+    correction for claim-type-exclusive/2-of-3 covariates
+    (FEATURE_ENGINEERING.md Section 3) -- never include an interaction term
+    that's structurally constant at zero, whether that's known in advance
+    from the CMS schema (a claim type never has this field at all) or
+    discovered empirically (this specific category never co-occurs with
+    this specific claim type). Practical consequence for the degrees-of-
+    freedom count: a dummy that loses one of its 3 interaction terms this
+    way contributes n_i-1=1 degree of freedom in the omnibus test, not 2 --
+    the SAME formula as a true 2-of-3 covariate, just arrived at
+    empirically rather than structurally.
 
-    Returns (df_with_interactions, list_of_new_interaction_column_names) --
-    the second value is for the not-yet-written Chow-test fitting step,
-    which needs to know exactly which columns are "unrestricted-model-only"
-    versus shared with the restricted model.
+    Returns (df, new_interaction_cols, dropped_zero_variance_cols).
+    """
+    df = df.copy()
+    new_cols: list[str] = []
+    dropped: list[str] = []
+
+    for col in cols:
+        for ct in _CLAIM_TYPES:
+            candidate = df[col] * df[f"claim_type_{ct}"]
+            new_col = f"{col}__x__{ct}"
+            if candidate.sum() == 0:
+                dropped.append(new_col)
+                continue
+            df[new_col] = candidate
+            new_cols.append(new_col)
+
+    df = df.drop(columns=cols)
+    return df, new_cols, dropped
+
+
+def add_claim_type_interactions(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str], list[str]]:
+    """Builds the UNRESTRICTED (fully-interacted) model's design matrix, in
+    two passes:
+
+    Pass 1 -- numeric claim-type-exclusive/2-of-3 covariates. For every
+    remaining NUMERIC column whose nullness is structurally determined by
+    claim_type -- whether that's a claim-type-EXCLUSIVE field (~166
+    REV_CNTR_*/DMERC_LINE_*/CARR_CLM_*-family columns, populated in exactly
+    1 claim type) or a confirmed 2-of-3 SHARED covariate (carr_num_freq,
+    prvdr_num_freq) -- build interaction terms against only the claim
+    type(s) it's actually populated in, per FEATURE_ENGINEERING.md
+    Section 3's degrees-of-freedom correction. Zero-fill happens ONLY here,
+    on this copy, never in train_model.parquet itself (Section 3 checklist
+    item 3's correction).
+
+    Pass 2 -- genuinely-3-of-3 categorical dummy groups (ADDED 2026-09-22).
+    `provider_state`/`HCPCS_CD`/`PRNCPAL_DGNS_CD`'s one-hot dummies and the
+    5 NPI presence flags were previously left as untested plain columns
+    (Stage-1 omnibus test scope gap, flagged but not resolved as of
+    2026-09-17's Section 6). Now interacted against all 3 claim_type
+    dummies via _interact_with_zero_variance_guard(), which skips any
+    resulting term that would be constant at zero (see that function's
+    docstring -- confirmed necessary for 13 of HCPCS_CD's 21 categories
+    against DME specifically).
+
+    Returns (df_with_interactions, list_of_new_interaction_column_names,
+    list_of_skipped_zero_variance_column_names) -- the second value is for
+    the not-yet-written Chow-test fitting step, which needs to know exactly
+    which columns are "unrestricted-model-only" versus shared with the
+    restricted model; the third is purely for visibility/reporting, since a
+    silently-skipped term is exactly the kind of thing worth surfacing
+    rather than hiding.
     """
     df = df.copy()
 
     interaction_cols: list[str] = []
     cols_to_drop: list[str] = []
 
+    # --- Pass 1: numeric claim-type-exclusive / 2-of-3 covariates ---
     for col in list(df.columns):
         if col in _NEVER_INTERACT or col in _NPI_FLAGS:
             continue
-        if col.startswith(_ALREADY_ENCODED_PREFIXES):
+        if col.startswith(_GENUINELY_SHARED_PREFIXES):
             continue
         if col.startswith("risk_"):  # defensive -- should already be absent from train_model.parquet
             continue
@@ -220,13 +300,12 @@ def add_claim_type_interactions(df: pd.DataFrame) -> tuple[pd.DataFrame, list[st
         absent_types, present_types = _null_pattern(df, col)
 
         if not absent_types:
-            # Genuinely shared 3-of-3 (or no missingness at all) -- not a
-            # claim-type-exclusive/2-of-3 field. This function only builds
-            # interaction terms for fields that NEED them (some claim type
-            # structurally lacks the field); a true 3-of-3 shared covariate
-            # is Stage 2 (per-variable homogeneity testing) territory, not
-            # something to interact by default here. Left untouched --
-            # still present in the final design matrix as a plain column.
+            # Genuinely shared 3-of-3, no missingness -- not a claim-type-
+            # exclusive/2-of-3 field. Handled in Pass 2 below if it's one
+            # of the categorical dummy groups; a genuinely-3-of-3 NUMERIC
+            # field (rare -- none currently exist outside the dummy/flag
+            # groups) would fall through untouched here, which is correct:
+            # nothing in this pass claims to handle that case.
             continue
 
         filled = df[col].fillna(0)  # zero-fill ONLY here, on this copy
@@ -243,7 +322,14 @@ def add_claim_type_interactions(df: pd.DataFrame) -> tuple[pd.DataFrame, list[st
         cols_to_drop.append(col)
 
     df = df.drop(columns=cols_to_drop)
-    return df, interaction_cols
+
+    # --- Pass 2: genuinely-3-of-3 categorical dummy groups ---
+    shared_dummy_cols = [c for c in df.columns if c.startswith(_GENUINELY_SHARED_PREFIXES)]
+    shared_dummy_cols += [c for c in df.columns if c in _NPI_FLAGS]
+    df, new_cols, dropped_zero_variance = _interact_with_zero_variance_guard(df, shared_dummy_cols)
+    interaction_cols += new_cols
+
+    return df, interaction_cols, dropped_zero_variance
 
 
 def build_restricted_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
@@ -263,16 +349,18 @@ def build_restricted_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
       item 2 -- these sit outside the hypothesis being tested, in both
       models, for the same reason). Confirmed algebraically too: n_i=1
       contributes n_i-1=0 degrees of freedom to the LR test either way.
-    - Genuinely SHARED covariates (n_i in {2,3} -- carr_num_freq/
-      prvdr_num_freq, and the already-encoded 3-of-3 dummies/NPI flags):
-      appear as ONE plain column each here, forced to a single shared
-      coefficient -- versus n_i separate interaction terms in the
-      unrestricted model. THIS is the actual restriction under test: does
-      forcing one shared coefficient across claim types cost a
-      significant amount of fit, versus letting each claim type have its
-      own? 2-of-3 covariates get zero-filled on this copy for their one
-      absent claim type, so the single shared column has no raw NaN left
-      to break the fit.
+    - Genuinely SHARED covariates (2-of-3 numeric, or 3-of-3 categorical
+      dummies/NPI flags): appear as ONE plain column each here, forced to
+      a single shared coefficient -- versus multiple separate interaction
+      terms in the unrestricted model. THIS is the actual restriction
+      under test. 2-of-3 covariates get zero-filled on this copy for their
+      one absent claim type. The 3-of-3 categorical dummies/flags need NO
+      special handling at all here -- they were never touched by Pass 2's
+      interaction logic, so they're already exactly the single plain
+      column this model needs; a category with zero DME claims (2026-09-22
+      finding) doesn't change this -- its pooled coefficient is simply
+      estimated entirely from whichever claim types it does appear in,
+      still one valid coefficient either way.
 
     Runs on the COPY returned by build_chow_design_matrix() -- same
     starting point as add_claim_type_interactions(), so both design
@@ -285,7 +373,7 @@ def build_restricted_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
     for col in list(df.columns):
         if col in _NEVER_INTERACT or col in _NPI_FLAGS:
             continue
-        if col.startswith(_ALREADY_ENCODED_PREFIXES):
+        if col.startswith(_GENUINELY_SHARED_PREFIXES):
             continue
         if col.startswith("risk_"):
             continue
@@ -315,34 +403,36 @@ def build_restricted_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def build_full_design_matrix(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+def build_full_design_matrix(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str], list[str]]:
     """Run stages 1+2. This is the UNRESTRICTED (fully-interacted) model's
     design matrix. See build_restricted_design_matrix() for its pooled
     counterpart -- built separately, from the same starting point."""
     design = build_chow_design_matrix(df)
-    design, interaction_cols = add_claim_type_interactions(design)
-    return design, interaction_cols
+    design, interaction_cols, dropped_zero_variance = add_claim_type_interactions(design)
+    return design, interaction_cols, dropped_zero_variance
 
 
 if __name__ == "__main__":
     train = pd.read_parquet(PROCESSED_DIR / "train_model.parquet")
     intermediate = build_chow_design_matrix(train)
 
-    unrestricted, interaction_cols = add_claim_type_interactions(intermediate)
+    unrestricted, interaction_cols, dropped_zero_variance = add_claim_type_interactions(intermediate)
     restricted = build_restricted_design_matrix(intermediate)
 
     print(f"train_model.parquet:      {train.shape[1]} columns")
     print(f"unrestricted design matrix: {unrestricted.shape[1]} columns ({len(interaction_cols)} interaction terms)")
     print(f"restricted design matrix:   {restricted.shape[1]} columns")
 
+    # NEW 2026-09-22: report every interaction term skipped for zero
+    # variance -- confirmed expected count is 13 (all HCPCS x DME, per the
+    # manual check that motivated this guard), zero elsewhere.
+    print(f"\nInteraction terms skipped for zero variance: {len(dropped_zero_variance)}")
+    hcpcs_dme_dropped = [c for c in dropped_zero_variance if c.startswith("hcpcs_") and c.endswith("__x__dme")]
+    other_dropped = [c for c in dropped_zero_variance if c not in hcpcs_dme_dropped]
+    print(f"  hcpcs_* x dme: {len(hcpcs_dme_dropped)} (expected: 13)")
+    print(f"  everything else: {len(other_dropped)} (expected: 0) -- {other_dropped if other_dropped else '(none)'}")
+
     # Sanity check on PRVDR_NUM's NaN pattern -- CORRECTED 2026-09-17.
-    # The original version of this check asserted prvdr_num_freq's NaN
-    # count must equal carrier's row count EXACTLY. That was too strong a
-    # claim: PRVDR_NUM is 100% null for carrier (structural, confirmed
-    # 2026-09-15) PLUS a tiny separate residual gap within outpatient --
-    # confirmed directly: outpatient shows 136 null PRVDR_NUM rows out of
-    # 367,542 (~0.037%), not 0. Expected total is therefore carrier's full
-    # count plus that small residual, not carrier's count alone.
     n_carrier = (train["claim_type_carrier"] == 1).sum()
     n_outpatient_residual = (
         train.loc[train["claim_type_outpatient"] == 1, "PRVDR_NUM"].isna().sum()
@@ -358,8 +448,7 @@ if __name__ == "__main__":
 
     # Sanity check on the interaction terms themselves: for a 2-of-3
     # covariate, exactly 2 interaction columns should exist in the
-    # UNRESTRICTED matrix, never 3 -- a 3rd would mean the omit-third-
-    # interaction logic failed and an always-zero column slipped through.
+    # UNRESTRICTED matrix, never 3.
     prvdr_terms = [c for c in interaction_cols if c.startswith("prvdr_num_freq__x__")]
     carr_terms = [c for c in interaction_cols if c.startswith("carr_num_freq__x__")]
     print(f"\n[unrestricted] prvdr_num_freq interaction terms: {prvdr_terms} (expect exactly 2, never 3)")
@@ -367,10 +456,7 @@ if __name__ == "__main__":
 
     # Sanity check on the RESTRICTED matrix: the 2-of-3 covariates should
     # appear as a SINGLE plain column each (no __x__ suffix at all), with
-    # zero NaN remaining -- the opposite pattern from the unrestricted
-    # matrix's 2 separate interaction terms. This is the actual restriction
-    # the Chow test is testing, so getting this backwards would silently
-    # invalidate the whole comparison.
+    # zero NaN remaining.
     for col in ("prvdr_num_freq", "carr_num_freq"):
         present = col in restricted.columns
         no_interaction_variant = not any(c.startswith(f"{col}__x__") for c in restricted.columns)
@@ -381,13 +467,24 @@ if __name__ == "__main__":
             f"no_interaction_variant={no_interaction_variant}, no_nan={no_nan} [{status}]"
         )
 
-    # Row-count/column-universe cross-check: the two matrices should differ
-    # ONLY in how the 2-of-3 covariates are represented (1 column vs 2 each
-    # = a net +2 column difference), not in row count or in any other
-    # covariate's presence.
-    col_diff = unrestricted.shape[1] - restricted.shape[1]
-    print(f"\nColumn count difference (unrestricted - restricted): {col_diff} (expect exactly 2 -- one extra column per 2-of-3 covariate)")
-    print(f"Row count match: {len(unrestricted) == len(restricted) == len(train)}")
+    # NEW 2026-09-22: confirm the genuinely-3-of-3 categorical groups are
+    # NOW interacted in the unrestricted matrix but STILL plain columns in
+    # the restricted one -- the mirror-image check already established for
+    # the 2-of-3 numeric covariates, now extended to this new group.
+    for prefix, label in [("hcpcs_", "HCPCS"), ("dgns_", "Diagnosis"), ("state_", "State")]:
+        unrestricted_interacted = any(
+            c.startswith(prefix) and "__x__" in c for c in unrestricted.columns
+        )
+        restricted_plain = any(
+            c.startswith(prefix) and "__x__" not in c for c in restricted.columns
+        )
+        print(f"[{label}] unrestricted has interaction terms: {unrestricted_interacted}; restricted has plain columns: {restricted_plain}")
 
-    print(f"\nhcpcs_dummies columns: {[c for c in unrestricted.columns if c.startswith('hcpcs_')][:5]} ... ({sum(c.startswith('hcpcs_') for c in unrestricted.columns)} total)")
-    print(f"dgns_dummies columns:  {[c for c in unrestricted.columns if c.startswith('dgns_')][:5]} ... ({sum(c.startswith('dgns_') for c in unrestricted.columns)} total)")
+    npi_flag = "has_referring_physician"
+    npi_unrestricted_interacted = any(c.startswith(f"{npi_flag}__x__") for c in unrestricted.columns)
+    npi_restricted_plain = npi_flag in restricted.columns
+    print(f"[NPI flags, e.g. {npi_flag}] unrestricted interacted: {npi_unrestricted_interacted}; restricted plain: {npi_restricted_plain}")
+
+    col_diff = unrestricted.shape[1] - restricted.shape[1]
+    print(f"\nColumn count difference (unrestricted - restricted): {col_diff}")
+    print(f"Row count match: {len(unrestricted) == len(restricted) == len(train)}")
