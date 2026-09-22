@@ -50,7 +50,9 @@ requiring a real joint-probability table, which doesn't exist publicly (see belo
 Risk factors (with each one's illustrative CARC code and base conditional probability). Updated
 2026-09-12 to 5 factors (see Addendum #4 for the 4th, Addendum #6 for the 5th). **Final real-data
 calibration confirmed 2026-09-12 — see Addendum #7: overall 9.4% denial rate, 3 of 5 factors
-genuinely contributing.**
+genuinely contributing.** A 6th factor, `missing_hcpcs`, was added 2026-09-16 (see
+`data/FEATURE_ENGINEERING.md` for the discovery trail) and the label recalibrated 2026-09-17 to a
+final 12.1% overall rate.
 
 1. **Deprecated / Medicare-non-payable procedure code** (CARC 181, `base_prob=0.85`) — CPT
    consultation codes CMS stopped recognizing for Medicare Part B payment effective 2010-01-01.
@@ -67,7 +69,10 @@ genuinely contributing.**
 5. **Provider outlier billing pattern** (CARC 16, `base_prob=0.08`) — provider bills in the top
    percentile of claim volume or payment amount relative to peers (rough proxy for audit-flagged
    providers, weakest-grounded rule, deliberately given the lowest base rate).
-6. **Timely filing violation** — not implemented; `FI_CLM_PROC_DT` (claim processing date) is
+6. **Missing HCPCS code** (CARC 16, `base_prob=0.08`, added 2026-09-16) — no procedure code
+   submitted at all; see `data/FEATURE_ENGINEERING.md` for the full discovery and decoupling-
+   from-`CALIBRATION_SCALE` story.
+7. **Timely filing violation** — not implemented; `FI_CLM_PROC_DT` (claim processing date) is
    blank/fixed in this synthetic release, so days-between-service-and-submission can't be
    computed. Documented as a disclosed limitation, not silently dropped.
 
@@ -84,11 +89,18 @@ marginal benchmarks but are ultimately reasoned, disclosed assumptions — a sin
 `CALIBRATION_SCALE` knob tunes them uniformly to hit the target 10-15% overall rate rather than
 hand-tuning each one to a number that would falsely imply real-world precision. `deprecated_code`
 is the one exception — see Addendum #6 for why it's grounded differently and set higher.
+`missing_hcpcs` is a second exception, for the opposite reason — its population share (~34% of
+all claims) is far too large for the shared `CALIBRATION_SCALE` knob to touch without distorting
+every other factor, so its `base_prob` is fixed directly and excluded from that scaling entirely;
+see `data/FEATURE_ENGINEERING.md` for the arithmetic behind the 0.08 value chosen.
 
 **Multi-reason assignment:** for denied claims, the recorded reason(s) are assigned by fixed
 processing-order priority (changed 2026-09-11 from weighted-random — see Addendum #3), and claims
 with 2+ active factors have a documented 30% chance of carrying a second CARC code. The 30% figure
-is a disclosed assumption, not a measured multi-reason rate.
+is a disclosed assumption, not a measured multi-reason rate. **See the 2026-09-22 addendum below
+for a full analysis of how this priority ordering shapes the visible reason-code distribution —
+specifically, why `dx_procedure_mismatch` appears far more often as the recorded primary reason
+than its raw activation rate alone would predict.**
 
 **Leakage note this design surfaces:** `CLM_PMT_AMT` is overwritten to ~$0 for denied claims
 (`apply_payment_consequence()`) for internal consistency — this makes it a near-deterministic
@@ -162,7 +174,11 @@ check `is_denied.mean()`, adjust, repeat — not something the formula guarantee
 was confirmed concretely on real data 2026-09-12 — see Addendum #6/#7: the first real run landed
 at 1.4%, then 7.0% after the DME fix, then 9.4% once `dx_procedure_mismatch`'s mapping was
 actually running (see Addendum #7) — the cause was never the calibration scale itself; it was two
-under-firing rules, both now fixed.**
+under-firing rules, both now fixed.** A 6th factor, `missing_hcpcs`, was later found to require
+being excluded from `calibration_scale` entirely rather than tuned by it — see
+`data/FEATURE_ENGINEERING.md` — since its population share (~34%) made the shared scaling
+approach mathematically incoherent for that one factor specifically. Final overall rate after that
+fix: 12.1%.
 
 ### 3. Reason-code selection — moved from weighted-random to deterministic priority
 
@@ -189,7 +205,9 @@ principled fixed order, implemented as `REASON_PRIORITY` in `src/denial_reasons.
 2026-09-12 to include `deprecated_code` (see Addendum #6), placed FIRST — code-validity is a
 harder, more upfront system check than even duplicate detection, since a system needs a
 currently-recognized procedure code before it's even meaningful to check whether that code was
-billed twice:
+billed twice. Updated again 2026-09-16 to add `missing_hcpcs`, placed even FIRST-er than
+`deprecated_code` — a real system needs a procedure code to be *present* before it can meaningfully
+ask whether that code is deprecated at all (see `data/FEATURE_ENGINEERING.md`).
 
 1. `deprecated_code` — earliest: a system needs a currently-recognized, payable procedure code
    before duplicate-checking or any other edit is even meaningful.
@@ -209,7 +227,9 @@ factors — but **agreement in ranking direction does not mean the resulting pop
 entirely by each rule's *activation rate* on the actual CMS data (`compute_risk_factors()`
 output), not by the tie-break rule. Check `calibration_report()`'s per-rule activation rates
 against Experian's ~35%-cite-prior-auth framing empirically — don't assume the tie-break choice
-moves that number, because it doesn't.
+moves that number, because it doesn't. **This last point is examined in much more depth in the
+2026-09-22 addendum below, prompted by a real, initially-puzzling observation in the post-recalibration
+reason distribution.**
 
 **Status: implemented** in `src/denial_reasons.py` — `REASON_PRIORITY` constant plus a
 deterministic walk down it in `sample_denials()`, replacing the weighted `rng.choice` call. The
@@ -384,7 +404,7 @@ risk_provider_outlier         20.0152%
 risk_dx_procedure_mismatch    11.6172%
 risk_deprecated_code           5.3337%
 risk_missing_prior_auth        0.0798%
-risk_duplicate_claim           0.0546%
+risk_duplicate_claim            0.0546%
 
 Of denied claims, 11.2% carry a second reason code
 
@@ -403,7 +423,10 @@ contributing to the primary-reason distribution (53.9% / 29.1% / 16.7%), a real 
 Run 1's single-factor-dominance problem. `missing_prior_auth` and `duplicate_claim` remain small
 but are now fully explained rather than mysterious (see Addendum #6 for `duplicate_claim`;
 `missing_prior_auth`'s proxy is inherently narrow by design — DME codes + a 90-day no-prior-claim
-window).
+window). **Superseded 2026-09-16/17 by the `missing_hcpcs` addition and recalibration — see the
+"Label mechanism" section above for the current 12.1% figure, and the 2026-09-22 addendum below
+for a full explanation of how this reason distribution shifted again once `missing_hcpcs` joined
+the priority ordering.**
 
 **Decision point, left open deliberately:** whether to bump `CALIBRATION_SCALE` (try 1.15-1.25)
 to push from 9.4% toward the center of the 10-15% band, or leave it as-is since 9.4% is
@@ -712,3 +735,71 @@ specific risk factor. What changes is the *supporting* claim about *why* no corr
 expected — that turned out to be right for one factor (`deprecated_code`) and wrong for another
 (`missing_prior_auth`, now explained by capped-rental DME billing structure), and both outcomes,
 plus the explanation for the miss, are on record rather than only the confirming one.
+
+---
+
+## Addendum: Why `dx_procedure_mismatch` dominates the visible reason distribution despite modest
+activation, and `provider_outlier` barely shows up despite high activation (2026-09-22)
+
+**The observation that prompted this check.** After `missing_hcpcs` was added and the label
+recalibrated to 12.1% overall (see the "Label mechanism" section above), the primary-reason
+distribution looked, at first glance, hard to reconcile with each factor's own activation rate:
+
+```
+Overall activation rate (all claims):
+risk_missing_hcpcs            33.9%
+risk_provider_outlier         20.0%
+risk_dx_procedure_mismatch    11.6%
+risk_deprecated_code           5.3%
+risk_missing_prior_auth        0.08%
+risk_duplicate_claim           0.05%
+```
+
+`dx_procedure_mismatch` (11.6% activation, `base_prob=0.15`, the lowest-`base_prob` factor with
+any real activation) showed up as **22.6%** of primary reasons on denied claims — nearly double
+its raw activation share — while `provider_outlier` (20.0% activation, `base_prob=0.08`, roughly
+double `dx_procedure_mismatch`'s activation) barely registered. This looked, before checking,
+like it could be a real bug in the noisy-OR combination or the priority-assignment logic — the
+kind of thing that would matter for `is_denied`'s validity, not just a cosmetic labeling detail.
+
+**The check: how often does each factor's activation get "overridden" by a higher-priority
+factor also being active on the same claim?** Recall `denial_reason_carc_1` records only the
+*highest-`REASON_PRIORITY`* active factor on a denied claim — a factor can be active and
+contributing to `p_denied` via noisy-OR without ever showing up as the recorded reason, if
+something ranked above it in `REASON_PRIORITY` (`missing_hcpcs → deprecated_code →
+duplicate_claim → missing_prior_auth → dx_procedure_mismatch → provider_outlier`) also fired on
+that same claim.
+
+```
+Denied claims: 218,036
+
+risk_missing_hcpcs:         48,607 denied-active ->  0.0% overridden
+risk_deprecated_code:       91,393 denied-active ->  0.0% overridden
+risk_duplicate_claim:          958 denied-active -> 99.1% overridden
+risk_missing_prior_auth:       442 denied-active ->  0.5% overridden
+risk_dx_procedure_mismatch: 49,335 denied-active ->  0.1% overridden
+risk_provider_outlier:      91,065 denied-active -> 68.9% overridden
+```
+
+**This fully explains the observation — no bug.** `provider_outlier` is `REASON_PRIORITY`'s
+lowest-ranked factor, so *any* other active factor on the same claim takes precedence over it —
+and because `missing_hcpcs` alone is active on 33.9% of all claims, a large share of
+`provider_outlier`'s 91,065 denied-and-active claims also happen to have `missing_hcpcs` (or
+another higher-ranked factor) active, and lose the recorded-reason slot to it. Only the
+remaining ~31% of `provider_outlier`'s activations actually surface as `denial_reason_carc_1`.
+`dx_procedure_mismatch`, despite lower raw activation, essentially never shares a claim with a
+higher-priority factor (0.1% overridden) — so nearly all of its activations show through
+untouched. The visible reason-code distribution reflects each factor's *activation rate combined
+with how much it overlaps with higher-priority factors*, not activation rate alone — and that
+combination is exactly what produces the apparent reversal.
+
+**What this does and doesn't say about the pipeline.** Nothing here indicates an error in
+`noisy_or_probability()`, `CALIBRATION_SCALE`, or `REASON_PRIORITY`'s construction — all three are
+working exactly as designed. It's a reminder that `denial_reason_carc_1`'s distribution is a
+*reporting* artifact of the fixed-priority tie-break rule (see Addendum #3's original design
+rationale — this is precisely the tradeoff that rule accepted, discovered concretely rather than
+left abstract), not a measure of which factors matter most to `is_denied` itself. For that
+question, `calibration_report()`'s raw per-factor activation rates (or, more rigorously, each
+factor's SHAP contribution once the Phase 2 model exists) are the right thing to look at —
+`denial_reason_carc_1`'s distribution is Phase 4/5 narrative material, not a diagnostic for label
+quality, exactly as Addendum #3 already scoped it to be.
