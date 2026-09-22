@@ -53,14 +53,14 @@ NPI_ROLE_FIELDS = {
 # ---------------------------------------------------------------------------
 # Decision: columns dropped outright -- raw NPI values, PRVDR_ZIP, always-
 # 100%-null columns, and zero-variance/collinear-with-claim_type columns
-# (FEATURE_ENGINEERING.md Sections 1-3).
+# (FEATURE_ENGINEERING.md Sections 1-3, 6).
 # ---------------------------------------------------------------------------
 DROP_COLUMNS = [
     # Raw NPI values -- presence already captured above.
     "RFR_PHYSN_NPI", "PRF_PHYSN_NPI", "AT_PHYSN_NPI", "OP_PHYSN_NPI",
     "RNDRNG_PHYSN_NPI", "PRVDR_NPI",
     "PRVDR_ZIP",
-    # Always-100%-null across the whole dataset.
+    # Always-100%-null across the whole dataset (original 10, found 2026-09-13).
     "LINE_SERVICE_DEDUCTIBLE", "FI_CLM_PROC_DT", "OT_PHYSN_UPIN", "OT_PHYSN_NPI",
     "ICD_PRCDR_CD25", "PRCDR_DT25", "RSN_VISIT_CD1", "RSN_VISIT_CD2", "RSN_VISIT_CD3",
     "REV_CNTR_NDC_QTY",
@@ -112,6 +112,27 @@ DROP_COLUMNS = [
     # pair might be: exact equality makes the design matrix singular for
     # any linear model.
     "LINE_SBMTD_CHRG_AMT", "LINE_PRVDR_PMT_AMT", "NCH_CLM_PRVDR_PMT_AMT",
+    # Added 2026-09-21: 20 more always-100%-null columns, found via the
+    # pre-sentinel-fill full presence audit (data/full_claim_type_presence_
+    # audit_PREFILL.csv) -- the original 2026-09-13 always-null sweep (the
+    # 10 columns above) was simply incomplete, not a data change. Confirmed
+    # directly against train_model.parquet before adding here: without this
+    # fix, each of these 20 sits as a CONSTANT string ("NOT_APPLICABLE")
+    # across every one of ~1.15M rows, since fill_claim_type_exclusive_
+    # fields() correctly (but silently) sentinel-fills a column that's
+    # 100%-null in ALL THREE claim types just as it would one that's null in
+    # only one or two -- zero variance, zero information, dead weight in the
+    # design matrix either way. Dropping these does NOT change the Chow-test
+    # 2-of-3 (50) or 3-of-3 (21) counts from the corrected pre-fill audit --
+    # this is strictly a separate 0-of-3 bucket, confirmed by construction
+    # (n_present == 0 for all 20, checked before this list was written).
+    "CARR_LINE_MTUS_CD", "CARR_LINE_RX_NUM", "CLM_CLNCL_TRIL_NUM", "FI_NUM",
+    "HCPCS_1ST_MDFR_CD", "HCPCS_2ND_MDFR_CD", "HCPCS_3RD_MDFR_CD", "HCPCS_4TH_MDFR_CD",
+    "LINE_NDC_CD", "LINE_PMT_80_100_CD",
+    "REV_CNTR_1ST_ANSI_CD", "REV_CNTR_2ND_ANSI_CD", "REV_CNTR_3RD_ANSI_CD",
+    "REV_CNTR_4TH_ANSI_CD", "REV_CNTR_APC_HIPPS_CD", "REV_CNTR_DSCNT_IND_CD",
+    "REV_CNTR_IDE_NDC_UPC_NUM", "REV_CNTR_NDC_QTY_QLFR_CD", "REV_CNTR_OTAF_PMT_CD",
+    "REV_CNTR_PACKG_IND_CD",
 ]
 
 # ---------------------------------------------------------------------------
@@ -182,17 +203,30 @@ def fill_claim_type_exclusive_fields(df: pd.DataFrame) -> pd.DataFrame:
     originally trying to implement (value * claim_type_dummy, so the
     interaction term cleanly zeroes out where a field doesn't apply) is
     still correct -- but it belongs ONLY inside the script that actually
-    builds the Chow-test/logistic-regression design matrix (Phase 2, not yet
-    written), applied there on a COPY, scoped to that one multiplication --
-    never baked upstream into this shared file, which XGBoost also reads
-    from natively. See FEATURE_ENGINEERING.md's "Remaining, genuinely open"
-    note in Section 4.
+    builds the Chow-test/logistic-regression design matrix
+    (src/build_chow_design_matrix.py), applied there on a COPY, scoped to
+    that one multiplication -- never baked upstream into this shared file,
+    which XGBoost also reads from natively.
 
     String/object columns don't have this problem -- "NOT_APPLICABLE" is an
     explicit new category, not an overloaded existing value -- so those are
     still sentinel-filled here, derived empirically at runtime (same
     null-rate-by-claim_type technique as the shared-feature audit) rather
     than a hardcoded column list.
+
+    NOTE (2026-09-21): this function makes no distinction between a column
+    that's 100%-null in ONE or TWO claim types (a genuine claim-type-
+    exclusive/2-of-3 field, correctly sentinel-filled for the claim types it
+    doesn't apply to) and one that's 100%-null in ALL THREE (i.e. globally
+    always-null) -- the latter also passes through this loop and gets
+    sentinel-filled into a dataset-wide CONSTANT, which is harmless but
+    wasteful (zero variance either way). 20 such columns were found this way
+    via the pre-sentinel-fill presence audit and moved to DROP_COLUMNS above
+    instead, alongside the original 10 always-null columns from 2026-09-13 --
+    this function's fill logic itself did not need to change, since
+    filtering globally-always-null columns out via DROP_COLUMNS before this
+    function ever sees them is the correct fix, not adding a special case
+    here.
 
     Only fills a column for the claim type(s) where it's structurally 100%
     null. Genuine WITHIN-claim-type missingness (e.g. HCPCS_CD's ~62.5% null
@@ -313,6 +347,25 @@ def main() -> None:
         print(remaining_cat_nulls)
     else:
         print("\nSentinel-fill check: no unexpected NaNs remain in categorical columns.")
+
+    # Sanity check on the 20 newly-dropped always-null columns (2026-09-21):
+    # confirm none of them survived into the final output. Any that did
+    # would mean DROP_COLUMNS's names don't match train_model.parquet's
+    # actual column names -- a typo, not a logic error.
+    newly_dropped = [
+        "CARR_LINE_MTUS_CD", "CARR_LINE_RX_NUM", "CLM_CLNCL_TRIL_NUM", "FI_NUM",
+        "HCPCS_1ST_MDFR_CD", "HCPCS_2ND_MDFR_CD", "HCPCS_3RD_MDFR_CD", "HCPCS_4TH_MDFR_CD",
+        "LINE_NDC_CD", "LINE_PMT_80_100_CD",
+        "REV_CNTR_1ST_ANSI_CD", "REV_CNTR_2ND_ANSI_CD", "REV_CNTR_3RD_ANSI_CD",
+        "REV_CNTR_4TH_ANSI_CD", "REV_CNTR_APC_HIPPS_CD", "REV_CNTR_DSCNT_IND_CD",
+        "REV_CNTR_IDE_NDC_UPC_NUM", "REV_CNTR_NDC_QTY_QLFR_CD", "REV_CNTR_OTAF_PMT_CD",
+        "REV_CNTR_PACKG_IND_CD",
+    ]
+    survived = [c for c in newly_dropped if c in train.columns]
+    if survived:
+        print(f"\nWARNING: expected these 20 newly-dropped columns to be gone, but {len(survived)} survived: {survived}")
+    else:
+        print(f"\nConfirmed: all 20 newly-added always-null columns (2026-09-21) successfully dropped.")
 
     numeric_cols = [c for c in train.columns if pd.api.types.is_numeric_dtype(train[c])]
     numeric_nulls = train[numeric_cols].isna().sum()
