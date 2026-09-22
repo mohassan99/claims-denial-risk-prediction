@@ -48,6 +48,19 @@ Both design matrices are built from the SAME intermediate
 (build_chow_design_matrix() output), so they cover identical rows and an
 identical universe of covariates -- required for the likelihood-ratio
 test's nesting assumption to actually hold (pre-flight checklist item 1).
+
+MEMORY NOTE (2026-09-22): every function below builds new columns into a
+plain dict first and does ONE pd.concat at the end, rather than assigning
+columns one at a time via df[new_col] = ... inside a loop. This isn't a
+style preference -- pandas stores a DataFrame as contiguous per-dtype
+blocks, and repeated one-at-a-time column assignment fragments those
+blocks, forcing pandas to periodically re-consolidate them into one
+contiguous array. That consolidation needs a temporary array roughly the
+size of the whole block being merged -- confirmed to actually happen here:
+adding this file's Section-6 interaction terms one column at a time hit a
+literal numpy.core._exceptions.ArrayMemoryError trying to allocate an 888
+MiB temporary array during exactly this kind of consolidation, not because
+the final data was too large, but because of how it was being assembled.
 """
 
 from __future__ import annotations
@@ -154,10 +167,18 @@ def build_chow_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
     )
     hcpcs_dummies = top_n_encode(df["HCPCS_CD"], TOP_N_HCPCS, prefix="hcpcs")
     dgns_dummies = top_n_encode(df["PRNCPAL_DGNS_CD"], TOP_N_DGNS, prefix="dgns")
-    df = pd.concat([df, state_dummies, hcpcs_dummies, dgns_dummies], axis=1)
 
-    df["prvdr_num_freq"] = frequency_encode(df["PRVDR_NUM"])
-    df["carr_num_freq"] = frequency_encode(df["CARR_NUM"])
+    freq_encoded = pd.DataFrame(
+        {
+            "prvdr_num_freq": frequency_encode(df["PRVDR_NUM"]),
+            "carr_num_freq": frequency_encode(df["CARR_NUM"]),
+        },
+        index=df.index,
+    )
+
+    # Single concat for everything new -- see module docstring's MEMORY
+    # NOTE for why this matters, not just style.
+    df = pd.concat([df, state_dummies, hcpcs_dummies, dgns_dummies, freq_encoded], axis=1)
 
     # Drop the raw columns now that their encoded replacements exist --
     # leaving them in would just be dead, unusable string columns sitting
@@ -216,10 +237,14 @@ def _interact_with_zero_variance_guard(
     the SAME formula as a true 2-of-3 covariate, just arrived at
     empirically rather than structurally.
 
+    Builds all candidate interaction columns into a dict first and does ONE
+    pd.concat at the end -- see module docstring's MEMORY NOTE; this is the
+    function where the fragmentation crash actually occurred, since it can
+    generate up to 3x len(cols) new columns in one call.
+
     Returns (df, new_interaction_cols, dropped_zero_variance_cols).
     """
-    df = df.copy()
-    new_cols: list[str] = []
+    new_cols: dict[str, pd.Series] = {}
     dropped: list[str] = []
 
     for col in cols:
@@ -229,11 +254,12 @@ def _interact_with_zero_variance_guard(
             if candidate.sum() == 0:
                 dropped.append(new_col)
                 continue
-            df[new_col] = candidate
-            new_cols.append(new_col)
+            new_cols[new_col] = candidate
 
     df = df.drop(columns=cols)
-    return df, new_cols, dropped
+    if new_cols:
+        df = pd.concat([df, pd.DataFrame(new_cols, index=df.index)], axis=1)
+    return df, list(new_cols.keys()), dropped
 
 
 def add_claim_type_interactions(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str], list[str]]:
@@ -249,7 +275,9 @@ def add_claim_type_interactions(df: pd.DataFrame) -> tuple[pd.DataFrame, list[st
     type(s) it's actually populated in, per FEATURE_ENGINEERING.md
     Section 3's degrees-of-freedom correction. Zero-fill happens ONLY here,
     on this copy, never in train_model.parquet itself (Section 3 checklist
-    item 3's correction).
+    item 3's correction). All new columns for this pass are built into a
+    dict and concatenated ONCE at the end -- see module docstring's MEMORY
+    NOTE.
 
     Pass 2 -- genuinely-3-of-3 categorical dummy groups (ADDED 2026-09-22).
     `provider_state`/`HCPCS_CD`/`PRNCPAL_DGNS_CD`'s one-hot dummies and the
@@ -273,6 +301,7 @@ def add_claim_type_interactions(df: pd.DataFrame) -> tuple[pd.DataFrame, list[st
 
     interaction_cols: list[str] = []
     cols_to_drop: list[str] = []
+    new_cols: dict[str, pd.Series] = {}
 
     # --- Pass 1: numeric claim-type-exclusive / 2-of-3 covariates ---
     for col in list(df.columns):
@@ -311,7 +340,7 @@ def add_claim_type_interactions(df: pd.DataFrame) -> tuple[pd.DataFrame, list[st
         filled = df[col].fillna(0)  # zero-fill ONLY here, on this copy
         for ct in present_types:
             new_col = f"{col}__x__{ct}"
-            df[new_col] = filled * df[f"claim_type_{ct}"]
+            new_cols[new_col] = filled * df[f"claim_type_{ct}"]
             interaction_cols.append(new_col)
 
         # Drop the raw column: keeping it alongside its own interaction
@@ -322,12 +351,14 @@ def add_claim_type_interactions(df: pd.DataFrame) -> tuple[pd.DataFrame, list[st
         cols_to_drop.append(col)
 
     df = df.drop(columns=cols_to_drop)
+    if new_cols:
+        df = pd.concat([df, pd.DataFrame(new_cols, index=df.index)], axis=1)
 
     # --- Pass 2: genuinely-3-of-3 categorical dummy groups ---
     shared_dummy_cols = [c for c in df.columns if c.startswith(_GENUINELY_SHARED_PREFIXES)]
     shared_dummy_cols += [c for c in df.columns if c in _NPI_FLAGS]
-    df, new_cols, dropped_zero_variance = _interact_with_zero_variance_guard(df, shared_dummy_cols)
-    interaction_cols += new_cols
+    df, new_pass2_cols, dropped_zero_variance = _interact_with_zero_variance_guard(df, shared_dummy_cols)
+    interaction_cols += new_pass2_cols
 
     return df, interaction_cols, dropped_zero_variance
 
@@ -349,18 +380,22 @@ def build_restricted_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
       item 2 -- these sit outside the hypothesis being tested, in both
       models, for the same reason). Confirmed algebraically too: n_i=1
       contributes n_i-1=0 degrees of freedom to the LR test either way.
+      All such new interaction columns are built into a dict and
+      concatenated ONCE at the end -- see module docstring's MEMORY NOTE.
     - Genuinely SHARED covariates (2-of-3 numeric, or 3-of-3 categorical
       dummies/NPI flags): appear as ONE plain column each here, forced to
       a single shared coefficient -- versus multiple separate interaction
       terms in the unrestricted model. THIS is the actual restriction
       under test. 2-of-3 covariates get zero-filled on this copy for their
-      one absent claim type. The 3-of-3 categorical dummies/flags need NO
-      special handling at all here -- they were never touched by Pass 2's
-      interaction logic, so they're already exactly the single plain
-      column this model needs; a category with zero DME claims (2026-09-22
-      finding) doesn't change this -- its pooled coefficient is simply
-      estimated entirely from whichever claim types it does appear in,
-      still one valid coefficient either way.
+      one absent claim type (a value-level modification of an EXISTING
+      column, not a new one -- doesn't need the dict/concat treatment).
+      The 3-of-3 categorical dummies/flags need NO special handling at all
+      here -- they were never touched by Pass 2's interaction logic, so
+      they're already exactly the single plain column this model needs; a
+      category with zero DME claims (2026-09-22 finding) doesn't change
+      this -- its pooled coefficient is simply estimated entirely from
+      whichever claim types it does appear in, still one valid coefficient
+      either way.
 
     Runs on the COPY returned by build_chow_design_matrix() -- same
     starting point as add_claim_type_interactions(), so both design
@@ -369,6 +404,9 @@ def build_restricted_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
     pre-flight checklist item 1).
     """
     df = df.copy()
+
+    cols_to_drop: list[str] = []
+    new_cols: dict[str, pd.Series] = {}
 
     for col in list(df.columns):
         if col in _NEVER_INTERACT or col in _NPI_FLAGS:
@@ -392,13 +430,19 @@ def build_restricted_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
             # unrestricted model -- see docstring above for why.
             ct = present_types[0]
             filled = df[col].fillna(0)
-            df[f"{col}__x__{ct}"] = filled * df[f"claim_type_{ct}"]
-            df = df.drop(columns=[col])
+            new_cols[f"{col}__x__{ct}"] = filled * df[f"claim_type_{ct}"]
+            cols_to_drop.append(col)
         else:
             # 2-of-3 shared covariate: the actual restriction being tested.
             # ONE plain column, zero-filled for the one absent claim type --
             # versus 2 separate interaction terms in the unrestricted model.
+            # In-place value modification of an EXISTING column -- doesn't
+            # add a new column, so no fragmentation risk here.
             df[col] = df[col].fillna(0)
+
+    df = df.drop(columns=cols_to_drop)
+    if new_cols:
+        df = pd.concat([df, pd.DataFrame(new_cols, index=df.index)], axis=1)
 
     return df
 
