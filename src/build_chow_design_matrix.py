@@ -81,6 +81,29 @@ DOES mutate columns in place (`df[col] = df[col].fillna(0)`) and correctly
 keeps its copy() -- removing it there would corrupt the shared
 `intermediate` object both this function and add_claim_type_interactions()
 are called with in __main__.
+
+THIRD MEMORY NOTE (2026-09-22, same day, third crash -- much smaller this
+time: only 43.9 MiB, for a (5, 1151951) int64 array). A failure at this
+size means the underlying problem isn't primarily about WHEN pandas
+consolidates blocks anymore (the first two notes) -- it's that every one
+of these one-hot/interaction columns is stored as int64 (8 bytes/cell) to
+represent a value that is always exactly 0 or 1. Every genuinely binary
+column in this file (the one-hot dummies from get_dummies, the 5 NPI
+flags, and every interaction term built from them) is now explicitly
+created/cast as int8 (1 byte/cell) instead -- an 8x memory reduction for
+this entire class of column, with zero loss of information (0/1 fits
+trivially in int8's range) and no dtype-upcasting risk in the interaction
+products (int8 * int8 stays int8 in numpy for values this small, no
+overflow possible since the max product is 1). NOTE: int8 and bool are
+the SAME size in numpy (1 byte/cell, since memory is byte-addressable, not
+bit-addressable) -- switching to bool would save nothing further over
+int8; int8 was chosen instead of bool because these columns are headed
+directly into a numeric design matrix for statsmodels, where an explicit
+integer dtype is the more conventional and predictable choice. The
+NUMERIC claim-type-exclusive/2-of-3 covariates (real dollar/count fields,
+Pass 1) are NOT touched by this change -- those need their natural
+float64 precision and were never the source of this memory problem (far
+fewer of them, and legitimately non-binary values).
 """
 
 from __future__ import annotations
@@ -95,6 +118,7 @@ TOP_N_HCPCS = 20
 TOP_N_DGNS = 20
 
 _CLAIM_TYPES = ("carrier", "outpatient", "dme")
+_CLAIM_TYPE_COLS = ("claim_type_carrier", "claim_type_outpatient", "claim_type_dme")
 
 # Columns never touched by the interaction-construction logic -- identifiers,
 # dates needing their own transformation (FEATURE_ENGINEERING.md Section 3
@@ -109,11 +133,11 @@ _NEVER_INTERACT = {
 # The 5 NPI presence flags -- confirmed 3-of-3, 0% null everywhere
 # (FEATURE_ENGINEERING.md Section 3 checklist item 4). Not prefix-matchable
 # like the one-hot dummies below, so listed explicitly.
-_NPI_FLAGS = {
+_NPI_FLAGS = (
     "has_referring_physician", "has_performing_physician",
     "has_attending_physician", "has_operating_physician",
     "has_rendering_physician",
-}
+)
 
 # Prefixes for the one-hot dummies build_chow_design_matrix() already
 # produced -- genuinely-3-of-3 shared covariates. ADDED 2026-09-22: these
@@ -121,6 +145,13 @@ _NPI_FLAGS = {
 # pass), with a zero-variance guard, rather than being left as untested
 # plain columns.
 _GENUINELY_SHARED_PREFIXES = ("state_", "hcpcs_", "dgns_")
+
+# All genuinely-binary (0/1) columns this file works with -- these are the
+# ones downcast to int8 (see module docstring's THIRD MEMORY NOTE). Every
+# interaction term built FROM these inherits int8 automatically (numpy
+# keeps int8*int8 -> int8 for values this small), so downcasting just
+# these source columns is sufficient to fix the whole file's memory use.
+_BINARY_DTYPE = "int8"
 
 
 def top_n_encode(series: pd.Series, n: int, prefix: str) -> pd.DataFrame:
@@ -138,11 +169,14 @@ def top_n_encode(series: pd.Series, n: int, prefix: str) -> pd.DataFrame:
     Reference-cell one-hot (drop_first=True), not cell-means -- the
     cell-means requirement documented for claim_type only applies to fields
     used in the claim-type-interaction construction; this isn't that.
+
+    dtype=int8, not the platform-default int64 -- see module docstring's
+    THIRD MEMORY NOTE.
     """
     top_categories = series.value_counts(dropna=True).head(n).index.tolist()
     bucketed = series.where(series.isin(top_categories), other="__OTHER__")
     bucketed = bucketed.where(series.notna(), other="__MISSING__")
-    return pd.get_dummies(bucketed, prefix=prefix, drop_first=True, dtype=int)
+    return pd.get_dummies(bucketed, prefix=prefix, drop_first=True, dtype=_BINARY_DTYPE)
 
 
 def frequency_encode(series: pd.Series) -> pd.Series:
@@ -156,6 +190,10 @@ def frequency_encode(series: pd.Series) -> pd.Series:
     that claim type. Fabricating a frequency value here would repeat the
     exact 0-vs-missing mistake the 2026-09-16 zero-fill correction was
     written to prevent, just for a different encoding scheme.
+
+    Left at its natural float dtype -- these are genuine frequency values
+    (0.0-1.0 range), not binary flags, so the int8 downcast doesn't apply
+    here.
     """
     freq = series.value_counts(normalize=True, dropna=True)
     return series.map(freq)
@@ -176,6 +214,14 @@ def build_chow_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
     number STRING against a claim_type dummy -- a clear failure that
     surfaced the gap rather than a silent one.
 
+    ADDED 2026-09-22: also downcasts claim_type_carrier/outpatient/dme and
+    the 5 NPI presence flags to int8 here, right at the source -- both
+    arrive from train_model.parquet as int64 (build_features.py's
+    .astype(int)). Doing this once here, via a single non-mutating
+    df.astype({...}) call, means every interaction term built from these
+    columns anywhere downstream in this file automatically inherits int8 --
+    see module docstring's THIRD MEMORY NOTE for why this was necessary.
+
     This function's own leading .copy() IS still needed and kept -- it
     receives train_model.parquet, the file callers pass in and may reuse
     elsewhere, and this function's later df.drop(columns=[...]) reassigns
@@ -192,8 +238,16 @@ def build_chow_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
 
+    # Downcast the source binary columns to int8 -- astype() with a dict
+    # returns a new object in one pass, no per-column assignment loop, so
+    # it doesn't reintroduce the fragmentation risk the MEMORY NOTEs above
+    # describe.
+    binary_downcast = {col: _BINARY_DTYPE for col in (*_CLAIM_TYPE_COLS, *_NPI_FLAGS) if col in df.columns}
+    if binary_downcast:
+        df = df.astype(binary_downcast)
+
     state_dummies = pd.get_dummies(
-        df["provider_state"], prefix="state", drop_first=True, dtype=int
+        df["provider_state"], prefix="state", drop_first=True, dtype=_BINARY_DTYPE
     )
     hcpcs_dummies = top_n_encode(df["HCPCS_CD"], TOP_N_HCPCS, prefix="hcpcs")
     dgns_dummies = top_n_encode(df["PRNCPAL_DGNS_CD"], TOP_N_DGNS, prefix="dgns")
@@ -236,10 +290,10 @@ def _interact_with_zero_variance_guard(
     df: pd.DataFrame, cols: list[str]
 ) -> tuple[pd.DataFrame, list[str], list[str]]:
     """For each column in `cols` (a genuinely-3-of-3 binary dummy -- one-hot
-    category or NPI flag), build value*claim_type_dummy for each of the 3
-    claim types, SKIPPING any resulting interaction term that would be
-    constant at zero across the entire dataset (no row has both this
-    category and this claim type).
+    category or NPI flag, all int8 by this point), build value*claim_type_
+    dummy for each of the 3 claim types, SKIPPING any resulting interaction
+    term that would be constant at zero across the entire dataset (no row
+    has both this category and this claim type).
 
     Why this guard exists, precisely: an all-zero column has no variance to
     estimate a coefficient from -- this isn't a small-sample precision
@@ -273,6 +327,12 @@ def _interact_with_zero_variance_guard(
     (drop()/concat() both return new objects), so nothing needs protecting;
     see the SECOND MEMORY NOTE for why a copy would just be dead weight and
     its own consolidation-trigger risk.
+
+    Every input column here is already int8 by the time this runs (see
+    build_chow_design_matrix()), and int8*int8 stays int8 in numpy for
+    values this small (no overflow possible, max product is 1) -- so every
+    interaction term produced here is int8 too, with no explicit cast
+    needed. See module docstring's THIRD MEMORY NOTE.
 
     Returns (df, new_interaction_cols, dropped_zero_variance_cols).
     """
@@ -309,7 +369,9 @@ def add_claim_type_interactions(df: pd.DataFrame) -> tuple[pd.DataFrame, list[st
     on this copy, never in train_model.parquet itself (Section 3 checklist
     item 3's correction). All new columns for this pass are built into a
     dict and concatenated ONCE at the end -- see module docstring's MEMORY
-    NOTE.
+    NOTE. These interaction terms stay at their NATURAL (float64) dtype --
+    real dollar/count fields, not the binary int8 downcast, since those
+    values are genuinely non-binary.
 
     Pass 2 -- genuinely-3-of-3 categorical dummy groups (ADDED 2026-09-22).
     `provider_state`/`HCPCS_CD`/`PRNCPAL_DGNS_CD`'s one-hot dummies and the
@@ -328,13 +390,7 @@ def add_claim_type_interactions(df: pd.DataFrame) -> tuple[pd.DataFrame, list[st
     via drop()/concat(). The original object passed in (build_chow_design_
     matrix()'s output, reused elsewhere in __main__ for
     build_restricted_design_matrix()) is therefore never touched, copy or
-    no copy. The copy wasn't just unnecessary overhead -- it was the
-    ACTUAL crash site on the real data: that input arrives with ~101
-    not-yet-consolidated int64 columns from its own concat, and .copy()
-    independently triggers pandas' block-consolidation before copying,
-    hitting the same class of memory error the dict+concat fix above was
-    meant to prevent, just relocated to a different line. See the module
-    docstring's SECOND MEMORY NOTE.
+    no copy. See the module docstring's SECOND MEMORY NOTE.
 
     Returns (df_with_interactions, list_of_new_interaction_column_names,
     list_of_skipped_zero_variance_column_names) -- the second value is for
@@ -435,13 +491,10 @@ def build_restricted_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
       under test. 2-of-3 covariates get zero-filled on this copy for their
       one absent claim type (a value-level modification of an EXISTING
       column, not a new one -- doesn't need the dict/concat treatment).
-      The 3-of-3 categorical dummies/flags need NO special handling at all
-      here -- they were never touched by Pass 2's interaction logic, so
-      they're already exactly the single plain column this model needs; a
-      category with zero DME claims (2026-09-22 finding) doesn't change
-      this -- its pooled coefficient is simply estimated entirely from
-      whichever claim types it does appear in, still one valid coefficient
-      either way.
+      The 3-of-3 categorical dummies/flags (already int8 -- see
+      build_chow_design_matrix()) need NO special handling at all here --
+      they were never touched by Pass 2's interaction logic, so they're
+      already exactly the single plain column this model needs.
 
     This function's leading .copy() IS required and kept, unlike
     add_claim_type_interactions() above -- this function genuinely mutates
@@ -522,6 +575,14 @@ if __name__ == "__main__":
     print(f"train_model.parquet:      {train.shape[1]} columns")
     print(f"unrestricted design matrix: {unrestricted.shape[1]} columns ({len(interaction_cols)} interaction terms)")
     print(f"restricted design matrix:   {restricted.shape[1]} columns")
+
+    # NEW 2026-09-22: report the memory footprint before/after the int8
+    # downcast, to make the fix's actual effect visible rather than just
+    # asserted.
+    unrestricted_mb = unrestricted.memory_usage(deep=True).sum() / 1_048_576
+    restricted_mb = restricted.memory_usage(deep=True).sum() / 1_048_576
+    print(f"\nunrestricted design matrix memory usage: {unrestricted_mb:.1f} MiB")
+    print(f"restricted design matrix memory usage:   {restricted_mb:.1f} MiB")
 
     # NEW 2026-09-22: report every interaction term skipped for zero
     # variance -- confirmed expected count is 13 (all HCPCS x DME, per the
