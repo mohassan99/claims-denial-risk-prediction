@@ -61,6 +61,26 @@ adding this file's Section-6 interaction terms one column at a time hit a
 literal numpy.core._exceptions.ArrayMemoryError trying to allocate an 888
 MiB temporary array during exactly this kind of consolidation, not because
 the final data was too large, but because of how it was being assembled.
+
+SECOND MEMORY NOTE (2026-09-22, same day, found on the very next run): a
+leading `df = df.copy()` at the top of a function is ALSO a consolidation
+trigger, independent of the fix above -- pandas' .copy() method
+consolidates same-dtype blocks before copying them, and the input to
+add_claim_type_interactions() (build_chow_design_matrix()'s output)
+already arrives with ~101 not-yet-consolidated int64 columns from its own
+single concat. The first fix (dict+concat instead of one-at-a-time
+assignment) was necessary but not sufficient -- it eliminated NEW
+fragmentation from this file's own loops, but didn't address that calling
+.copy() on an ALREADY-fragmented input independently triggers the same
+memory spike. The actual second fix: a leading .copy() is only needed if a
+function goes on to mutate its input in place -- add_claim_type_interactions()
+never does (every operation reassigns the local `df` name via drop()/
+concat(), never mutates the original object), so its leading copy() was
+simply dead weight, removed. build_restricted_design_matrix() genuinely
+DOES mutate columns in place (`df[col] = df[col].fillna(0)`) and correctly
+keeps its copy() -- removing it there would corrupt the shared
+`intermediate` object both this function and add_claim_type_interactions()
+are called with in __main__.
 """
 
 from __future__ import annotations
@@ -156,6 +176,16 @@ def build_chow_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
     number STRING against a claim_type dummy -- a clear failure that
     surfaced the gap rather than a silent one.
 
+    This function's own leading .copy() IS still needed and kept -- it
+    receives train_model.parquet, the file callers pass in and may reuse
+    elsewhere, and this function's later df.drop(columns=[...]) reassigns
+    the local name to a new object either way, so the copy here is about
+    protecting the CALLER's original object from any earlier in-place step
+    a future edit might add, not something this specific version's body
+    strictly requires today. Left in deliberately, unlike the two removed
+    copies below -- see the module docstring's SECOND MEMORY NOTE for the
+    distinction (copy only when something actually mutates in place).
+
     This is the shared starting point for BOTH the restricted and
     unrestricted design matrices below -- neither function re-derives this
     encoding.
@@ -238,9 +268,11 @@ def _interact_with_zero_variance_guard(
     empirically rather than structurally.
 
     Builds all candidate interaction columns into a dict first and does ONE
-    pd.concat at the end -- see module docstring's MEMORY NOTE; this is the
-    function where the fragmentation crash actually occurred, since it can
-    generate up to 3x len(cols) new columns in one call.
+    pd.concat at the end -- see module docstring's MEMORY NOTE. No leading
+    .copy() here -- this function never mutates its `df` argument in place
+    (drop()/concat() both return new objects), so nothing needs protecting;
+    see the SECOND MEMORY NOTE for why a copy would just be dead weight and
+    its own consolidation-trigger risk.
 
     Returns (df, new_interaction_cols, dropped_zero_variance_cols).
     """
@@ -289,6 +321,21 @@ def add_claim_type_interactions(df: pd.DataFrame) -> tuple[pd.DataFrame, list[st
     docstring -- confirmed necessary for 13 of HCPCS_CD's 21 categories
     against DME specifically).
 
+    CORRECTED 2026-09-22, same day as the fix above: this function's
+    leading `df = df.copy()` has been REMOVED. Traced through the full
+    body: neither Pass 1 nor Pass 2 mutates the input `df` object in place
+    anywhere -- every step reassigns the local `df` name to a new object
+    via drop()/concat(). The original object passed in (build_chow_design_
+    matrix()'s output, reused elsewhere in __main__ for
+    build_restricted_design_matrix()) is therefore never touched, copy or
+    no copy. The copy wasn't just unnecessary overhead -- it was the
+    ACTUAL crash site on the real data: that input arrives with ~101
+    not-yet-consolidated int64 columns from its own concat, and .copy()
+    independently triggers pandas' block-consolidation before copying,
+    hitting the same class of memory error the dict+concat fix above was
+    meant to prevent, just relocated to a different line. See the module
+    docstring's SECOND MEMORY NOTE.
+
     Returns (df_with_interactions, list_of_new_interaction_column_names,
     list_of_skipped_zero_variance_column_names) -- the second value is for
     the not-yet-written Chow-test fitting step, which needs to know exactly
@@ -297,8 +344,6 @@ def add_claim_type_interactions(df: pd.DataFrame) -> tuple[pd.DataFrame, list[st
     silently-skipped term is exactly the kind of thing worth surfacing
     rather than hiding.
     """
-    df = df.copy()
-
     interaction_cols: list[str] = []
     cols_to_drop: list[str] = []
     new_cols: dict[str, pd.Series] = {}
@@ -337,7 +382,8 @@ def add_claim_type_interactions(df: pd.DataFrame) -> tuple[pd.DataFrame, list[st
             # nothing in this pass claims to handle that case.
             continue
 
-        filled = df[col].fillna(0)  # zero-fill ONLY here, on this copy
+        filled = df[col].fillna(0)  # zero-fill ONLY here -- reads df[col],
+        # never mutates it; produces a new Series.
         for ct in present_types:
             new_col = f"{col}__x__{ct}"
             new_cols[new_col] = filled * df[f"claim_type_{ct}"]
@@ -396,6 +442,16 @@ def build_restricted_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
       this -- its pooled coefficient is simply estimated entirely from
       whichever claim types it does appear in, still one valid coefficient
       either way.
+
+    This function's leading .copy() IS required and kept, unlike
+    add_claim_type_interactions() above -- this function genuinely mutates
+    columns in place (`df[col] = df[col].fillna(0)` for 2-of-3 covariates),
+    and __main__ calls this function and add_claim_type_interactions() on
+    the SAME shared `intermediate` object. Without this copy, mutating in
+    place here would corrupt that shared object out from under the other
+    call. See the module docstring's SECOND MEMORY NOTE for the general
+    rule this follows (copy only when something actually mutates in
+    place).
 
     Runs on the COPY returned by build_chow_design_matrix() -- same
     starting point as add_claim_type_interactions(), so both design
