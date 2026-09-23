@@ -14,6 +14,12 @@ black
 ruff
 pre-commit
 
+# Used since Phase 2's Chow-test work (build_chow_design_matrix.py,
+# fit_chow_test.py, diagnose_separation.py) but never actually pinned here
+# until now -- caught via a local uncommitted requirements.txt edit
+# (2026-09-23), not added in advance.
+statsmodels==0.15.0
+
 # Firth's penalized (bias-reduced) logistic regression -- added 2026-09-23
 # for src/fit_chow_test.py's --method firth option, the standard fix for
 # the separation confirmed in diagnose_separation.py /
