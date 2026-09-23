@@ -167,12 +167,25 @@ def _stratified_sample(df: pd.DataFrame, frac: float, label_col: str, seed: int 
     draw few or zero denied claims, which would make the fit meaningless
     rather than just small. Deterministic given the same input file, frac,
     and seed -- required so a --restricted-only run and the
-    --skip-restricted run that follows it see the identical row set."""
-    return (
-        df.groupby(label_col, group_keys=False)
-        .apply(lambda g: g.sample(frac=frac, random_state=seed))
-        .reset_index(drop=True)
-    )
+    --skip-restricted run that follows it see the identical row set.
+
+    CORRECTED 2026-09-23: the first version used
+    df.groupby(label_col).apply(lambda g: g.sample(...)). That broke on
+    real data -- newer pandas excludes the grouping column itself
+    (label_col) from the sub-frame `g` passed into an .apply() callback
+    (the "operating on the grouping columns" behavior change), so the
+    result silently lost `is_denied` entirely. The groupby+apply call
+    itself doesn't error; the KeyError only surfaced two steps later, in
+    _prepare_xy, which made the actual cause easy to misread as a
+    Chow-test/design-matrix bug rather than a sampling-helper one.
+    Rewritten to iterate the GroupBy object directly instead of calling
+    .apply() on it -- plain iteration over a GroupBy always yields the
+    full sub-frame, grouping column included, in every pandas version;
+    only the function-based .apply() path has the version-dependent
+    exclusion behavior.
+    """
+    parts = [group.sample(frac=frac, random_state=seed) for _, group in df.groupby(label_col)]
+    return pd.concat(parts, ignore_index=True)
 
 
 def _prepare_xy(design_df: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame]:
