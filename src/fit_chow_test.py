@@ -329,7 +329,7 @@ def parse_args() -> argparse.Namespace:
         "degenerate (identical log-likelihoods, LR=0) under the confirmed "
         "separation unless combined with --exclude-separating-codes. "
         "'firth': Firth's penalized (bias-reduced) logistic regression via "
-        "the firthlogist package (pip install firthlogist) -- handles "
+        "the firthmodels package (pip install firthmodels) -- handles "
         "separation directly, at the cost of a less rigorously-settled "
         "asymptotic justification for the resulting LR test (see "
         "_fit_logit_firth's docstring). Run both this and --method standard "
@@ -506,23 +506,34 @@ def _fit_logit_firth(y: pd.Series, X: pd.DataFrame, label: str) -> _SimpleFitRes
     """Fit via Firth's penalized (bias-reduced) logistic regression instead
     of ordinary MLE -- the standard statistical fix for the separation
     confirmed in diagnose_separation.py / verify_provider_outlier_mechanism.py.
-    Uses the `firthlogist` package (pip install firthlogist).
+    Uses the `firthmodels` package (pip install firthmodels) -- the
+    successor to `firthlogist`, which was archived by its author (Dec
+    2025) and pulled from PyPI entirely. This function was written and
+    verified against firthmodels 0.8.2's ACTUAL installed API (checked via
+    inspect.signature() and the class docstring directly, 2026-09-23 --
+    not assumed from search results, after firthlogist's disappearance
+    was itself a lesson in not trusting an unverified package name/API).
 
-    fit_intercept=False: our design has NO shared intercept by
-    construction -- the claim_type_carrier/outpatient/dme dummies
-    (cell-means coding) serve that role. An automatically added intercept
-    would break that structure and make the restricted/unrestricted
-    models differ in more than just the tested covariates.
+    fit_intercept=False (confirmed real constructor parameter): our
+    design has NO shared intercept by construction -- the
+    claim_type_carrier/outpatient/dme dummies (cell-means coding) serve
+    that role. An automatically added intercept would break that
+    structure and make the restricted/unrestricted models differ in more
+    than just the tested covariates.
 
-    wald=True: firthlogist's DEFAULT p-value method is penalized profile
-    likelihood, which refits the whole model once PER COEFFICIENT --
-    infeasible at the 140-310 parameters this design has. We only need
-    the overall penalized log-likelihood (loglik_) for the omnibus LR
-    statistic, not per-coefficient inference, so the cheap Wald
-    computation (one extra pass, not N refits) is the right choice here
-    regardless of Wald inference's own general unreliability under
-    separation -- we aren't using its p-values or standard errors for
-    anything.
+    No wald=True or similar flag needed here (unlike the now-defunct
+    firthlogist): firthmodels' .fit() only computes the cheap Wald-based
+    bse_/pvalues_ automatically. The expensive per-coefficient
+    profile-likelihood computation (lrt_pvalues_/lrt_bse_) lives behind a
+    SEPARATE .lrt() method call, which this function never makes -- so
+    there's no risk of the catastrophic per-parameter refitting that
+    would be infeasible at the 140-310 parameters this design has.
+
+    max_iter raised from the package default (25) to 100: Newton-Raphson
+    converges quadratically near the optimum so 25 is often enough, but
+    given this design's history of convergence trouble under separation, a
+    larger safety margin costs little (each iteration is one Newton step,
+    not a full re-fit).
 
     IMPORTANT CAVEAT, repeat this wherever these results get used: the
     chi-square justification for a PENALIZED likelihood-ratio test is
@@ -539,21 +550,20 @@ def _fit_logit_firth(y: pd.Series, X: pd.DataFrame, label: str) -> _SimpleFitRes
     an exact asymptotic result. The --exclude-separating-codes run has no
     separation left at all and needs no such caveat -- compare the two.
     """
-    from firthlogist import FirthLogisticRegression
+    from firthmodels import FirthLogisticRegression
 
-    print(f"\n  fitting {label} (Firth's penalized MLE via firthlogist): {X.shape[0]:,} rows x {X.shape[1]} columns")
-    print("    this can be substantially slower than the standard lbfgs fit -- watch for a very long run.")
+    print(f"\n  fitting {label} (Firth's penalized MLE via firthmodels): {X.shape[0]:,} rows x {X.shape[1]} columns")
+    print("    this can be slower than the standard lbfgs fit -- watch for a long run.")
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        model = FirthLogisticRegression(fit_intercept=False, wald=True)
+        model = FirthLogisticRegression(fit_intercept=False, max_iter=100)
         model.fit(X, y)
     for w in caught:
         print(f"    [warning] {w.category.__name__}: {w.message}")
 
     llf = float(model.loglik_)
-    n_iter = getattr(model, "n_iter_", None)
-    max_iter = getattr(model, "max_iter", None)
-    converged = "unknown" if n_iter is None or max_iter is None else bool(n_iter < max_iter)
+    n_iter = int(model.n_iter_)
+    converged = bool(model.converged_)
     print(f"    converged: {converged}")
     print(f"    penalized log-likelihood: {llf:.4f}")
     print(f"    Newton-Raphson iterations: {n_iter}")
@@ -745,7 +755,7 @@ def main() -> None:
     p_value = stats.chi2.sf(LR, df_chow)
 
     method_desc = (
-        "Firth's penalized MLE (firthlogist, fit_intercept=False, wald=True)"
+        "Firth's penalized MLE (firthmodels, fit_intercept=False, max_iter=100)"
         if args.method == "firth"
         else "ordinary MLE (statsmodels, method='lbfgs')"
     )
