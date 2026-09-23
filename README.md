@@ -1,6 +1,26 @@
 # Claims Denial Risk Prediction
 
-Healthcare claims denial risk prediction — data wrangling, XGBoost/SHAP modeling, Azure ML deployment, and a SHAP-narrative + RAG + minimal agentic GenAI layer, built on the CMS Synthetic Medicare Claims PUF.
+**Predicting which Medicare claims are likely to be denied — and why — built on the real CMS
+Synthetic Medicare Claims PUF, an engineered denial-risk label grounded in documented adjudication
+logic, and (in progress) XGBoost + SHAP explainability with an Azure ML deployment.**
+
+Public CMS claims data has no real claim-level denial-outcome field anywhere in its release —
+that's proprietary payer adjudication data CMS doesn't publish. This project uses the PUF's real
+claim structure, procedure/diagnosis codes, and billing amounts for realism, then engineers a
+defensible, probabilistically-calibrated denial-risk label from documented adjudication rules
+(CMS payment-policy transmittals, CARC/RARC codes, published payer denial-rate benchmarks) rather
+than assuming a shortcut exists. Every non-obvious design decision — including the wrong turns and
+corrections along the way — is kept in full in `data/TARGET_DEFINITION.md` and
+`data/FEATURE_ENGINEERING.md`, not cleaned up to look like the right answer was obvious from the
+start.
+
+Built to bring the same "own the metric" analytical discipline behind 10+ years of payer analytics
+work (HEDIS/STARS gap closure, risk adjustment) to a full ML build: data engineering → target
+construction → modeling → deployment.
+
+**Status: Phase 1 of 6 complete.** Phase 2 (baseline logistic regression — including a formal Chow
+test to decide, per shared feature, whether claim-type effects should be pooled or interacted —
+then XGBoost + SHAP) is in progress.
 
 ## Setup
 
@@ -23,9 +43,8 @@ set:
   (noisy-OR) label from 5 documented risk factors instead of a hard rule, so the label carries
   graded risk rather than being a deterministic function of the same fields used to model it. One
   factor (`deprecated_code`, Medicare-non-payable consultation codes) was discovered mid-build
-  while investigating an unrelated anomaly, not planned in advance. Final real-data denial rate:
-  9.4%, within the 5-20% range typical of real payer data. Full reasoning, including corrected
-  wrong turns, in `data/TARGET_DEFINITION.md`.
+  while investigating an unrelated anomaly, not planned in advance. Full reasoning, including
+  corrected wrong turns, in `data/TARGET_DEFINITION.md`.
 - **Leakage inventory:** caught and fixed a real leakage bug (`CLM_PMT_AMT` is both a natural
   feature and, structurally, a consequence of denial) before it reached modeling.
 - **EDA:** 5 required figures plus 5 supplementary ones (class imbalance, categorical cardinality,
@@ -40,3 +59,19 @@ set:
 
 Deliverables: `src/load_data.py`, `src/denial_rules.py`, `src/denial_reasons.py`,
 `src/build_target_and_split.py`, `src/run_eda.py`, `src/build_features.py`.
+
+*Note, 2026-09-22: a 6th risk factor (`missing_hcpcs`) was discovered during Phase 2 feature-audit
+work and folded back into the label — the earlier 9.4% denial rate cited here at Phase 1's close
+recalibrated to 12.1% as a result. Kept as a visible correction rather than silently editing the
+number above — see `data/TARGET_DEFINITION.md`'s addenda for the full trail.*
+
+### Phase 2 — Baseline Logistic Regression (Chow Test) + XGBoost/SHAP (in progress)
+
+Building the design matrix for a formal Chow test — deciding, per shared covariate, whether its
+effect on denial risk should be pooled across claim types (carrier/outpatient/DME) or given a
+separate coefficient per claim type, rather than assuming either answer. A complete claim-type
+presence audit (`data/full_claim_type_presence_audit.csv`) replaced an earlier, incomplete
+column-by-column classification once cross-checks caught it missing real cases — including several
+covariates that looked shared but turned out to be empirically claim-type-specific once actual
+per-category variance was checked, not just null rates. Full reasoning in
+`data/FEATURE_ENGINEERING.md` Section 6. Fitting code and results not yet built.
