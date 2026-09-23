@@ -25,6 +25,15 @@ severe form of near-complete separation -- and critically, that
 relationship doesn't get weaker with more data, exactly matching what
 was observed.
 
+CONFIRMED 2026-09-23: hcpcs_99241 made the top-20 cut; among the ~5.4% of
+carrier claims billed with a CMS-deprecated consult code, the denial rate
+is 95.06% (vs 12.13% overall). This is WORKING AS DESIGNED, not a bug --
+deprecated_code was deliberately built at base_prob=0.85 because it's
+anchored to an exact federal policy fact, not a soft correlation. It's a
+real, intentional signal the model has to cope with (e.g. via
+regularization or explicit handling of that one dummy), not something to
+fix in the target.
+
 Step 1 checks something more severe and more general: whether any RAW
 risk-factor/target-construction column itself (not just a code that
 happens to correlate with the label, but a column that was a literal
@@ -39,6 +48,11 @@ name from memory of the code/docs -- it reads the LIVE parquet schema and
 searches by substring, so a naming mismatch between what the docs
 describe and what actually shipped doesn't produce a false negative.
 
+CONFIRMED 2026-09-23: denial_reasons.py's sample_denials() does produce
+risk_* columns and a literal p_denied_model probability -- but none of
+these made it into train_model.parquet's actual schema (Step 1 found
+zero matches). Raw-ingredient leakage is ruled out.
+
 Step 2 crosstabs whatever Step 0/1 found against is_denied, overall and
 by claim type.
 
@@ -48,6 +62,26 @@ flags) by claim type -- flagging any (value, claim_type) cell with a
 denial rate at or near 0%/100%, split into "broad-coverage" (large enough
 N to meaningfully destabilize a fit) vs "sparse" (small N -- still a
 technically-separating cell, but less consequential) using --min-cell-n.
+
+CONFIRMED 2026-09-23: found 10 BROAD-COVERAGE cells at an exact 0.000
+denial rate (n up to 9,320), several of them (96156, 99408, 99495, M1069)
+matching codes decisions-and-learnings.md explicitly documents as
+"deliberately left unmapped" in dx_procedure_mismatch's HCPCS->diagnosis
+table -- not obviously a coincidence, but not yet confirmed as the actual
+mechanism either.
+
+Step 4 (added 2026-09-23, in response to the Step 3 finding above) checks
+something specific to how --sample-frac works: stratifying globally on
+is_denied (drawing a fixed % from the whole denied pool and the whole
+non-denied pool independently) does NOT guarantee every rare per-code
+subgroup keeps its true conditional rate in the sample -- a code with a
+genuinely low-but-NONZERO population denial count can easily show up as
+an exact 0.000 in a 20% draw purely by chance, which is a much less
+severe finding (a low real base rate) than a true structural wall in the
+data. Step 4 re-checks each Step-3 BROAD-COVERAGE flag against the FULL,
+unsampled population, reading only the few narrow columns needed (Step 0
+already proved a narrow multi-column full-file read works fine on this
+machine even when the full-width 192-column read doesn't).
 
 Run with (from the repo root, inside the venv):
     python src/diagnose_separation.py
@@ -96,7 +130,9 @@ def parse_args() -> argparse.Namespace:
         "that reproduced the identical-log-likelihood finding). This is a "
         "descriptive-crosstab script, not a fit, so pass up to 1.0 for the "
         "full file if you want the most complete picture -- it still goes "
-        "through the safe streaming path, not a raw full-file load.",
+        "through the safe streaming path, not a raw full-file load. Note: "
+        "Step 4 always checks against the full, unsampled population "
+        "regardless of this flag, reading only a few narrow columns.",
     )
     parser.add_argument(
         "--stream-batch-size",
@@ -256,6 +292,66 @@ def main() -> None:
 
     _print_flags(broad_flags, "BROAD-COVERAGE near-separation")
     _print_flags(sparse_flags, "SPARSE near-separation")
+
+    # --- Step 4: verify Step 3's BROAD-COVERAGE flags against the FULL population ---
+    # A stratified-on-is_denied sample (the default here) independently draws
+    # a fixed % from the denied and non-denied pools GLOBALLY -- it does NOT
+    # guarantee every rare per-code subgroup keeps its true conditional rate.
+    # A code with a genuinely low-but-nonzero population denial count (e.g. a
+    # handful of true positives among tens of thousands of claims) can easily
+    # show up as an exact 0.000 in a 20% draw purely by chance -- a much less
+    # severe finding (a low real base rate) than a true structural wall in
+    # the data. This re-checks each flagged (raw code, claim_type) cell
+    # against the full, unsampled population, reading only the few narrow
+    # columns needed -- cheap regardless of file size (Step 0 already proved
+    # a narrow multi-column full-file read works fine on this machine even
+    # when the full-width read doesn't).
+    hcpcs_or_dgns_flags = [
+        (col, ctype) for col, ctype, _rate, _n in broad_flags
+        if col.startswith("hcpcs_") or col.startswith("dgns_")
+    ]
+    if hcpcs_or_dgns_flags:
+        print("\n" + "=" * 78)
+        print("STEP 4 -- full-population verification of Step 3's BROAD-COVERAGE flags")
+        print("=" * 78)
+        needs_hcpcs = any(c.startswith("hcpcs_") for c, _ in hcpcs_or_dgns_flags)
+        needs_dgns = any(c.startswith("dgns_") for c, _ in hcpcs_or_dgns_flags)
+        claim_type_dummy_cols = ["claim_type_carrier", "claim_type_outpatient", "claim_type_dme"]
+        needed_cols = list(dict.fromkeys(
+            [LABEL_COL, *claim_type_dummy_cols]
+            + (["HCPCS_CD"] if needs_hcpcs else [])
+            + (["PRNCPAL_DGNS_CD"] if needs_dgns else [])
+        ))
+        full_pop = pd.read_parquet(TRAIN_PARQUET_PATH, columns=needed_cols)
+        full_pop = _add_claim_type_label(full_pop)
+
+        for col, ctype in hcpcs_or_dgns_flags:
+            if col.startswith("hcpcs_"):
+                raw_value, source_col = col.removeprefix("hcpcs_"), "HCPCS_CD"
+            else:
+                raw_value, source_col = col.removeprefix("dgns_"), "PRNCPAL_DGNS_CD"
+            if raw_value.startswith("__") and raw_value.endswith("__"):
+                print(
+                    f"  {col} x claim_type={ctype}: sentinel bucket ({raw_value}), not a "
+                    "single raw code -- skipping direct verification (would need the same "
+                    "top-20 threshold build_chow_design_matrix.py uses to reconstruct which "
+                    "raw codes fall in this bucket)."
+                )
+                continue
+            mask = (full_pop[source_col] == raw_value) & (full_pop["_claim_type"] == ctype)
+            n_full = int(mask.sum())
+            n_denied_full = int(full_pop.loc[mask, LABEL_COL].sum())
+            rate_full = n_denied_full / n_full if n_full else float("nan")
+            print(f"  {col} x claim_type={ctype}: {n_denied_full}/{n_full:,} denied in the FULL population (rate={rate_full:.5f})")
+        del full_pop
+        print(
+            "\n  If any show n_denied_full == 0 with a large n_full, that's a genuine "
+            "structural zero worth investigating in denial_reasons.py/denial_rules.py "
+            "directly. If instead they show a small but NONZERO count, Step 3's exact "
+            "0.000 was a stratified-sampling artifact on the rare-cell level, not a true "
+            "wall in the data -- still a real low base rate worth noting, but a much "
+            "less severe finding for the Chow test's separation problem."
+        )
 
     print("\n" + "=" * 78)
     print("Full column list (for a manual look if nothing above explains it):")
