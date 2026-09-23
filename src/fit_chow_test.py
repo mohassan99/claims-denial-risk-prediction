@@ -123,7 +123,125 @@ _ID_LABEL_COLS = {"BENE_ID", "CLM_ID", "_row_id", LABEL_COL}
 # far less specific error.
 _DATE_COLS_NOT_YET_FEATURIZED = {"CLM_FROM_DT", "CLM_THRU_DT", "NCH_WKLY_PROC_DT"}
 
-_NON_FEATURE_COLS = _ID_LABEL_COLS | _DATE_COLS_NOT_YET_FEATURIZED
+# --- Columns not yet given ANY Phase 2 encoding decision -----------------
+# Confirmed present in real train_model.parquet by running this script and
+# hitting a real ValueError (2026-09-23) -- not a hardcoded guess made in
+# advance. Neither build_features.py nor build_chow_design_matrix.py drops
+# or encodes these: build_chow_design_matrix.py only ever touches (1) the
+# 5 named cardinality covariates, (2) numeric claim-type-exclusive/2-of-3
+# fields, and (3) the specific dummy-prefix groups -- everything else rides
+# through both design matrices completely untouched. That file's own
+# comment anticipated "82 non-numeric columns... never in scope for this
+# treatment", but that estimate (from a 2026-09-17 check of only the
+# columns carrying real NaN) undercounts the true list once every
+# non-numeric column is checked -- the actual count is 130. Same
+# "the real number was bigger than the estimate" pattern that's recurred
+# throughout this project's audits (the 2-of-3 count, the 0-of-3 count,
+# the NPI-flag table).
+#
+# Excluded from the Phase 2 BASELINE/Chow-test feature set HERE, not from
+# train_model.parquet itself -- XGBoost (Phase 2's other model) can use or
+# encode several of these natively and shouldn't inherit a baseline-
+# specific exclusion decision. This is a scope decision for getting the
+# Chow test running now, not a permanent verdict on each column -- grouped
+# below so the ones genuinely worth an encoding pass later (Category D
+# especially) aren't confused with the ones that are dead weight.
+
+# A. Already documented elsewhere as fixed/near-constant, carrying zero
+#    signal -- TARGET_DEFINITION.md's "why not a native denial field"
+#    table uses these three to argue no native denial field exists, but
+#    nothing ever added them to build_features.py's DROP_COLUMNS as
+#    FEATURES. Worth moving there permanently (it's the shared file
+#    XGBoost also reads) rather than excluding only here -- flagged, not
+#    done unilaterally.
+_PENDING_CONSTANT = {
+    "CARR_CLM_PMT_DNL_CD", "CLM_DISP_CD", "CLM_MDCR_NON_PMT_RSN_CD",
+}
+
+# B. Raw dates with no Phase 2 numeric transform yet -- same reasoning as
+#    _DATE_COLS_NOT_YET_FEATURIZED above, a longer list than originally
+#    known.
+_PENDING_DATES = {
+    "LINE_1ST_EXPNS_DT", "LINE_LAST_EXPNS_DT", "REV_CNTR_DT",
+    *(f"PRCDR_DT{i}" for i in range(1, 25)),
+}
+
+# C. Legacy/secondary provider-identifier strings beyond the 6 NPI fields
+#    FEATURE_ENGINEERING.md Section 1 already resolved (drop raw value,
+#    keep a presence flag) -- UPIN (the pre-NPI legacy identifier), PIN,
+#    and a second tier of NPI/tax-ID fields that discussion never covered.
+_PENDING_LEGACY_IDS = {
+    "RFR_PHYSN_UPIN", "PRF_PHYSN_UPIN", "AT_PHYSN_UPIN", "OP_PHYSN_UPIN",
+    "RNDRNG_PHYSN_UPIN", "CARR_CLM_RFRNG_PIN_NUM", "CARR_PRFRNG_PIN_NUM",
+    "CARR_CLM_BLG_NPI_NUM", "ORG_NPI_NUM", "TAX_NUM",
+}
+
+# D. Secondary/tertiary diagnosis & procedure codes -- only the PRINCIPAL
+#    diagnosis (PRNCPAL_DGNS_CD) got cardinality encoding in
+#    build_chow_design_matrix.py; these (up to 25 additional diagnoses, 12
+#    external-cause-of-injury codes, 24 additional procedures per claim)
+#    never did. Real clinical signal plausibly lives here -- the one
+#    category most worth a genuine encoding pass later, not a permanent
+#    drop. XGBoost can likely use a cheaper representation (e.g.
+#    presence-of-any-code, or clinically-grouped flags) than the
+#    one-hot-per-code treatment a linear baseline would need.
+_PENDING_SECONDARY_CODES = {
+    *(f"ICD_DGNS_CD{i}" for i in range(1, 26)),
+    *(f"ICD_DGNS_E_CD{i}" for i in range(1, 13)),
+    "FST_DGNS_E_CD",
+    *(f"ICD_PRCDR_CD{i}" for i in range(1, 25)),
+    "LINE_ICD_DGNS_CD", "LINE_ICD_DGNS_VRSN_CD",
+}
+
+# E. Other CMS categorical/indicator code fields with no cardinality check
+#    or encoding decision made yet -- each would need its own review (some
+#    are likely low-cardinality and cheap to one-hot, e.g.
+#    LINE_PLACE_OF_SRVC_CD; others may turn out constant, like Category A).
+_PENDING_OTHER_CODES = {
+    "CARR_CLM_ENTRY_CD", "CARR_CLM_PRVDR_ASGNMT_IND_SW",
+    "CARR_CLM_HCPCS_YR_CD", "CARR_LINE_PRVDR_TYPE_CD", "PRTCPTNG_IND_CD",
+    "LINE_PLACE_OF_SRVC_CD", "CARR_LINE_PRCNG_LCLTY_CD", "BETOS_CD",
+    "LINE_BENE_PRMRY_PYR_CD", "LINE_PRCSG_IND_CD", "HPSA_SCRCTY_IND_CD",
+    "LINE_HCT_HGB_TYPE_CD", "CARR_LINE_CLIA_LAB_NUM", "CLM_FAC_TYPE_CD",
+    "CLM_SRVC_CLSFCTN_TYPE_CD", "CLM_FREQ_CD", "NCH_PRMRY_PYR_CD",
+    "PTNT_DSCHRG_STUS_CD", "REV_CNTR_PMT_MTHD_IND_CD",
+    "REV_CNTR_STUS_IND_CD", "DMERC_LINE_PRCNG_STATE_CD",
+    "DMERC_LINE_SUPPLR_TYPE_CD", "DMERC_LINE_MTUS_CD",
+}
+
+# F. Sequence/line-position numbers -- not real predictive features.
+_PENDING_SEQUENCE_NUMS = {"LINE_NUM", "CLM_LINE_NUM"}
+
+# G. Numeric-sounding but object dtype -- a real data-quality question
+#    (probably a non-numeric sentinel value in a lab-result field), worth
+#    checking on its own; excluded here rather than guessed at.
+_PENDING_DATA_QUALITY = {"LINE_HCT_HGB_RSLT_NUM"}
+
+_PENDING_ENCODING_COLS = (
+    _PENDING_CONSTANT
+    | _PENDING_DATES
+    | _PENDING_LEGACY_IDS
+    | _PENDING_SECONDARY_CODES
+    | _PENDING_OTHER_CODES
+    | _PENDING_SEQUENCE_NUMS
+    | _PENDING_DATA_QUALITY
+)
+
+_NON_FEATURE_COLS = _ID_LABEL_COLS | _DATE_COLS_NOT_YET_FEATURIZED | _PENDING_ENCODING_COLS
+
+# Labeled groups, for the printed breakdown in _prepare_xy -- so a run's
+# console output states clearly WHICH kind of column is being dropped and
+# why, rather than one undifferentiated list.
+_DROP_GROUPS: list[tuple[str, set[str]]] = [
+    ("id/label", _ID_LABEL_COLS),
+    ("dates (no Phase 2 transform)", _DATE_COLS_NOT_YET_FEATURIZED | _PENDING_DATES),
+    ("pending -- fixed/constant (candidate for build_features.py DROP_COLUMNS)", _PENDING_CONSTANT),
+    ("pending -- legacy provider IDs (UPIN/PIN/2nd-tier NPI/tax)", _PENDING_LEGACY_IDS),
+    ("pending -- secondary diagnosis/procedure codes", _PENDING_SECONDARY_CODES),
+    ("pending -- other CMS categorical/indicator codes", _PENDING_OTHER_CODES),
+    ("pending -- sequence/line-position numbers", _PENDING_SEQUENCE_NUMS),
+    ("pending -- data-quality question (numeric-looking, object dtype)", _PENDING_DATA_QUALITY),
+]
 
 
 def parse_args() -> argparse.Namespace:
@@ -189,14 +307,23 @@ def _stratified_sample(df: pd.DataFrame, frac: float, label_col: str, seed: int 
 
 
 def _prepare_xy(design_df: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame]:
-    """Split a design matrix into (y, X): drop ID/label/not-yet-featurized-
-    date columns, then fail loudly on anything statsmodels would otherwise
-    choke on deep inside its own code with a much less specific error --
-    a leftover non-numeric column, or a NaN that shouldn't exist given
-    every claim-type-specific field is supposed to already be zero-filled
-    by build_chow_design_matrix.py."""
+    """Split a design matrix into (y, X): drop ID/label/not-yet-encoded
+    columns (see _NON_FEATURE_COLS and _DROP_GROUPS above), printing which
+    group each dropped column belongs to, then fail loudly on anything
+    LEFT OVER that statsmodels would otherwise choke on deep inside its
+    own code with a much less specific error -- a genuinely new,
+    unaccounted-for non-numeric column, or a NaN that shouldn't exist
+    given every claim-type-specific field is supposed to already be
+    zero-filled by build_chow_design_matrix.py. The strict fail-loud check
+    stays in place for anything NOT in the enumerated groups above,
+    specifically so a future new leak is still caught loudly rather than
+    silently swallowed by a blanket "drop any non-numeric column" rule."""
     present_non_feature = _NON_FEATURE_COLS & set(design_df.columns)
-    print(f"    dropping {len(present_non_feature)} non-feature column(s) from X: {sorted(present_non_feature)}")
+    print(f"    dropping {len(present_non_feature)} non-feature column(s) from X:")
+    for group_label, group_cols in _DROP_GROUPS:
+        present_in_group = sorted(present_non_feature & group_cols)
+        if present_in_group:
+            print(f"      {group_label} ({len(present_in_group)}): {present_in_group}")
 
     y = design_df[LABEL_COL].astype(int)
     X = design_df.drop(columns=list(present_non_feature))
@@ -204,8 +331,10 @@ def _prepare_xy(design_df: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame]:
     non_numeric = [c for c in X.columns if not pd.api.types.is_numeric_dtype(X[c])]
     if non_numeric:
         raise ValueError(
-            "Non-numeric column(s) leaked into the design matrix -- fix the "
-            f"upstream build in build_chow_design_matrix.py, not here: {non_numeric}"
+            "Non-numeric column(s) leaked into the design matrix, NOT "
+            "accounted for by any of the _PENDING_* groups above -- this "
+            "is a genuinely new gap, investigate before adding it to a "
+            f"group or fixing it upstream: {non_numeric}"
         )
 
     na_counts = X.isna().sum()
@@ -448,6 +577,14 @@ def main() -> None:
         "",
         f"Interaction terms skipped for zero variance (0 df, correctly "
         f"excluded from the hypothesis): {len(dropped_zero_variance)}",
+        "",
+        f"NOTE: {len(_PENDING_ENCODING_COLS)} raw column(s) (secondary "
+        "diagnosis/procedure codes, legacy provider IDs, unaddressed "
+        "CMS category codes, and 3 fixed-constant fields) were excluded "
+        "from this baseline's feature set pending a real Phase 2 encoding "
+        "decision -- see _PENDING_* groups in this file's source. The "
+        "omnibus test above covers every covariate that WAS encoded, not "
+        "literally every column in train_model.parquet.",
     ]
     report = "\n".join(lines)
     print("\n" + report)
