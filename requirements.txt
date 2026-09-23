@@ -24,7 +24,10 @@ statsmodels==0.15.0
 # for src/fit_chow_test.py's --method firth option, the standard fix for
 # the separation confirmed in diagnose_separation.py /
 # verify_provider_outlier_mechanism.py (6 HCPCS codes with an exact 0.000
-# population-wide denial rate). See fit_chow_test.py's _fit_logit_firth
-# docstring for why fit_intercept=False and wald=True are required, and
-# for the asymptotic caveat that comes with using it under true separation.
-firthlogist>=0.5.0
+# population-wide denial rate). CORRECTED same day: originally pinned as
+# `firthlogist`, which turned out to be archived by its author (Dec 2025)
+# and pulled from PyPI entirely -- switched to `firthmodels`, the
+# author's own successor package, confirmed installable and verified
+# against its actual API (see fit_chow_test.py's _fit_logit_firth
+# docstring) before writing any code against it.
+firthmodels>=0.8.2
