@@ -37,11 +37,11 @@ mean the two matrices have silently diverged in some way neither this
 script nor the shape-diff check alone would otherwise catch.
 
 MEMORY. The design matrices are ~3.3 GB / ~3.0 GB just from the encoding
-step (FEATURE_ENGINEERING.md Section 6, 2026-09-22 addendum) -- on a
-machine that already hit its memory ceiling 3 separate times building
-just the encodings. statsmodels needs its own working memory on top of
-holding one matrix (gradient/line-search arrays roughly the size of the
-exog array itself), so this script:
+step (FEATURE_ENGINEERING.md Section 6, 2026-09-22 addendum) -- on an
+8 GB machine that already hit its memory ceiling several separate times
+building just the encodings. statsmodels needs its own working memory on
+top of holding one matrix (gradient/line-search arrays roughly the size
+of the exog array itself), so this script:
   - never holds `train`, `intermediate`, and BOTH design matrices at once
     -- restricted is built, fit, and its result reduced to a few scalars
     before the unrestricted matrix is even built (see main()).
@@ -60,6 +60,32 @@ exog array itself), so this script:
     run, and --restricted-only / --skip-restricted so a crash on the
     (larger, riskier) unrestricted fit doesn't require re-fitting the
     restricted model too.
+  - CORRECTED 2026-09-23: --sample-frac originally loaded the ENTIRE
+    ~1.15M-row / 192-column train_model.parquet into memory before
+    throwing away (1-frac) of it -- completely defeating the point of a
+    "low-memory smoke test" flag, and a real pyarrow.lib.ArrowMemoryError
+    was hit doing exactly that at --sample-frac 0.2 (FreePhysicalMemory
+    checked at ~2.77 GB at the time; the failed allocation itself was
+    only ~2 MB, consistent with the earlier full-file load having already
+    pushed pyarrow's own allocator close to its ceiling, not a literal
+    out-of-memory condition). _load_train()/_stratified_sample_streaming()
+    below now pick the sampled row indices from a single-column
+    (label-only) pass, then stream the rest of the file in
+    --stream-batch-size-row batches via pyarrow's iter_batches(),
+    filtering each batch down to its kept rows before converting more
+    than one batch's worth to pandas at a time -- so the full file is
+    never materialized as one in-memory frame at all. NOTE: pandas
+    writes a parquet file as very few (sometimes one) row groups by
+    default, and pyarrow's Parquet reader decompresses at row-group
+    granularity internally regardless of iter_batches' batch_size --
+    so this reduces PEAK memory during the pandas-conversion step even
+    on a coarse-row-group file, but doesn't fully avoid a single-row-
+    group file needing to be decompressed as one Arrow-level chunk. The
+    function prints the file's actual row-group count so this can be
+    checked directly rather than assumed; if it still crashes on a file
+    with very few row groups, the real fix is rewriting
+    train_model.parquet with a smaller row_group_size (a
+    build_features.py-side change, out of this script's scope).
 
 KNOWN, UNRESOLVED RISK: fully interacting many rare one-hot categories
 (e.g. a specific top-N HCPCS/diagnosis code) against DME, the smallest
@@ -73,7 +99,12 @@ non-convergence / separation warnings; it does not attempt to fix them.
 Any individual coefficient reported with a very large magnitude and a
 very large standard error is worth checking against its raw cell counts
 before trusting it -- flagged here as an open item for whoever reads the
-fit output next, not treated as resolved.
+fit output next, not treated as resolved. A real occurrence of this was
+observed at --sample-frac 0.02 (23,039 rows): both fits converged to
+IDENTICAL log-likelihoods with exp-overflow / log-divide-by-zero /
+HessianInversionWarning on both -- ~9 events per parameter at that sample
+size, well under the standard 10-20-events-per-variable rule of thumb.
+Not yet confirmed whether this clears at a larger sample.
 
 Run with (from the repo root, inside the venv):
     python src/fit_chow_test.py
@@ -91,7 +122,9 @@ import warnings
 from collections import Counter, defaultdict
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 import statsmodels.api as sm
 from scipy import stats
 
@@ -105,6 +138,7 @@ from build_chow_design_matrix import (
 REPORTS_DIR = Path(__file__).resolve().parents[1] / "reports"
 RESULTS_PATH = REPORTS_DIR / "chow_test_results.txt"
 RESTRICTED_SUMMARY_PATH = REPORTS_DIR / "chow_restricted_fit_summary.json"
+TRAIN_PARQUET_PATH = PROCESSED_DIR / "train_model.parquet"
 
 LABEL_COL = "is_denied"
 
@@ -253,13 +287,24 @@ def parse_args() -> argparse.Namespace:
         "--sample-frac",
         type=float,
         default=None,
-        help="Subsample train_model.parquet by this fraction (stratified on "
-        "is_denied) before building either design matrix -- for a fast, "
+        help="Stream a stratified (on is_denied) subsample of this fraction "
+        "of train_model.parquet, without ever loading the full file into "
+        "memory (see module docstring's MEMORY section) -- for a fast, "
         "low-memory correctness check of this whole script before "
-        "committing to the full ~1.15M-row fit, which hasn't been run "
-        "before. Omit for the full run. Must match between a "
-        "--restricted-only run and the --skip-restricted run that follows "
-        "it, or the two fits won't be nested over the same rows.",
+        "committing to the full ~1.15M-row fit. Omit for the full run. "
+        "Must match between a --restricted-only run and the "
+        "--skip-restricted run that follows it, or the two fits won't be "
+        "nested over the same rows.",
+    )
+    parser.add_argument(
+        "--stream-batch-size",
+        type=int,
+        default=50_000,
+        help="Rows per pyarrow batch when streaming a --sample-frac subsample "
+        "(default 50,000). Lower this if the file's row-group layout is "
+        "coarse enough that streaming still uses too much memory at the "
+        "default (this script prints the file's row-group count so you "
+        "can tell). No effect when --sample-frac is omitted.",
     )
     parser.add_argument(
         "--restricted-only",
@@ -279,31 +324,96 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _stratified_sample(df: pd.DataFrame, frac: float, label_col: str, seed: int = 42) -> pd.DataFrame:
-    """Subsample while preserving the (very unbalanced) is_denied ratio --
-    a plain df.sample(frac=...) risks a smoke-test run that happens to
-    draw few or zero denied claims, which would make the fit meaningless
-    rather than just small. Deterministic given the same input file, frac,
-    and seed -- required so a --restricted-only run and the
-    --skip-restricted run that follows it see the identical row set.
+def _stratified_sample_streaming(
+    parquet_path: Path, frac: float, label_col: str, batch_size: int, seed: int = 42
+) -> pd.DataFrame:
+    """Pick a stratified sample of row positions from a SINGLE-COLUMN
+    (label-only) read of the parquet file -- a few MB even at ~1.15M rows
+    -- then stream the rest of the file in `batch_size`-row pyarrow
+    batches via iter_batches(), filtering each batch down to just its
+    kept rows before converting more than one batch's worth to pandas at
+    a time. The full file is never materialized as one in-memory
+    DataFrame. See the module docstring's MEMORY section for why this
+    replaced a plain pd.read_parquet() + df.sample() -- that combination
+    hit a real pyarrow.lib.ArrowMemoryError at --sample-frac 0.2 on this
+    machine.
 
-    CORRECTED 2026-09-23: the first version used
-    df.groupby(label_col).apply(lambda g: g.sample(...)). That broke on
-    real data -- newer pandas excludes the grouping column itself
-    (label_col) from the sub-frame `g` passed into an .apply() callback
-    (the "operating on the grouping columns" behavior change), so the
-    result silently lost `is_denied` entirely. The groupby+apply call
-    itself doesn't error; the KeyError only surfaced two steps later, in
-    _prepare_xy, which made the actual cause easy to misread as a
-    Chow-test/design-matrix bug rather than a sampling-helper one.
-    Rewritten to iterate the GroupBy object directly instead of calling
-    .apply() on it -- plain iteration over a GroupBy always yields the
-    full sub-frame, grouping column included, in every pandas version;
-    only the function-based .apply() path has the version-dependent
-    exclusion behavior.
+    Deterministic given the same file, frac, and seed -- required so a
+    --restricted-only run and the --skip-restricted run that follows it
+    see the identical row set (both stages call this function fresh, each
+    reading the file from scratch).
     """
-    parts = [group.sample(frac=frac, random_state=seed) for _, group in df.groupby(label_col)]
-    return pd.concat(parts, ignore_index=True)
+    pf = pq.ParquetFile(parquet_path)
+    total_rows = pf.metadata.num_rows
+    print(f"    {parquet_path.name}: {total_rows:,} rows across {pf.num_row_groups} row group(s)")
+    if pf.num_row_groups <= 2:
+        print(
+            "    [note] very few row groups -- pyarrow decompresses at "
+            "row-group granularity internally regardless of batch_size, so "
+            "streaming still helps at the pandas-conversion step but may not "
+            "fully avoid a crash if a single row group alone is too large. "
+            "If this still fails, rewrite train_model.parquet with a "
+            "smaller row_group_size (a build_features.py-side change)."
+        )
+
+    # Step 1: the one unavoidable full-file pass -- label column only.
+    label_values = pf.read(columns=[label_col]).column(label_col).to_pandas().to_numpy()
+    if len(label_values) != total_rows:
+        raise ValueError(
+            f"Label column read back {len(label_values):,} values but the "
+            f"file's own metadata reports {total_rows:,} rows -- do not "
+            "trust the sample until this is investigated."
+        )
+    rng = np.random.RandomState(seed)
+    keep_mask = np.zeros(total_rows, dtype=bool)
+    kept_counts = {}
+    for val in np.unique(label_values):
+        idx = np.flatnonzero(label_values == val)
+        n_keep = min(int(round(len(idx) * frac)), len(idx))
+        keep_mask[rng.choice(idx, size=n_keep, replace=False)] = True
+        kept_counts[val] = (n_keep, len(idx))
+    del label_values
+    gc.collect()
+    print(
+        "    stratified target: "
+        + ", ".join(f"{label_col}={v}: {k}/{n}" for v, (k, n) in sorted(kept_counts.items()))
+    )
+
+    # Step 2: stream in batches, filtering each down to its kept rows
+    # before it ever becomes a full-size pandas DataFrame.
+    parts = []
+    row_offset = 0
+    for batch in pf.iter_batches(batch_size=batch_size):
+        n = batch.num_rows
+        batch_mask = keep_mask[row_offset : row_offset + n]
+        row_offset += n
+        if batch_mask.any():
+            parts.append(batch.to_pandas().loc[batch_mask].copy())
+        del batch
+
+    if row_offset != total_rows:
+        raise ValueError(
+            f"Streamed {row_offset:,} rows via iter_batches but the file's "
+            f"metadata reports {total_rows:,} -- do not trust the sample "
+            "until this is investigated."
+        )
+
+    result = pd.concat(parts, ignore_index=True)
+    del parts
+    gc.collect()
+    print(f"    kept {len(result):,} of {total_rows:,} rows (shape: {result.shape})")
+    return result
+
+
+def _load_train(sample_frac: float | None, stream_batch_size: int) -> pd.DataFrame:
+    """Load train_model.parquet, or a streamed stratified subsample of it.
+    When sample_frac is given, the full file is NEVER loaded into memory
+    first -- see _stratified_sample_streaming's docstring."""
+    if sample_frac is None:
+        print("Loading train_model.parquet (full)...")
+        return pd.read_parquet(TRAIN_PARQUET_PATH)
+    print(f"Streaming a --sample-frac {sample_frac} stratified subsample of train_model.parquet...")
+    return _stratified_sample_streaming(TRAIN_PARQUET_PATH, sample_frac, LABEL_COL, stream_batch_size)
 
 
 def _prepare_xy(design_df: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame]:
@@ -466,20 +576,12 @@ def main() -> None:
             )
 
         print("\nBuilding unrestricted (fully-interacted) design matrix...")
-        train = pd.read_parquet(PROCESSED_DIR / "train_model.parquet")
-        if args.sample_frac is not None:
-            print(f"  --sample-frac {args.sample_frac}: subsampling before anything else")
-            train = _stratified_sample(train, args.sample_frac, LABEL_COL)
+        train = _load_train(args.sample_frac, args.stream_batch_size)
         intermediate = build_chow_design_matrix(train)
         del train
         gc.collect()
     else:
-        print("Loading train_model.parquet...")
-        train = pd.read_parquet(PROCESSED_DIR / "train_model.parquet")
-        if args.sample_frac is not None:
-            print(f"  --sample-frac {args.sample_frac}: subsampling before anything else")
-            train = _stratified_sample(train, args.sample_frac, LABEL_COL)
-            print(f"  sampled shape: {train.shape}")
+        train = _load_train(args.sample_frac, args.stream_batch_size)
 
         intermediate = build_chow_design_matrix(train)
         del train
