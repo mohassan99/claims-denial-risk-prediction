@@ -23,16 +23,29 @@ rare dataset-wide, plausibly zero by chance in any 45K-row slice) and
 provider_outlier -- the one factor that SHOULD apply regardless of HCPCS
 code, since it's a property of the billing provider, not the procedure.
 
-HYPOTHESIS: rule_provider_outlier computes its 95th-percentile claim-
-volume/payment cutoff GLOBALLY across every provider in the dataset --
-specialty_col defaults to None in both the rule's own signature and
-denial_reasons.py's compute_risk_factors(), and nothing in the pipeline
-overrides it. If providers billing these specific routine/low-intensity
-codes (health behavior intervention, SBIRT screening, transitional care
-management, preventive counseling, spirometry, a quality-measure code)
-are systematically lower-volume than whatever sets a dataset-wide top-5%
-bar (plausibly high-throughput labs/DME suppliers/imaging), none of them
-would ever cross it -- explaining the exact zero.
+ORIGINAL HYPOTHESIS (revised below after a real, surprising finding):
+rule_provider_outlier computes its 95th-percentile claim-volume/payment
+cutoff GLOBALLY across every provider in the dataset -- specialty_col
+defaults to None everywhere in the pipeline. The original hypothesis was
+that providers billing these routine/low-intensity codes are
+systematically LOWER-volume than whatever sets the dataset-wide top-5%
+bar.
+
+ACTUAL FINDING (2026-09-23, first run of this script): each of the 6
+codes has EXACTLY 1 distinct PRVDR_NUM value across tens of thousands of
+claims (96156: 45,788 claims, 1 provider) -- and that one "provider" still
+shows 0% volume-outlier status. A single real provider billing 45,788
+claims of one code alone would trivially clear a 292-claim cutoff (the
+actual 95th-percentile value found on this data) -- so "low-volume real
+provider" cannot be the explanation here. The far more likely mechanism,
+matching a pattern already caught twice elsewhere in this project (the
+NPI presence flags, the missing_hcpcs discovery): PRVDR_NUM is plausibly
+NaN (missing) for these specific claims, and pandas' groupby(...).size()
+DROPS NaN keys by default (dropna=True) -- meaning these claims were never
+even a CANDIDATE for the volume-outlier computation at all, not evaluated
+and found low-volume. This script now prints the raw provider value(s)
+directly (type, null-ness, and that value's own entry in claim_counts) to
+confirm or refute this directly rather than continuing to infer it.
 
 WHAT THIS SCRIPT CAN AND CAN'T CONFIRM EXACTLY:
   - CAN replicate the CLAIM-VOLUME half of the outlier rule exactly:
@@ -48,19 +61,12 @@ WHAT THIS SCRIPT CAN AND CAN'T CONFIRM EXACTLY:
     target construction.
   - Also computed here on train_model.parquet (the ~1.15M-row TRAIN
     split only), not the full pre-split dataset denial_reasons.py likely
-    ran against originally (is_denied needs to exist before a stratified
-    train/val/test split can be done on it) -- percentile cutoffs and
-    provider volume counts will differ somewhat from the original
-    computation, though a low-volume provider in the full population
-    should also read as low-volume within a ~68%-of-full train subset,
-    so this should still be a reliable DIRECTIONAL test even if not a
-    byte-for-byte replication.
-
-If the claim-volume-only check alone already shows ~0% overlap for all 6
-codes, that's sufficient to confirm the mechanism (duplicate_claim's
-independent rarity covers the rest). If it doesn't, the payment half
-would need checking against an earlier pre-feature-engineering file this
-script doesn't have access to.
+    ran against originally -- percentile cutoffs and provider volume
+    counts will differ somewhat from the original computation, though a
+    low-volume provider in the full population should also read as
+    low-volume within a ~68%-of-full train subset. (This caveat is now
+    secondary to the NaN-grouping question above, which doesn't depend on
+    split membership at all.)
 
 Run with (from the repo root, inside the venv):
     python src/verify_provider_outlier_mechanism.py
@@ -90,16 +96,23 @@ def main() -> None:
         ],
     )
     print(f"  {len(df):,} rows\n")
+    n_null_prvdr = int(df["PRVDR_NUM"].isna().sum())
+    print(f"  PRVDR_NUM null count, whole population: {n_null_prvdr:,} ({n_null_prvdr / len(df):.4%})\n")
 
     # --- Replicate rule_provider_outlier's CLAIM-VOLUME half exactly ---
-    # (payment half not replicated -- see module docstring.)
+    # (payment half not replicated -- see module docstring.) NOTE:
+    # groupby()'s default dropna=True means any NaN PRVDR_NUM rows are
+    # silently excluded from claim_counts entirely -- deliberately NOT
+    # overridden here, since that's the exact behavior rule_provider_outlier
+    # itself has (it doesn't pass dropna=False either), and reproducing
+    # that faithfully is the point of this check.
     claim_counts = df.groupby("PRVDR_NUM").size()
     vol_cut = claim_counts.quantile(PERCENTILE)
     outlier_providers_by_volume = set(claim_counts[claim_counts >= vol_cut].index)
     print(f"Volume cutoff (95th percentile of claim_count per provider): {vol_cut:.1f}")
     print(
         f"Providers flagged as volume outliers: {len(outlier_providers_by_volume):,} "
-        f"of {claim_counts.size:,} total providers\n"
+        f"of {claim_counts.size:,} total providers (NaN excluded from this count by groupby's default)\n"
     )
 
     overall_outlier_share = df["PRVDR_NUM"].isin(outlier_providers_by_volume).mean()
@@ -114,7 +127,8 @@ def main() -> None:
         if n == 0:
             print(f"  {code}: 0 claims found under claim_type=carrier (check code/claim_type)")
             continue
-        code_providers = set(df.loc[mask, "PRVDR_NUM"].unique())
+        code_providers_raw = df.loc[mask, "PRVDR_NUM"].unique()
+        code_providers = set(code_providers_raw)
         overlap = code_providers & outlier_providers_by_volume
         claims_from_outlier = df.loc[mask, "PRVDR_NUM"].isin(outlier_providers_by_volume).mean()
         print(
@@ -123,15 +137,29 @@ def main() -> None:
             f"{claims_from_outlier:.4%} of this code's claims come from a volume-outlier provider "
             f"(vs {overall_outlier_share:.4%} population-wide)"
         )
+        # A single real provider billing 10,000s of claims of one code alone
+        # should trivially clear a 292-claim cutoff -- if that's not
+        # happening, print exactly what the raw value is (NaN would be
+        # dropped by groupby's default dropna=True and so would never even
+        # be a CANDIDATE for the outlier flag, a materially different and
+        # more serious explanation than "evaluated and found low-volume").
+        if len(code_providers) <= 3:
+            for val in code_providers_raw:
+                is_null = bool(pd.isna(val))
+                own_count = claim_counts.get(val)
+                print(
+                    f"      raw PRVDR_NUM value: {val!r} (type={type(val).__name__}, is_null={is_null}) -- "
+                    f"its own entry in claim_counts: {own_count!r} "
+                    f"({'excluded entirely by groupby dropna=True' if own_count is None else 'present normally'})"
+                )
 
     print(
-        "\nIf every suspect code's 'claims from a volume-outlier provider' share is at or near "
-        "0% (well below the population-wide share above), that confirms the claim-volume half "
-        "of provider_outlier as (at least a major part of) the mechanism -- combined with "
-        "duplicate_claim's independent dataset-wide rarity, this would fully account for the "
-        "exact-zero finding without needing the payment half checked. If instead these codes' "
-        "shares are comparable to or higher than the population rate, the volume half doesn't "
-        "explain it and the payment half (or something else) would need investigating instead."
+        "\nIf the per-code detail above shows is_null=True and 'excluded entirely', that confirms "
+        "these claims' PRVDR_NUM is missing and was never a candidate for the volume-outlier flag "
+        "at all -- a structural gap in rule_provider_outlier (same 'NaN silently dropped, not "
+        "evaluated' class of issue already caught in the NPI flags and the missing_hcpcs "
+        "discovery), not a specialty/volume-mix effect. If instead a real non-null provider ID "
+        "shows a genuinely low claim_count, the original low-volume-provider hypothesis holds."
     )
 
 
