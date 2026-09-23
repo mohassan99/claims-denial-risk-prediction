@@ -64,53 +64,60 @@ of the exog array itself), so this script:
     ~1.15M-row / 192-column train_model.parquet into memory before
     throwing away (1-frac) of it -- completely defeating the point of a
     "low-memory smoke test" flag, and a real pyarrow.lib.ArrowMemoryError
-    was hit doing exactly that at --sample-frac 0.2 (FreePhysicalMemory
-    checked at ~2.77 GB at the time; the failed allocation itself was
-    only ~2 MB, consistent with the earlier full-file load having already
-    pushed pyarrow's own allocator close to its ceiling, not a literal
-    out-of-memory condition). _load_train()/_stratified_sample_streaming()
-    below now pick the sampled row indices from a single-column
-    (label-only) pass, then stream the rest of the file in
-    --stream-batch-size-row batches via pyarrow's iter_batches(),
+    was hit doing exactly that at --sample-frac 0.2. _load_train()/
+    _stratified_sample_streaming() below now pick the sampled row indices
+    from a single-column (label-only) pass, then stream the rest of the
+    file in --stream-batch-size-row batches via pyarrow's iter_batches(),
     filtering each batch down to its kept rows before converting more
-    than one batch's worth to pandas at a time -- so the full file is
-    never materialized as one in-memory frame at all. NOTE: pandas
-    writes a parquet file as very few (sometimes one) row groups by
-    default, and pyarrow's Parquet reader decompresses at row-group
-    granularity internally regardless of iter_batches' batch_size --
-    so this reduces PEAK memory during the pandas-conversion step even
-    on a coarse-row-group file, but doesn't fully avoid a single-row-
-    group file needing to be decompressed as one Arrow-level chunk. The
-    function prints the file's actual row-group count so this can be
-    checked directly rather than assumed; if it still crashes on a file
-    with very few row groups, the real fix is rewriting
-    train_model.parquet with a smaller row_group_size (a
-    build_features.py-side change, out of this script's scope).
+    than one batch's worth to pandas at a time.
 
-KNOWN, UNRESOLVED RISK: fully interacting many rare one-hot categories
-(e.g. a specific top-N HCPCS/diagnosis code) against DME, the smallest
-claim type (66,335 rows), creates real quasi-complete-separation risk
-for some coefficients even after the zero-variance guard removes the
-fully-zero cases -- e.g. a category that happens to be ~100% denied
-within one claim type. method='lbfgs' (below) degrades more gracefully
-than statsmodels' Newton-Raphson default under this kind of near-
-singularity, but doesn't eliminate the risk. This script surfaces
-non-convergence / separation warnings; it does not attempt to fix them.
-Any individual coefficient reported with a very large magnitude and a
-very large standard error is worth checking against its raw cell counts
-before trusting it -- flagged here as an open item for whoever reads the
-fit output next, not treated as resolved. A real occurrence of this was
-observed at --sample-frac 0.02 (23,039 rows): both fits converged to
-IDENTICAL log-likelihoods with exp-overflow / log-divide-by-zero /
-HessianInversionWarning on both -- ~9 events per parameter at that sample
-size, well under the standard 10-20-events-per-variable rule of thumb.
-Not yet confirmed whether this clears at a larger sample.
+KNOWN, CONFIRMED SEPARATION (2026-09-23): fully interacting many rare
+one-hot categories against DME (the smallest claim type) was originally
+flagged as a theoretical risk; it turned out to be real and larger than
+expected. diagnose_separation.py and verify_provider_outlier_mechanism.py
+traced it to a genuine, confirmed, population-wide zero: 6 HCPCS codes
+(94010, 96156, 99401, 99408, 99495, M1069) have an EXACT 0.000 denial
+rate within claim_type=carrier across the full ~1.15M-row population (up
+to 45,788 claims for one code alone). Mechanism, confirmed directly from
+denial_rules.py: 4 of 6 risk factors are structurally excluded for these
+codes by design (dx_procedure_mismatch only fires for its explicitly-
+mapped codes -- these are documented as "deliberately left unmapped";
+missing_prior_auth only for E/K-prefix codes; missing_hcpcs only when
+HCPCS is absent; deprecated_code only for the 10 specific consult codes),
+and PRVDR_NUM is NaN for these specific claims, which pandas'
+groupby(...).size() silently drops by default -- meaning these claims
+were never even a CANDIDATE for rule_provider_outlier's volume-outlier
+flag, not evaluated and found low-volume. duplicate_claim's independent
+dataset-wide rarity covers the remainder. This produced bit-identical
+log-likelihoods between the restricted and unrestricted fits (LR=0,
+p=1) at every sample size tried, from 23,039 rows up to the full
+population, with exp-overflow/log-divide-by-zero/HessianInversionWarning
+on both fits.
+
+TWO FIXES, BOTH IMPLEMENTED, MEANT TO BE COMPARED (2026-09-23):
+  --method firth: Firth's penalized (bias-reduced) logistic regression
+      instead of ordinary MLE (see _fit_logit_firth's docstring for the
+      implementation and, importantly, its asymptotic caveat -- the
+      chi-square justification for a penalized LR test under TRUE
+      separation is empirically well-validated but not as rigorously
+      settled as the ordinary LRT's).
+  --exclude-separating-codes: drop the 6 confirmed columns entirely from
+      both matrices before fitting (see _SEPARATING_HCPCS_CODES below).
+      With no separation left in the design, the ordinary --method
+      standard LRT needs no caveat at all -- classic Wilks asymptotics
+      apply cleanly.
+  Run both (--method firth alone, and --method standard
+  --exclude-separating-codes together) and compare the saved reports --
+  output filenames are suffixed by method/exclusion (see _output_paths)
+  specifically so the two runs don't overwrite each other.
 
 Run with (from the repo root, inside the venv):
     python src/fit_chow_test.py
     python src/fit_chow_test.py --sample-frac 0.02      # smoke test first
     python src/fit_chow_test.py --restricted-only       # stage 1 of 2
     python src/fit_chow_test.py --skip-restricted       # stage 2 of 2
+    python src/fit_chow_test.py --method firth
+    python src/fit_chow_test.py --exclude-separating-codes
 """
 
 from __future__ import annotations
@@ -136,8 +143,6 @@ from build_chow_design_matrix import (
 )
 
 REPORTS_DIR = Path(__file__).resolve().parents[1] / "reports"
-RESULTS_PATH = REPORTS_DIR / "chow_test_results.txt"
-RESTRICTED_SUMMARY_PATH = REPORTS_DIR / "chow_restricted_fit_summary.json"
 TRAIN_PARQUET_PATH = PROCESSED_DIR / "train_model.parquet"
 
 LABEL_COL = "is_denied"
@@ -164,61 +169,34 @@ _DATE_COLS_NOT_YET_FEATURIZED = {"CLM_FROM_DT", "CLM_THRU_DT", "NCH_WKLY_PROC_DT
 # or encodes these: build_chow_design_matrix.py only ever touches (1) the
 # 5 named cardinality covariates, (2) numeric claim-type-exclusive/2-of-3
 # fields, and (3) the specific dummy-prefix groups -- everything else rides
-# through both design matrices completely untouched. That file's own
-# comment anticipated "82 non-numeric columns... never in scope for this
-# treatment", but that estimate (from a 2026-09-17 check of only the
-# columns carrying real NaN) undercounts the true list once every
-# non-numeric column is checked -- the actual count is 130. Same
-# "the real number was bigger than the estimate" pattern that's recurred
-# throughout this project's audits (the 2-of-3 count, the 0-of-3 count,
-# the NPI-flag table).
+# through both design matrices completely untouched.
 #
 # Excluded from the Phase 2 BASELINE/Chow-test feature set HERE, not from
 # train_model.parquet itself -- XGBoost (Phase 2's other model) can use or
 # encode several of these natively and shouldn't inherit a baseline-
-# specific exclusion decision. This is a scope decision for getting the
-# Chow test running now, not a permanent verdict on each column -- grouped
-# below so the ones genuinely worth an encoding pass later (Category D
-# especially) aren't confused with the ones that are dead weight.
+# specific exclusion decision.
 
 # A. Already documented elsewhere as fixed/near-constant, carrying zero
-#    signal -- TARGET_DEFINITION.md's "why not a native denial field"
-#    table uses these three to argue no native denial field exists, but
-#    nothing ever added them to build_features.py's DROP_COLUMNS as
-#    FEATURES. Worth moving there permanently (it's the shared file
-#    XGBoost also reads) rather than excluding only here -- flagged, not
-#    done unilaterally.
+#    signal.
 _PENDING_CONSTANT = {
     "CARR_CLM_PMT_DNL_CD", "CLM_DISP_CD", "CLM_MDCR_NON_PMT_RSN_CD",
 }
 
-# B. Raw dates with no Phase 2 numeric transform yet -- same reasoning as
-#    _DATE_COLS_NOT_YET_FEATURIZED above, a longer list than originally
-#    known.
+# B. Raw dates with no Phase 2 numeric transform yet.
 _PENDING_DATES = {
     "LINE_1ST_EXPNS_DT", "LINE_LAST_EXPNS_DT", "REV_CNTR_DT",
     *(f"PRCDR_DT{i}" for i in range(1, 25)),
 }
 
 # C. Legacy/secondary provider-identifier strings beyond the 6 NPI fields
-#    FEATURE_ENGINEERING.md Section 1 already resolved (drop raw value,
-#    keep a presence flag) -- UPIN (the pre-NPI legacy identifier), PIN,
-#    and a second tier of NPI/tax-ID fields that discussion never covered.
+#    FEATURE_ENGINEERING.md Section 1 already resolved.
 _PENDING_LEGACY_IDS = {
     "RFR_PHYSN_UPIN", "PRF_PHYSN_UPIN", "AT_PHYSN_UPIN", "OP_PHYSN_UPIN",
     "RNDRNG_PHYSN_UPIN", "CARR_CLM_RFRNG_PIN_NUM", "CARR_PRFRNG_PIN_NUM",
     "CARR_CLM_BLG_NPI_NUM", "ORG_NPI_NUM", "TAX_NUM",
 }
 
-# D. Secondary/tertiary diagnosis & procedure codes -- only the PRINCIPAL
-#    diagnosis (PRNCPAL_DGNS_CD) got cardinality encoding in
-#    build_chow_design_matrix.py; these (up to 25 additional diagnoses, 12
-#    external-cause-of-injury codes, 24 additional procedures per claim)
-#    never did. Real clinical signal plausibly lives here -- the one
-#    category most worth a genuine encoding pass later, not a permanent
-#    drop. XGBoost can likely use a cheaper representation (e.g.
-#    presence-of-any-code, or clinically-grouped flags) than the
-#    one-hot-per-code treatment a linear baseline would need.
+# D. Secondary/tertiary diagnosis & procedure codes.
 _PENDING_SECONDARY_CODES = {
     *(f"ICD_DGNS_CD{i}" for i in range(1, 26)),
     *(f"ICD_DGNS_E_CD{i}" for i in range(1, 13)),
@@ -228,9 +206,7 @@ _PENDING_SECONDARY_CODES = {
 }
 
 # E. Other CMS categorical/indicator code fields with no cardinality check
-#    or encoding decision made yet -- each would need its own review (some
-#    are likely low-cardinality and cheap to one-hot, e.g.
-#    LINE_PLACE_OF_SRVC_CD; others may turn out constant, like Category A).
+#    or encoding decision made yet.
 _PENDING_OTHER_CODES = {
     "CARR_CLM_ENTRY_CD", "CARR_CLM_PRVDR_ASGNMT_IND_SW",
     "CARR_CLM_HCPCS_YR_CD", "CARR_LINE_PRVDR_TYPE_CD", "PRTCPTNG_IND_CD",
@@ -246,9 +222,7 @@ _PENDING_OTHER_CODES = {
 # F. Sequence/line-position numbers -- not real predictive features.
 _PENDING_SEQUENCE_NUMS = {"LINE_NUM", "CLM_LINE_NUM"}
 
-# G. Numeric-sounding but object dtype -- a real data-quality question
-#    (probably a non-numeric sentinel value in a lab-result field), worth
-#    checking on its own; excluded here rather than guessed at.
+# G. Numeric-sounding but object dtype -- a real data-quality question.
 _PENDING_DATA_QUALITY = {"LINE_HCT_HGB_RSLT_NUM"}
 
 _PENDING_ENCODING_COLS = (
@@ -263,9 +237,6 @@ _PENDING_ENCODING_COLS = (
 
 _NON_FEATURE_COLS = _ID_LABEL_COLS | _DATE_COLS_NOT_YET_FEATURIZED | _PENDING_ENCODING_COLS
 
-# Labeled groups, for the printed breakdown in _prepare_xy -- so a run's
-# console output states clearly WHICH kind of column is being dropped and
-# why, rather than one undifferentiated list.
 _DROP_GROUPS: list[tuple[str, set[str]]] = [
     ("id/label", _ID_LABEL_COLS),
     ("dates (no Phase 2 transform)", _DATE_COLS_NOT_YET_FEATURIZED | _PENDING_DATES),
@@ -276,6 +247,40 @@ _DROP_GROUPS: list[tuple[str, set[str]]] = [
     ("pending -- sequence/line-position numbers", _PENDING_SEQUENCE_NUMS),
     ("pending -- data-quality question (numeric-looking, object dtype)", _PENDING_DATA_QUALITY),
 ]
+
+# --- Confirmed structurally-separating HCPCS codes (2026-09-23) ----------
+# Exact 0.000 denial rate within claim_type=carrier across the FULL
+# population (up to 45,788 claims for one code) -- confirmed via
+# diagnose_separation.py Steps 3/4 and verify_provider_outlier_mechanism.py.
+# See the module docstring's "KNOWN, CONFIRMED SEPARATION" section for the
+# full mechanism. Used by --exclude-separating-codes below.
+_SEPARATING_HCPCS_CODES = {"94010", "96156", "99401", "99408", "99495", "M1069"}
+
+
+def _separating_hcpcs_columns(colnames: set[str]) -> set[str]:
+    """Every column derived from a confirmed structurally-separating HCPCS
+    code that's actually present in `colnames` -- the plain pooled column
+    in the restricted matrix ('hcpcs_<code>') and/or every interaction
+    term in the unrestricted matrix ('hcpcs_<code>__x__<claim_type>').
+    Only returns what's actually there, so this is safe to call on either
+    matrix (they have different column shapes for the same covariate) or
+    even if a code's zero-variance-guarded interaction terms mean fewer
+    columns exist than expected."""
+    return {
+        c for c in colnames
+        if any(c == f"hcpcs_{code}" or c.startswith(f"hcpcs_{code}__x__") for code in _SEPARATING_HCPCS_CODES)
+    }
+
+
+class _SimpleFitResult:
+    """Minimal stand-in for a statsmodels fit result, so main() can treat
+    a Firth fit and a statsmodels fit identically -- both just need .llf,
+    .nobs, and .mle_retvals.get(...)."""
+
+    def __init__(self, llf: float, nobs: int, converged, n_iter=None):
+        self.llf = llf
+        self.nobs = nobs
+        self.mle_retvals = {"converged": converged, "iterations": n_iter}
 
 
 def parse_args() -> argparse.Namespace:
@@ -289,60 +294,80 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Stream a stratified (on is_denied) subsample of this fraction "
         "of train_model.parquet, without ever loading the full file into "
-        "memory (see module docstring's MEMORY section) -- for a fast, "
-        "low-memory correctness check of this whole script before "
-        "committing to the full ~1.15M-row fit. Omit for the full run. "
-        "Must match between a --restricted-only run and the "
-        "--skip-restricted run that follows it, or the two fits won't be "
-        "nested over the same rows.",
+        "memory. Omit for the full run. Must match between a "
+        "--restricted-only run and the --skip-restricted run that follows "
+        "it, or the two fits won't be nested over the same rows.",
     )
     parser.add_argument(
         "--stream-batch-size",
         type=int,
         default=50_000,
         help="Rows per pyarrow batch when streaming a --sample-frac subsample "
-        "(default 50,000). Lower this if the file's row-group layout is "
-        "coarse enough that streaming still uses too much memory at the "
-        "default (this script prints the file's row-group count so you "
-        "can tell). No effect when --sample-frac is omitted.",
+        "(default 50,000). No effect when --sample-frac is omitted.",
     )
     parser.add_argument(
         "--restricted-only",
         action="store_true",
-        help="Fit only the restricted (pooled) model, write its summary to "
-        f"{RESTRICTED_SUMMARY_PATH.name}, and exit. Use this first given "
-        "the real memory risk of building+fitting both matrices in one "
-        "process -- then rerun with --skip-restricted for the second half.",
+        help="Fit only the restricted (pooled) model, write its summary, and "
+        "exit. Use this first given the real memory risk of building+fitting "
+        "both matrices in one process -- then rerun with --skip-restricted "
+        "for the second half.",
     )
     parser.add_argument(
         "--skip-restricted",
         action="store_true",
         help="Load a previously-saved restricted fit summary instead of "
         "rebuilding and refitting the restricted model. Use after a prior "
-        "--restricted-only run.",
+        "--restricted-only run with the SAME --method/--exclude-separating-"
+        "codes/--sample-frac -- mismatches are checked and warned about.",
+    )
+    parser.add_argument(
+        "--method",
+        choices=["standard", "firth"],
+        default="standard",
+        help="'standard': ordinary MLE via statsmodels (method='lbfgs') -- "
+        "degenerate (identical log-likelihoods, LR=0) under the confirmed "
+        "separation unless combined with --exclude-separating-codes. "
+        "'firth': Firth's penalized (bias-reduced) logistic regression via "
+        "the firthlogist package (pip install firthlogist) -- handles "
+        "separation directly, at the cost of a less rigorously-settled "
+        "asymptotic justification for the resulting LR test (see "
+        "_fit_logit_firth's docstring). Run both this and --method standard "
+        "--exclude-separating-codes, and compare the saved reports.",
+    )
+    parser.add_argument(
+        "--exclude-separating-codes",
+        action="store_true",
+        help="Drop the 6 confirmed structurally-separating HCPCS codes "
+        "(94010, 96156, 99401, 99408, 99495, M1069 -- see module docstring) "
+        "entirely from both design matrices before fitting. With this set, "
+        "--method standard should no longer show degenerate log-likelihoods, "
+        "and the resulting LR test needs no asymptotic caveat at all.",
     )
     return parser.parse_args()
+
+
+def _output_paths(args: argparse.Namespace) -> tuple[Path, Path]:
+    """Results/summary file paths, suffixed by --method and
+    --exclude-separating-codes -- the whole point of running more than one
+    combination is to compare their saved output, so they must not
+    overwrite each other."""
+    suffix = args.method + ("_excl" if args.exclude_separating_codes else "")
+    return (
+        REPORTS_DIR / f"chow_test_results__{suffix}.txt",
+        REPORTS_DIR / f"chow_restricted_fit_summary__{suffix}.json",
+    )
 
 
 def _stratified_sample_streaming(
     parquet_path: Path, frac: float, label_col: str, batch_size: int, seed: int = 42
 ) -> pd.DataFrame:
     """Pick a stratified sample of row positions from a SINGLE-COLUMN
-    (label-only) read of the parquet file -- a few MB even at ~1.15M rows
-    -- then stream the rest of the file in `batch_size`-row pyarrow
-    batches via iter_batches(), filtering each batch down to just its
-    kept rows before converting more than one batch's worth to pandas at
-    a time. The full file is never materialized as one in-memory
-    DataFrame. See the module docstring's MEMORY section for why this
-    replaced a plain pd.read_parquet() + df.sample() -- that combination
-    hit a real pyarrow.lib.ArrowMemoryError at --sample-frac 0.2 on this
-    machine.
-
-    Deterministic given the same file, frac, and seed -- required so a
-    --restricted-only run and the --skip-restricted run that follows it
-    see the identical row set (both stages call this function fresh, each
-    reading the file from scratch).
-    """
+    (label-only) read of the parquet file, then stream the rest of the
+    file in `batch_size`-row pyarrow batches via iter_batches(), filtering
+    each batch down to just its kept rows before converting more than one
+    batch's worth to pandas at a time. Deterministic given the same file,
+    frac, and seed."""
     pf = pq.ParquetFile(parquet_path)
     total_rows = pf.metadata.num_rows
     print(f"    {parquet_path.name}: {total_rows:,} rows across {pf.num_row_groups} row group(s)")
@@ -351,12 +376,9 @@ def _stratified_sample_streaming(
             "    [note] very few row groups -- pyarrow decompresses at "
             "row-group granularity internally regardless of batch_size, so "
             "streaming still helps at the pandas-conversion step but may not "
-            "fully avoid a crash if a single row group alone is too large. "
-            "If this still fails, rewrite train_model.parquet with a "
-            "smaller row_group_size (a build_features.py-side change)."
+            "fully avoid a crash if a single row group alone is too large."
         )
 
-    # Step 1: the one unavoidable full-file pass -- label column only.
     label_values = pf.read(columns=[label_col]).column(label_col).to_pandas().to_numpy()
     if len(label_values) != total_rows:
         raise ValueError(
@@ -379,8 +401,6 @@ def _stratified_sample_streaming(
         + ", ".join(f"{label_col}={v}: {k}/{n}" for v, (k, n) in sorted(kept_counts.items()))
     )
 
-    # Step 2: stream in batches, filtering each down to its kept rows
-    # before it ever becomes a full-size pandas DataFrame.
     parts = []
     row_offset = 0
     for batch in pf.iter_batches(batch_size=batch_size):
@@ -406,9 +426,7 @@ def _stratified_sample_streaming(
 
 
 def _load_train(sample_frac: float | None, stream_batch_size: int) -> pd.DataFrame:
-    """Load train_model.parquet, or a streamed stratified subsample of it.
-    When sample_frac is given, the full file is NEVER loaded into memory
-    first -- see _stratified_sample_streaming's docstring."""
+    """Load train_model.parquet, or a streamed stratified subsample of it."""
     if sample_frac is None:
         print("Loading train_model.parquet (full)...")
         return pd.read_parquet(TRAIN_PARQUET_PATH)
@@ -416,21 +434,24 @@ def _load_train(sample_frac: float | None, stream_batch_size: int) -> pd.DataFra
     return _stratified_sample_streaming(TRAIN_PARQUET_PATH, sample_frac, LABEL_COL, stream_batch_size)
 
 
-def _prepare_xy(design_df: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame]:
+def _prepare_xy(design_df: pd.DataFrame, exclude_separating: bool = False) -> tuple[pd.Series, pd.DataFrame]:
     """Split a design matrix into (y, X): drop ID/label/not-yet-encoded
-    columns (see _NON_FEATURE_COLS and _DROP_GROUPS above), printing which
-    group each dropped column belongs to, then fail loudly on anything
-    LEFT OVER that statsmodels would otherwise choke on deep inside its
-    own code with a much less specific error -- a genuinely new,
-    unaccounted-for non-numeric column, or a NaN that shouldn't exist
-    given every claim-type-specific field is supposed to already be
-    zero-filled by build_chow_design_matrix.py. The strict fail-loud check
-    stays in place for anything NOT in the enumerated groups above,
-    specifically so a future new leak is still caught loudly rather than
-    silently swallowed by a blanket "drop any non-numeric column" rule."""
+    columns, printing which group each dropped column belongs to, then
+    fail loudly on anything LEFT OVER. When exclude_separating is True,
+    also drops the confirmed structurally-separating HCPCS columns (see
+    _SEPARATING_HCPCS_CODES) -- computed fresh per call since the
+    restricted and unrestricted matrices have different column shapes for
+    the same covariate (one plain column vs. one-or-more interaction
+    terms)."""
     present_non_feature = _NON_FEATURE_COLS & set(design_df.columns)
+    drop_groups = list(_DROP_GROUPS)
+    if exclude_separating:
+        sep_cols = _separating_hcpcs_columns(set(design_df.columns))
+        drop_groups.append(("EXCLUDED -- confirmed structurally-separating HCPCS codes", sep_cols))
+        present_non_feature = present_non_feature | sep_cols
+
     print(f"    dropping {len(present_non_feature)} non-feature column(s) from X:")
-    for group_label, group_cols in _DROP_GROUPS:
+    for group_label, group_cols in drop_groups:
         present_in_group = sorted(present_non_feature & group_cols)
         if present_in_group:
             print(f"      {group_label} ({len(present_in_group)}): {present_in_group}")
@@ -459,17 +480,15 @@ def _prepare_xy(design_df: pd.DataFrame) -> tuple[pd.Series, pd.DataFrame]:
     return y, X
 
 
-def _fit_logit(y: pd.Series, X: pd.DataFrame, label: str):
-    """Fit one Logit model. method='lbfgs', not statsmodels' Newton-Raphson
-    default: full interaction against many rare one-hot categories (see
-    module docstring's KNOWN RISK section) creates real near-singularity
-    risk for some coefficients even after the zero-variance guard removes
-    the fully-zero cases, and LBFGS degrades more gracefully than Newton's
-    direct Hessian inversion when that happens -- at the cost of needing
-    more iterations, hence the raised maxiter. Passing X as a DataFrame
-    (not pre-cast to a numpy array) so statsmodels does the float64 upcast
-    exactly once, itself -- see module docstring's MEMORY section."""
-    print(f"\n  fitting {label}: {X.shape[0]:,} rows x {X.shape[1]} columns")
+def _fit_logit_standard(y: pd.Series, X: pd.DataFrame, label: str) -> _SimpleFitResult | object:
+    """Fit one Logit model via ordinary MLE. method='lbfgs', not
+    statsmodels' Newton-Raphson default: full interaction against many
+    rare one-hot categories creates real near-singularity risk for some
+    coefficients, and LBFGS degrades more gracefully than Newton's direct
+    Hessian inversion when that happens. Passing X as a DataFrame (not
+    pre-cast to a numpy array) so statsmodels does the float64 upcast
+    exactly once, itself."""
+    print(f"\n  fitting {label} (standard MLE, lbfgs): {X.shape[0]:,} rows x {X.shape[1]} columns")
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         result = sm.Logit(y, X).fit(method="lbfgs", maxiter=500, disp=False)
@@ -483,20 +502,80 @@ def _fit_logit(y: pd.Series, X: pd.DataFrame, label: str):
     return result
 
 
+def _fit_logit_firth(y: pd.Series, X: pd.DataFrame, label: str) -> _SimpleFitResult:
+    """Fit via Firth's penalized (bias-reduced) logistic regression instead
+    of ordinary MLE -- the standard statistical fix for the separation
+    confirmed in diagnose_separation.py / verify_provider_outlier_mechanism.py.
+    Uses the `firthlogist` package (pip install firthlogist).
+
+    fit_intercept=False: our design has NO shared intercept by
+    construction -- the claim_type_carrier/outpatient/dme dummies
+    (cell-means coding) serve that role. An automatically added intercept
+    would break that structure and make the restricted/unrestricted
+    models differ in more than just the tested covariates.
+
+    wald=True: firthlogist's DEFAULT p-value method is penalized profile
+    likelihood, which refits the whole model once PER COEFFICIENT --
+    infeasible at the 140-310 parameters this design has. We only need
+    the overall penalized log-likelihood (loglik_) for the omnibus LR
+    statistic, not per-coefficient inference, so the cheap Wald
+    computation (one extra pass, not N refits) is the right choice here
+    regardless of Wald inference's own general unreliability under
+    separation -- we aren't using its p-values or standard errors for
+    anything.
+
+    IMPORTANT CAVEAT, repeat this wherever these results get used: the
+    chi-square justification for a PENALIZED likelihood-ratio test is
+    well-established AWAY from separation (Firth's correction term is
+    O(1) against an O(n) log-likelihood, so it vanishes asymptotically and
+    standard Wilks theory applies in the well-behaved regime) but is NOT a
+    rigorously-proven exact result under TRUE separation -- the general
+    theory of LR tests near a parameter-space boundary (Self & Liang 1987;
+    the chi-bar-squared literature) shows the null distribution can be a
+    MIXTURE of chi-squares with reduced effective df in boundary cases,
+    and Firth's penalty being asymptotically negligible doesn't repair
+    that. Firth + penalized-LRT's good behavior under separation (Heinze &
+    Schemper 2002) is validated empirically via simulation, not proven as
+    an exact asymptotic result. The --exclude-separating-codes run has no
+    separation left at all and needs no such caveat -- compare the two.
+    """
+    from firthlogist import FirthLogisticRegression
+
+    print(f"\n  fitting {label} (Firth's penalized MLE via firthlogist): {X.shape[0]:,} rows x {X.shape[1]} columns")
+    print("    this can be substantially slower than the standard lbfgs fit -- watch for a very long run.")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = FirthLogisticRegression(fit_intercept=False, wald=True)
+        model.fit(X, y)
+    for w in caught:
+        print(f"    [warning] {w.category.__name__}: {w.message}")
+
+    llf = float(model.loglik_)
+    n_iter = getattr(model, "n_iter_", None)
+    max_iter = getattr(model, "max_iter", None)
+    converged = "unknown" if n_iter is None or max_iter is None else bool(n_iter < max_iter)
+    print(f"    converged: {converged}")
+    print(f"    penalized log-likelihood: {llf:.4f}")
+    print(f"    Newton-Raphson iterations: {n_iter}")
+    print(f"    nobs: {len(y):,}")
+    return _SimpleFitResult(llf=llf, nobs=len(y), converged=converged, n_iter=n_iter)
+
+
+def _fit_logit(y: pd.Series, X: pd.DataFrame, label: str, method: str):
+    if method == "firth":
+        return _fit_logit_firth(y, X, label)
+    return _fit_logit_standard(y, X, label)
+
+
 def _compute_df_and_table(
     unrestricted_colnames: set[str], restricted_colnames: set[str]
 ) -> tuple[int, list[tuple[str, int]]]:
     """df = Sigma_i (n_i - 1), derived directly from the two matrices'
-    actual column names rather than the FEATURE_ENGINEERING.md audit
-    tables. A genuinely-shared covariate is exactly a base name that
-    appears as one or more '<base>__x__<claim_type>' columns ONLY in the
-    unrestricted set and as a single plain '<base>' column ONLY in the
-    restricted set -- claim-type-exclusive fields are named identically
-    in both matrices (build_chow_design_matrix.py's own docstrings
-    confirm this "IDENTICAL treatment" by design), so they never appear
-    in either "only in X" set and are correctly never counted here, with
-    no special-casing needed. Raises loudly on anything that doesn't fit
-    that pattern, rather than silently mis-summing df."""
+    actual column names. A genuinely-shared covariate is exactly a base
+    name that appears as one or more '<base>__x__<claim_type>' columns
+    ONLY in the unrestricted set and as a single plain '<base>' column
+    ONLY in the restricted set. Raises loudly on anything that doesn't
+    fit that pattern, rather than silently mis-summing df."""
     only_unrestricted = unrestricted_colnames - restricted_colnames
     only_restricted = restricted_colnames - unrestricted_colnames
 
@@ -531,26 +610,31 @@ def _compute_df_and_table(
     return df_total, df_table
 
 
-def _save_restricted_summary(result, ncols: int, colnames: list[str], sample_frac: float | None) -> None:
+def _save_restricted_summary(
+    path: Path, result, ncols: int, colnames: list[str], sample_frac: float | None, method: str, exclude_separating: bool
+) -> None:
     summary = {
         "llf": float(result.llf),
         "nobs": int(result.nobs),
-        "converged": bool(result.mle_retvals.get("converged", False)),
+        "converged": result.mle_retvals.get("converged", False),
         "ncols": ncols,
         "colnames": colnames,
         "sample_frac": sample_frac,
+        "method": method,
+        "exclude_separating_codes": exclude_separating,
     }
-    RESTRICTED_SUMMARY_PATH.write_text(json.dumps(summary, indent=2))
-    print(f"\n  restricted fit summary written to {RESTRICTED_SUMMARY_PATH}")
+    path.write_text(json.dumps(summary, indent=2))
+    print(f"\n  restricted fit summary written to {path}")
 
 
-def _load_restricted_summary() -> dict:
-    if not RESTRICTED_SUMMARY_PATH.exists():
+def _load_restricted_summary(path: Path) -> dict:
+    if not path.exists():
         raise FileNotFoundError(
-            f"--skip-restricted was passed but {RESTRICTED_SUMMARY_PATH} "
-            "doesn't exist -- run with --restricted-only first."
+            f"--skip-restricted was passed but {path} doesn't exist -- run "
+            "with --restricted-only (with the SAME --method/"
+            "--exclude-separating-codes) first."
         )
-    return json.loads(RESTRICTED_SUMMARY_PATH.read_text())
+    return json.loads(path.read_text())
 
 
 def main() -> None:
@@ -558,22 +642,25 @@ def main() -> None:
     if args.restricted_only and args.skip_restricted:
         raise SystemExit("--restricted-only and --skip-restricted are mutually exclusive.")
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    results_path, restricted_summary_path = _output_paths(args)
 
     if args.skip_restricted:
-        print(f"Loading cached restricted fit summary from {RESTRICTED_SUMMARY_PATH}...")
-        restricted_summary = _load_restricted_summary()
+        print(f"Loading cached restricted fit summary from {restricted_summary_path}...")
+        restricted_summary = _load_restricted_summary(restricted_summary_path)
         ll_restricted = restricted_summary["llf"]
         n_obs = restricted_summary["nobs"]
         restricted_ncols = restricted_summary["ncols"]
         restricted_colnames = set(restricted_summary["colnames"])
-        cached_sample_frac = restricted_summary.get("sample_frac")
-        if cached_sample_frac != args.sample_frac:
-            print(
-                f"  [warning] restricted fit was built with --sample-frac="
-                f"{cached_sample_frac!r}, this run passed {args.sample_frac!r} "
-                "-- the row-count check below will catch a real mismatch, "
-                "but pass the same value explicitly to avoid relying on that."
-            )
+        for field, current in (("sample_frac", args.sample_frac), ("method", args.method), ("exclude_separating_codes", args.exclude_separating_codes)):
+            cached = restricted_summary.get(field)
+            if cached != current:
+                print(
+                    f"  [warning] restricted fit was built with {field}={cached!r}, "
+                    f"this run passed {current!r} -- results will not be comparable "
+                    "unless these match. The row-count check below catches a "
+                    "--sample-frac mismatch specifically, but not a --method or "
+                    "--exclude-separating-codes mismatch."
+                )
 
         print("\nBuilding unrestricted (fully-interacted) design matrix...")
         train = _load_train(args.sample_frac, args.stream_batch_size)
@@ -589,16 +676,19 @@ def main() -> None:
 
         print("\nBuilding restricted (pooled) design matrix...")
         restricted_df = build_restricted_design_matrix(intermediate)
-        y_restricted, X_restricted = _prepare_xy(restricted_df)
+        y_restricted, X_restricted = _prepare_xy(restricted_df, exclude_separating=args.exclude_separating_codes)
         restricted_ncols = X_restricted.shape[1]
         restricted_colnames = set(X_restricted.columns)
         del restricted_df
         gc.collect()
 
-        restricted_result = _fit_logit(y_restricted, X_restricted, "restricted (pooled)")
+        restricted_result = _fit_logit(y_restricted, X_restricted, "restricted (pooled)", args.method)
         ll_restricted = restricted_result.llf
         n_obs = int(restricted_result.nobs)
-        _save_restricted_summary(restricted_result, restricted_ncols, sorted(restricted_colnames), args.sample_frac)
+        _save_restricted_summary(
+            restricted_summary_path, restricted_result, restricted_ncols, sorted(restricted_colnames),
+            args.sample_frac, args.method, args.exclude_separating_codes,
+        )
 
         del X_restricted, y_restricted, restricted_result
         gc.collect()
@@ -613,23 +703,21 @@ def main() -> None:
     del intermediate
     gc.collect()
 
-    y_unrestricted, X_unrestricted = _prepare_xy(unrestricted_df)
+    y_unrestricted, X_unrestricted = _prepare_xy(unrestricted_df, exclude_separating=args.exclude_separating_codes)
     if len(y_unrestricted) != n_obs:
         raise ValueError(
             f"Unrestricted design matrix has {len(y_unrestricted):,} rows "
             f"but the restricted fit used {n_obs:,} -- the two models were "
-            "built from different data (e.g. a different --sample-frac "
-            "between a --restricted-only and a --skip-restricted run), "
-            "which breaks the likelihood-ratio test's nesting assumption. "
-            "Rerun both stages with the same --sample-frac (or omit it for "
-            "the full data both times)."
+            "built from different data, which breaks the likelihood-ratio "
+            "test's nesting assumption. Rerun both stages with the same "
+            "--sample-frac (or omit it for the full data both times)."
         )
     unrestricted_ncols = X_unrestricted.shape[1]
     unrestricted_colnames = set(X_unrestricted.columns)
     del unrestricted_df
     gc.collect()
 
-    unrestricted_result = _fit_logit(y_unrestricted, X_unrestricted, "unrestricted (fully-interacted)")
+    unrestricted_result = _fit_logit(y_unrestricted, X_unrestricted, "unrestricted (fully-interacted)", args.method)
     ll_unrestricted = unrestricted_result.llf
 
     del X_unrestricted, y_unrestricted, unrestricted_result
@@ -656,9 +744,16 @@ def main() -> None:
     LR = -2 * (ll_restricted - ll_unrestricted)
     p_value = stats.chi2.sf(LR, df_chow)
 
+    method_desc = (
+        "Firth's penalized MLE (firthlogist, fit_intercept=False, wald=True)"
+        if args.method == "firth"
+        else "ordinary MLE (statsmodels, method='lbfgs')"
+    )
     lines = [
         "Chow test -- claim-type homogeneity of shared covariates",
         "=" * 60,
+        f"Method:                              {method_desc}",
+        f"Separating-code exclusion:           {'ON -- dropped ' + str(sorted(_SEPARATING_HCPCS_CODES)) if args.exclude_separating_codes else 'OFF'}",
         f"n obs:                               {n_obs:,}",
         f"restricted (pooled) columns:         {restricted_ncols}",
         f"unrestricted (interacted) columns:   {unrestricted_ncols}",
@@ -684,14 +779,25 @@ def main() -> None:
         "diagnosis/procedure codes, legacy provider IDs, unaddressed "
         "CMS category codes, and 3 fixed-constant fields) were excluded "
         "from this baseline's feature set pending a real Phase 2 encoding "
-        "decision -- see _PENDING_* groups in this file's source. The "
-        "omnibus test above covers every covariate that WAS encoded, not "
-        "literally every column in train_model.parquet.",
+        "decision -- see _PENDING_* groups in this file's source.",
     ]
+    if args.method == "firth":
+        lines += [
+            "",
+            "CAVEAT (Firth method): the chi-square approximation used for the",
+            "p-value above is well-established away from separation, but under",
+            "TRUE separation (as confirmed for 6 HCPCS codes -- see module",
+            "docstring) it is a widely-used, empirically-validated-via-simulation",
+            "practical approach (Heinze & Schemper 2002), not a rigorously proven",
+            "exact asymptotic result -- LR tests near a parameter-space boundary",
+            "can follow a mixture of chi-squares rather than a single one (Self &",
+            "Liang 1987). Compare against the --exclude-separating-codes run,",
+            "which has no separation left and needs no such caveat.",
+        ]
     report = "\n".join(lines)
     print("\n" + report)
-    RESULTS_PATH.write_text(report + "\n")
-    print(f"\nWritten to {RESULTS_PATH}")
+    results_path.write_text(report + "\n")
+    print(f"\nWritten to {results_path}")
 
 
 if __name__ == "__main__":
