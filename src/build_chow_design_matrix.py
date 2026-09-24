@@ -8,46 +8,131 @@ reasoning behind each encoding choice below.
 Run after build_features.py.
 
 Three stages:
-  1. build_chow_design_matrix() -- cardinality encoding for the 5 shared/
+  1. build_chow_design_matrix() -- cardinality encoding for the shared/
      2-of-3 covariates that needed it (HCPCS_CD, PRNCPAL_DGNS_CD, PRVDR_NUM,
-     CARR_NUM, provider_state).
+     provider_state), PLUS (2026-09-24) removal of every column the rank-
+     deficiency investigation proved carries no information beyond claim
+     type or another column -- see RANK-DEFICIENCY FIXES below.
   2. add_claim_type_interactions() -- builds the UNRESTRICTED (fully-
      interacted) model's design matrix. Two passes:
        (a) numeric claim-type-exclusive/2-of-3 covariates: zero-fill-on-a-
            copy, build value x claim_type_dummy terms only for the claim
            type(s) each covariate is actually populated in
            (FEATURE_ENGINEERING.md Section 3's degrees-of-freedom
-           correction).
+           correction) -- and (2026-09-24) SKIPPING any claim type where
+           the covariate is constant, since value*dummy is then just
+           c*dummy (see RANK-DEFICIENCY FIXES).
        (b) genuinely-3-of-3 categorical dummy groups (provider_state,
-           HCPCS_CD, PRNCPAL_DGNS_CD, the 5 NPI flags): interact against
-           ALL three claim_type dummies, but SKIP any resulting interaction
-           term that would be constant at zero across the whole dataset --
-           confirmed empirically necessary (2026-09-22): 13 of 21 HCPCS
-           top-N categories have zero DME claims in this dataset, a real
-           structural finding (DME uses a different HCPCS code family),
-           not a hypothetical edge case. Same principle as (a)'s degrees-
-           of-freedom correction, just triggered by an empirical zero
-           instead of a structural/schema one.
+           HCPCS_CD, PRNCPAL_DGNS_CD): interact against ALL three
+           claim_type dummies, but SKIP any resulting interaction term
+           that is constant within that claim type (originally only the
+           all-zero case, 2026-09-22; generalized to all-one too,
+           2026-09-24), and drop one reference term per claim-type block
+           when a group's dummies sum to exactly that claim_type dummy
+           (the within-claim-type dummy trap, 2026-09-24).
      Run via build_full_design_matrix().
   3. build_restricted_design_matrix() -- builds the RESTRICTED (pooled)
      model's design matrix: every genuinely shared covariate (2-of-3 or
      3-of-3) as ONE plain column instead of separate per-claim-type
      interaction terms -- this is the actual restriction the Chow test's
      likelihood-ratio comparison is testing. Claim-type-EXCLUSIVE fields
-     (n_i=1) get identical treatment in both models (one interaction term,
-     no restriction possible with only one claim type to begin with --
-     FEATURE_ENGINEERING.md Section 3 checklist item 2), so this function
-     shares that logic with add_claim_type_interactions() rather than
-     re-deriving it. Genuinely-3-of-3 categorical dummies need NO change
-     here even after (2b) above -- they were always single plain columns
-     in the restricted matrix; a category with zero DME claims just means
-     that column's pooled coefficient is estimated entirely from
-     carrier+outpatient data, still a valid single coefficient.
+     (n_i=1) get identical treatment in both models.
 
 Both design matrices are built from the SAME intermediate
 (build_chow_design_matrix() output), so they cover identical rows and an
 identical universe of covariates -- required for the likelihood-ratio
 test's nesting assumption to actually hold (pre-flight checklist item 1).
+
+RANK-DEFICIENCY FIXES (2026-09-24). check_rank.py found both matrices
+rank-deficient (restricted 144 cols / rank 119; unrestricted 310 / 275),
+sample-size-invariant and unrelated to the HCPCS separation; firthmodels'
+Newton-Raphson refused to fit because of it, and every earlier LBFGS fit
+had silently carried it (its HessianInversionWarning). explain_dependencies.py
+then wrote out every dependency as an exact equation -- all 25 restricted
+and all 35 unrestricted accounted for. Fixes, in order of where they run:
+
+  A. CLAIM-TYPE-DETERMINED COLUMNS (build_chow_design_matrix, both
+     matrices). A column whose value is the SAME on every row of each
+     claim type is an exact linear combination of the three claim_type
+     dummies and carries no other information. "Present" means NON-NULL:
+     a 0 is a present value like any other ("0 is a value, NaN is the
+     absence of one" -- the project's standing rule), so a field that is
+     non-null and always exactly 0 within a claim type counts as constant
+     there, while a claim type where the field is 100% NaN is simply
+     absent and is not judged at all. Dropped entirely when constant in
+     EVERY claim type it's present in. This single rule removes:
+       - the 5 NPI presence flags -- confirmed pure claim-type indicators
+         (has_performing = carrier; has_referring = carrier + dme;
+         has_attending = has_operating = has_rendering = outpatient),
+         upgrading the 2026-09-22 "4 of 5 are claim-type-exclusive"
+         finding;
+       - the always-$0 fields (MSP 1st/2nd paid, blood deductible, MCO-paid
+         switch, beneficiary payment amounts, DME screening savings,
+         reduced-payment-physician-assistant);
+       - the fixed-nonzero ones (CLAIM_QUERY_CODE = 3 and
+         NCH_PROFNL_CMPNT_CHRG_AMT = $4 and REV_CNTR_UNIT_CNT = 1 on every
+         outpatient claim; LINE_BENE_PRMRY_PYR_PD_AMT = $0 on every
+         carrier claim and $1 on every DME claim).
+     Partial presence within a claim type (some rows NaN, some not) is
+     NOT treated as constant when the present values are nonzero -- the
+     zero-filled term is then c * (presence indicator), which varies. The
+     one ambiguous case -- partial presence where every present value is
+     0 -- becomes an all-zero column after the existing zero-fill, so it
+     is dropped for rank's sake but printed as a warning: the zero-fill
+     itself is conflating a present 0 with absence there, a pre-existing
+     issue outside this fix's scope.
+     When a column is constant in SOME but not all of its present claim
+     types, it is kept, and only the constant claim type's interaction
+     term is skipped in the unrestricted matrix (fix C).
+
+  B. NAMED EXACT IDENTITIES (build_chow_design_matrix, both matrices).
+     Verified numerically on the actual data every run (raises if any no
+     longer hold), then the redundant side dropped:
+       outpatient-exclusive fields --
+         CLM_OP_PRVDR_PMT_AMT   == CLM_TOT_CHRG_AMT (Synthea pays the
+                                   full charge, no contractual adjustment)
+         REV_CNTR_PRVDR_PMT_AMT == CLM_TOT_CHRG_AMT
+         REV_CNTR_CASH_DDCTBL_AMT == NCH_BENE_PTB_DDCTBL_AMT
+         REV_CNTR_COINSRNC_WGE_ADJSTD_C == REV_CNTR_RDCD_COINSRNC_AMT
+         REV_CNTR_PTNT_RSPNSBLTY_PMT == NCH_BENE_PTB_DDCTBL_AMT +
+                                        REV_CNTR_RDCD_COINSRNC_AMT
+           (a genuine Medicare accounting identity: patient
+            responsibility = deductible + coinsurance)
+       within DME only (these differ in carrier, so only the DME
+       interaction term is redundant) --
+         LINE_PRMRY_ALOWD_CHRG_AMT == LINE_ALOWD_CHRG_AMT
+         CARR_CLM_PRMRY_PYR_PD_AMT == NCH_CARR_CLM_ALOWD_AMT
+       Kept representatives: CLM_TOT_CHRG_AMT, NCH_BENE_PTB_DDCTBL_AMT,
+       REV_CNTR_RDCD_COINSRNC_AMT, LINE_ALOWD_CHRG_AMT,
+       NCH_CARR_CLM_ALOWD_AMT.
+
+  C. PER-CLAIM-TYPE CONSTANCY + WITHIN-CLAIM-TYPE DUMMY TRAP
+     (add_claim_type_interactions, unrestricted only). Pass 1 skips
+     value x claim_type terms where the value is constant in that claim
+     type; Pass 2's guard now skips terms constant within the claim type
+     (all-0 OR all-1, not just all-0). And: drop_first=True picks the
+     reference category once, globally -- if that category never occurs
+     in carrier (or DME), the remaining dummies x carrier sum to exactly
+     claim_type_carrier, a dummy trap inside the claim-type block that
+     drop_first cannot see. Confirmed for HCPCS in both carrier and DME.
+     Fixed by dropping one term in any such block as the within-claim-
+     type reference -- preferring a category that also has a term in
+     another claim type (so it keeps n_i >= 1), most frequent first;
+     applied uniformly to state_/hcpcs_/dgns_. Nesting is preserved:
+     the restricted model's pooled column for the dropped category is
+     still reproducible as claim_type_dummy minus the block's other terms.
+
+  D. carr_num_freq REMOVED. Each state maps to one Medicare carrier
+     number, so a frequency encoding of CARR_NUM is a function of state --
+     exactly in the span of the state dummies within each claim type
+     (the solved coefficients were each state's own share: CA 0.099, FL
+     0.094, NY 0.061...). It was redundant with provider_state and only
+     escaped the restricted matrix's rank check because the outpatient
+     zero-fill broke the identity there.
+
+Nesting still holds throughout because every removal either happens in
+the shared intermediate (both matrices) or removes a column that is an
+exact combination of columns the unrestricted matrix keeps.
 
 MEMORY NOTE (2026-09-22): every function below builds new columns into a
 plain dict first and does ONE pd.concat at the end, rather than assigning
@@ -59,57 +144,25 @@ contiguous array. That consolidation needs a temporary array roughly the
 size of the whole block being merged -- confirmed to actually happen here:
 adding this file's Section-6 interaction terms one column at a time hit a
 literal numpy.core._exceptions.ArrayMemoryError trying to allocate an 888
-MiB temporary array during exactly this kind of consolidation, not because
-the final data was too large, but because of how it was being assembled.
+MiB temporary array during exactly this kind of consolidation.
 
-SECOND MEMORY NOTE (2026-09-22, same day, found on the very next run): a
-leading `df = df.copy()` at the top of a function is ALSO a consolidation
-trigger, independent of the fix above -- pandas' .copy() method
-consolidates same-dtype blocks before copying them, and the input to
-add_claim_type_interactions() (build_chow_design_matrix()'s output)
-already arrives with ~101 not-yet-consolidated int64 columns from its own
-single concat. The first fix (dict+concat instead of one-at-a-time
-assignment) was necessary but not sufficient -- it eliminated NEW
-fragmentation from this file's own loops, but didn't address that calling
-.copy() on an ALREADY-fragmented input independently triggers the same
-memory spike. The actual second fix: a leading .copy() is only needed if a
-function goes on to mutate its input in place -- add_claim_type_interactions()
-never does (every operation reassigns the local `df` name via drop()/
-concat(), never mutates the original object), so its leading copy() was
-simply dead weight, removed. build_restricted_design_matrix() genuinely
-DOES mutate columns in place (`df[col] = df[col].fillna(0)`) and correctly
-keeps its copy() -- removing it there would corrupt the shared
-`intermediate` object both this function and add_claim_type_interactions()
-are called with in __main__.
+SECOND MEMORY NOTE (2026-09-22): a leading `df = df.copy()` at the top of
+a function is ALSO a consolidation trigger -- only copy when a function
+genuinely mutates its input in place. add_claim_type_interactions() never
+does (no copy); build_restricted_design_matrix() does (keeps its copy).
 
-THIRD MEMORY NOTE (2026-09-22, same day, third crash -- much smaller this
-time: only 43.9 MiB, for a (5, 1151951) int64 array). A failure at this
-size means the underlying problem isn't primarily about WHEN pandas
-consolidates blocks anymore (the first two notes) -- it's that every one
-of these one-hot/interaction columns is stored as int64 (8 bytes/cell) to
-represent a value that is always exactly 0 or 1. Every genuinely binary
-column in this file (the one-hot dummies from get_dummies, the 5 NPI
-flags, and every interaction term built from them) is now explicitly
-created/cast as int8 (1 byte/cell) instead -- an 8x memory reduction for
-this entire class of column, with zero loss of information (0/1 fits
-trivially in int8's range) and no dtype-upcasting risk in the interaction
-products (int8 * int8 stays int8 in numpy for values this small, no
-overflow possible since the max product is 1). NOTE: int8 and bool are
-the SAME size in numpy (1 byte/cell, since memory is byte-addressable, not
-bit-addressable) -- switching to bool would save nothing further over
-int8; int8 was chosen instead of bool because these columns are headed
-directly into a numeric design matrix for statsmodels, where an explicit
-integer dtype is the more conventional and predictable choice. The
-NUMERIC claim-type-exclusive/2-of-3 covariates (real dollar/count fields,
-Pass 1) are NOT touched by this change -- those need their natural
-float64 precision and were never the source of this memory problem (far
-fewer of them, and legitimately non-binary values).
+THIRD MEMORY NOTE (2026-09-22): every genuinely binary column (one-hot
+dummies and every interaction term built from them) is int8, not int64 --
+an 8x memory reduction, no information loss. NUMERIC claim-type-exclusive/
+2-of-3 covariates keep their natural float64.
 """
 
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 PROCESSED_DIR = Path(__file__).resolve().parents[1] / "data" / "processed"
@@ -121,37 +174,59 @@ _CLAIM_TYPES = ("carrier", "outpatient", "dme")
 _CLAIM_TYPE_COLS = ("claim_type_carrier", "claim_type_outpatient", "claim_type_dme")
 
 # Columns never touched by the interaction-construction logic -- identifiers,
-# dates needing their own transformation (FEATURE_ENGINEERING.md Section 3
-# checklist item 2), the label, and the claim_type dummies themselves (which
-# are the interaction PARTNER, not something to interact against itself).
+# dates needing their own transformation, the label, and the claim_type
+# dummies themselves (the interaction PARTNER, and protected -- never
+# eligible for any of the rank-deficiency removals below).
 _NEVER_INTERACT = {
     "BENE_ID", "CLM_ID", "_row_id", "is_denied",
     "claim_type_carrier", "claim_type_outpatient", "claim_type_dme",
     "CLM_FROM_DT", "CLM_THRU_DT", "NCH_WKLY_PROC_DT",
 }
 
-# The 5 NPI presence flags -- confirmed 3-of-3, 0% null everywhere
-# (FEATURE_ENGINEERING.md Section 3 checklist item 4). Not prefix-matchable
-# like the one-hot dummies below, so listed explicitly.
+# The 5 NPI presence flags. CORRECTED 2026-09-24: these were believed to be
+# genuinely-shared 3-of-3 covariates; explain_dependencies.py proved each is
+# an exact function of claim type (see module docstring, fix A). They are
+# now removed by the general claim-type-determined rule in
+# build_chow_design_matrix(), not by name -- listed here only so the
+# downstream code that still references the group keeps working, and so
+# __main__ can confirm they're gone.
 _NPI_FLAGS = (
     "has_referring_physician", "has_performing_physician",
     "has_attending_physician", "has_operating_physician",
     "has_rendering_physician",
 )
 
-# Prefixes for the one-hot dummies build_chow_design_matrix() already
-# produced -- genuinely-3-of-3 shared covariates. ADDED 2026-09-22: these
-# now GET interaction terms too (see add_claim_type_interactions()'s second
-# pass), with a zero-variance guard, rather than being left as untested
-# plain columns.
+# Prefixes for the one-hot dummies build_chow_design_matrix() produces --
+# genuinely-3-of-3 shared covariates, interacted in Pass 2.
 _GENUINELY_SHARED_PREFIXES = ("state_", "hcpcs_", "dgns_")
 
-# All genuinely-binary (0/1) columns this file works with -- these are the
-# ones downcast to int8 (see module docstring's THIRD MEMORY NOTE). Every
-# interaction term built FROM these inherits int8 automatically (numpy
-# keeps int8*int8 -> int8 for values this small), so downcasting just
-# these source columns is sufficient to fix the whole file's memory use.
 _BINARY_DTYPE = "int8"
+
+# --- Fix B: named exact identities (2026-09-24) ---------------------------
+# (redundant column, ((kept column, coefficient), ...)). Verified on the
+# actual data every run by _verify_identity() before anything is dropped.
+_REDUNDANT_RAW_IDENTITIES: tuple[tuple[str, tuple[tuple[str, float], ...]], ...] = (
+    ("CLM_OP_PRVDR_PMT_AMT", (("CLM_TOT_CHRG_AMT", 1.0),)),
+    ("REV_CNTR_PRVDR_PMT_AMT", (("CLM_TOT_CHRG_AMT", 1.0),)),
+    ("REV_CNTR_CASH_DDCTBL_AMT", (("NCH_BENE_PTB_DDCTBL_AMT", 1.0),)),
+    ("REV_CNTR_COINSRNC_WGE_ADJSTD_C", (("REV_CNTR_RDCD_COINSRNC_AMT", 1.0),)),
+    (
+        "REV_CNTR_PTNT_RSPNSBLTY_PMT",
+        (("NCH_BENE_PTB_DDCTBL_AMT", 1.0), ("REV_CNTR_RDCD_COINSRNC_AMT", 1.0)),
+    ),
+)
+
+# (redundant column, claim type, kept column): identical ONLY within that
+# claim type, so only the one interaction term is redundant.
+_REDUNDANT_WITHIN_TYPE: tuple[tuple[str, str, str], ...] = (
+    ("LINE_PRMRY_ALOWD_CHRG_AMT", "dme", "LINE_ALOWD_CHRG_AMT"),
+    ("CARR_CLM_PRMRY_PYR_PD_AMT", "dme", "NCH_CARR_CLM_ALOWD_AMT"),
+)
+_REDUNDANT_INTERACTION_TERMS = {f"{col}__x__{ct}" for col, ct, _ in _REDUNDANT_WITHIN_TYPE}
+
+# Statuses (see _within_type_status) under which value*claim_type_dummy is
+# an exact multiple of the dummy (or zero) and so must not enter the matrix.
+_DETERMINED = ("determined", "zero_with_gaps")
 
 
 def top_n_encode(series: pd.Series, n: int, prefix: str) -> pd.DataFrame:
@@ -159,19 +234,11 @@ def top_n_encode(series: pd.Series, n: int, prefix: str) -> pd.DataFrame:
     buckets into '__OTHER__'; real NaN buckets into its own '__MISSING__'
     category rather than being silently dropped or folded into '__OTHER__'.
 
-    This is also the resolution to HCPCS_CD's within-carrier-missingness
-    question (FEATURE_ENGINEERING.md Section 3 checklist item 4, left open
-    since 2026-09-15): the '__MISSING__' dummy IS the missing-indicator that
-    was anticipated there, arrived at via the same general-purpose encoding
-    every other high-cardinality shared covariate needed anyway, rather than
-    a bespoke flag built just for HCPCS_CD.
-
-    Reference-cell one-hot (drop_first=True), not cell-means -- the
-    cell-means requirement documented for claim_type only applies to fields
-    used in the claim-type-interaction construction; this isn't that.
-
-    dtype=int8, not the platform-default int64 -- see module docstring's
-    THIRD MEMORY NOTE.
+    Reference-cell one-hot (drop_first=True). NOTE (2026-09-24): drop_first
+    picks ONE global reference category -- it cannot prevent a dummy trap
+    inside a claim-type interaction block when that reference never occurs
+    in the claim type. _interact_with_zero_variance_guard() handles that
+    case (module docstring, fix C). dtype=int8 -- see THIRD MEMORY NOTE.
     """
     top_categories = series.value_counts(dropna=True).head(n).index.tolist()
     bucketed = series.where(series.isin(top_categories), other="__OTHER__")
@@ -181,103 +248,145 @@ def top_n_encode(series: pd.Series, n: int, prefix: str) -> pd.DataFrame:
 
 def frequency_encode(series: pd.Series) -> pd.Series:
     """Map each category to its own frequency (share of non-null rows) --
-    for PRVDR_NUM/CARR_NUM, whose high cardinality makes one-hot infeasible.
-
-    Real NaN is preserved, NOT filled: both are confirmed 2-of-3 shared
-    covariates, and per the Chow-test design their NaN for the absent claim
-    type must stay NaN so the interaction-construction functions below can
-    correctly omit (unrestricted) or zero-fill-as-one-column (restricted)
-    that claim type. Fabricating a frequency value here would repeat the
-    exact 0-vs-missing mistake the 2026-09-16 zero-fill correction was
-    written to prevent, just for a different encoding scheme.
-
-    Left at its natural float dtype -- these are genuine frequency values
-    (0.0-1.0 range), not binary flags, so the int8 downcast doesn't apply
-    here.
-    """
+    for PRVDR_NUM, whose high cardinality makes one-hot infeasible. Real NaN
+    is preserved, NOT filled (a 2-of-3 covariate whose absent claim type
+    must stay NaN for the interaction logic below)."""
     freq = series.value_counts(normalize=True, dropna=True)
     return series.map(freq)
 
 
+def _claim_type_masks(df: pd.DataFrame) -> dict[str, np.ndarray]:
+    return {ct: (df[f"claim_type_{ct}"] == 1).to_numpy() for ct in _CLAIM_TYPES}
+
+
+def _within_type_status(values: pd.Series, ct_mask: np.ndarray) -> str:
+    """Classify one column within one claim type. "Present" = non-null; a 0
+    is a present value (module docstring, fix A).
+      'absent'         -- 100% NaN in this claim type (not judged)
+      'determined'     -- non-null on every row, one value (0 included)
+      'zero_with_gaps' -- partly NaN, every present value is 0: the zero-
+                          filled interaction term becomes all-zero
+      'varies'         -- anything else (incl. partly NaN with a nonzero
+                          constant, whose term is c * presence indicator)"""
+    v = values[ct_mask]
+    present = v.notna()
+    if not present.any():
+        return "absent"
+    vals = v[present]
+    lo, hi = vals.min(), vals.max()
+    if present.all():
+        return "determined" if lo == hi else "varies"
+    if lo == hi == 0:
+        return "zero_with_gaps"
+    return "varies"
+
+
+def _verify_identity(
+    df: pd.DataFrame, target: str, rhs: tuple[tuple[str, float], ...], mask: np.ndarray | None = None
+) -> None:
+    """Raise unless `target == sum(coef * col)` holds exactly (to float
+    tolerance) on every row where target is present, AND every rhs column
+    has the identical presence pattern -- an identity that only holds on
+    the rows both happen to share isn't safe to drop on."""
+    sub = df if mask is None else df.loc[mask]
+    t = sub[target]
+    present = t.notna()
+    for col, _ in rhs:
+        if not (sub[col].notna() == present).all():
+            raise ValueError(
+                f"Identity check failed: {target} and {col} have different "
+                "NaN patterns -- the 2026-09-24 identity no longer holds on "
+                "this data. Do not drop it; re-run explain_dependencies.py."
+            )
+    lhs = t[present].to_numpy(dtype=np.float64)
+    rhs_vals = np.zeros_like(lhs)
+    for col, coef in rhs:
+        rhs_vals += coef * sub.loc[present, col].to_numpy(dtype=np.float64)
+    if not np.allclose(lhs, rhs_vals, rtol=1e-9, atol=1e-6):
+        worst = float(np.max(np.abs(lhs - rhs_vals)))
+        scope = "" if mask is None else " (within the stated claim type)"
+        raise ValueError(
+            f"Identity check failed{scope}: {target} != "
+            + " + ".join(f"{c}*{k}" for k, c in rhs)
+            + f" (max abs difference {worst:.6g}). Do not drop it; re-run "
+            "explain_dependencies.py."
+        )
+
+
 def build_chow_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
-    """Encode the 5 shared/2-of-3 covariates that needed cardinality
-    treatment before they could enter any regression at all, then drop
-    their raw (string/high-cardinality) columns -- the encoded versions
-    replace them entirely, nothing left over half-encoded.
+    """Encode the shared/2-of-3 covariates that needed cardinality
+    treatment, then remove everything the 2026-09-24 rank-deficiency
+    investigation proved redundant (module docstring, fixes A, B, D).
 
-    ADDED 2026-09-17: CARR_NUM was missed in the original 2026-09-17 pass --
-    the pre-flight checklist named it alongside PRVDR_NUM as needing
-    cardinality treatment (both are confirmed 2-of-3 covariates, both
-    high-cardinality provider identifiers), but only PRVDR_NUM was actually
-    implemented. Caught while building the interaction-term construction
-    below, which would otherwise have tried to multiply a raw provider-
-    number STRING against a claim_type dummy -- a clear failure that
-    surfaced the gap rather than a silent one.
+    Returns the shared intermediate both design matrices are built from.
+    df.attrs["rank_fix_report"] records what was removed and why, for
+    __main__ / callers to print (attrs is informational only).
 
-    ADDED 2026-09-22: also downcasts claim_type_carrier/outpatient/dme and
-    the 5 NPI presence flags to int8 here, right at the source -- both
-    arrive from train_model.parquet as int64 (build_features.py's
-    .astype(int)). Doing this once here, via a single non-mutating
-    df.astype({...}) call, means every interaction term built from these
-    columns anywhere downstream in this file automatically inherits int8 --
-    see module docstring's THIRD MEMORY NOTE for why this was necessary.
-
-    This function's own leading .copy() IS still needed and kept -- it
-    receives train_model.parquet, the file callers pass in and may reuse
-    elsewhere, and this function's later df.drop(columns=[...]) reassigns
-    the local name to a new object either way, so the copy here is about
-    protecting the CALLER's original object from any earlier in-place step
-    a future edit might add, not something this specific version's body
-    strictly requires today. Left in deliberately, unlike the two removed
-    copies below -- see the module docstring's SECOND MEMORY NOTE for the
-    distinction (copy only when something actually mutates in place).
-
-    This is the shared starting point for BOTH the restricted and
-    unrestricted design matrices below -- neither function re-derives this
-    encoding.
+    Leading .copy() kept -- protects the caller's train_model.parquet frame.
     """
     df = df.copy()
 
-    # Downcast the source binary columns to int8 -- astype() with a dict
-    # returns a new object in one pass, no per-column assignment loop, so
-    # it doesn't reintroduce the fragmentation risk the MEMORY NOTEs above
-    # describe.
     binary_downcast = {col: _BINARY_DTYPE for col in (*_CLAIM_TYPE_COLS, *_NPI_FLAGS) if col in df.columns}
     if binary_downcast:
         df = df.astype(binary_downcast)
 
+    masks = _claim_type_masks(df)
+
+    # --- Fix B: verify, then drop, the named exact identities ---
+    identity_dropped: list[str] = []
+    for target, rhs in _REDUNDANT_RAW_IDENTITIES:
+        if not all(c in df.columns for c in (target, *(k for k, _ in rhs))):
+            continue
+        _verify_identity(df, target, rhs)
+        identity_dropped.append(target)
+    for col, ct, keep in _REDUNDANT_WITHIN_TYPE:
+        if col in df.columns and keep in df.columns:
+            _verify_identity(df, col, ((keep, 1.0),), mask=masks[ct])
+    df = df.drop(columns=identity_dropped)
+
+    # --- Encoding (fix D: CARR_NUM no longer frequency-encoded) ---
     state_dummies = pd.get_dummies(
         df["provider_state"], prefix="state", drop_first=True, dtype=_BINARY_DTYPE
     )
     hcpcs_dummies = top_n_encode(df["HCPCS_CD"], TOP_N_HCPCS, prefix="hcpcs")
     dgns_dummies = top_n_encode(df["PRNCPAL_DGNS_CD"], TOP_N_DGNS, prefix="dgns")
-
     freq_encoded = pd.DataFrame(
-        {
-            "prvdr_num_freq": frequency_encode(df["PRVDR_NUM"]),
-            "carr_num_freq": frequency_encode(df["CARR_NUM"]),
-        },
+        {"prvdr_num_freq": frequency_encode(df["PRVDR_NUM"])},
         index=df.index,
     )
-
-    # Single concat for everything new -- see module docstring's MEMORY
-    # NOTE for why this matters, not just style.
     df = pd.concat([df, state_dummies, hcpcs_dummies, dgns_dummies, freq_encoded], axis=1)
-
-    # Drop the raw columns now that their encoded replacements exist --
-    # leaving them in would just be dead, unusable string columns sitting
-    # in what's supposed to be a numeric design matrix.
     df = df.drop(columns=["provider_state", "HCPCS_CD", "PRNCPAL_DGNS_CD", "PRVDR_NUM", "CARR_NUM"])
 
+    # --- Fix A: drop claim-type-determined columns ---
+    determined_dropped: list[str] = []
+    zero_with_gaps_warn: list[str] = []
+    for col in df.columns:
+        if col in _NEVER_INTERACT or col.startswith("risk_"):
+            continue
+        if not pd.api.types.is_numeric_dtype(df[col]):
+            continue
+        statuses = [_within_type_status(df[col], masks[ct]) for ct in _CLAIM_TYPES]
+        present = [s for s in statuses if s != "absent"]
+        if present and all(s in _DETERMINED for s in present):
+            determined_dropped.append(col)
+            if "zero_with_gaps" in present:
+                zero_with_gaps_warn.append(col)
+    df = df.drop(columns=determined_dropped)
+
+    df.attrs["rank_fix_report"] = {
+        "identity_dropped": identity_dropped,
+        "within_type_redundant_terms": sorted(_REDUNDANT_INTERACTION_TERMS),
+        "claim_type_determined_dropped": determined_dropped,
+        "zero_with_gaps_warning": zero_with_gaps_warn,
+        "carr_num_freq_removed": True,
+    }
     return df
 
 
 def _null_pattern(df: pd.DataFrame, col: str) -> tuple[list[str], list[str]]:
-    """Shared helper: for a numeric column, return (absent_types,
-    present_types) -- which claim types it's 100% null in versus actually
-    populated in. Used identically by both the restricted and unrestricted
-    construction functions so they can never silently disagree about which
-    claim types a given covariate applies to."""
+    """(absent_types, present_types) -- which claim types a numeric column
+    is 100% null in versus actually populated in. Shared by both
+    construction functions so they can never disagree."""
     null_by_type = {
         ct: df.loc[df[f"claim_type_{ct}"] == 1, col].isna().mean() for ct in _CLAIM_TYPES
     }
@@ -287,66 +396,61 @@ def _null_pattern(df: pd.DataFrame, col: str) -> tuple[list[str], list[str]]:
 
 
 def _interact_with_zero_variance_guard(
-    df: pd.DataFrame, cols: list[str]
+    df: pd.DataFrame, cols: list[str], masks: dict[str, np.ndarray] | None = None
 ) -> tuple[pd.DataFrame, list[str], list[str]]:
-    """For each column in `cols` (a genuinely-3-of-3 binary dummy -- one-hot
-    category or NPI flag, all int8 by this point), build value*claim_type_
-    dummy for each of the 3 claim types, SKIPPING any resulting interaction
-    term that would be constant at zero across the entire dataset (no row
-    has both this category and this claim type).
+    """For each binary dummy in `cols`, build dummy*claim_type_dummy for
+    each claim type, SKIPPING any term that is constant within that claim
+    type (all 0: the category never occurs there -- the original
+    2026-09-22 guard, e.g. 13 HCPCS categories x DME; or all 1:
+    dummy*claim_type == claim_type exactly -- added 2026-09-24).
 
-    Why this guard exists, precisely: an all-zero column has no variance to
-    estimate a coefficient from -- this isn't a small-sample precision
-    issue, it's a non-identifiable parameter (quasi/complete separation).
-    Confirmed empirically necessary, not hypothetical: 13 of HCPCS_CD's 21
-    top-N one-hot categories have ZERO DME claims in this dataset (checked
-    directly, 2026-09-22) -- DME bills a structurally different HCPCS code
-    family (E/K-prefixed Level II codes) than the carrier-dominated pooled
-    top-20. `provider_state` and `PRNCPAL_DGNS_CD` showed no such zero
-    cells in the same check, so this guard is a no-op for them in practice
-    -- but it's applied uniformly rather than special-cased to HCPCS_CD
-    alone, since the underlying risk (a rare category paired with the
-    smallest claim type, DME at 66,335 rows) could in principle recur for
-    any high-cardinality dummy, not just this one.
+    Then (2026-09-24) the within-claim-type dummy trap: for each prefix
+    group and claim type, if the group's kept terms sum to exactly the
+    claim_type dummy (the global drop_first reference never occurs in this
+    claim type), drop one term in that block as the within-claim-type
+    reference -- preferring a category that also has a term in another
+    claim type, most frequent first. See module docstring, fix C.
 
-    Same principle as add_claim_type_interactions()'s degrees-of-freedom
-    correction for claim-type-exclusive/2-of-3 covariates
-    (FEATURE_ENGINEERING.md Section 3) -- never include an interaction term
-    that's structurally constant at zero, whether that's known in advance
-    from the CMS schema (a claim type never has this field at all) or
-    discovered empirically (this specific category never co-occurs with
-    this specific claim type). Practical consequence for the degrees-of-
-    freedom count: a dummy that loses one of its 3 interaction terms this
-    way contributes n_i-1=1 degree of freedom in the omnibus test, not 2 --
-    the SAME formula as a true 2-of-3 covariate, just arrived at
-    empirically rather than structurally.
-
-    Builds all candidate interaction columns into a dict first and does ONE
-    pd.concat at the end -- see module docstring's MEMORY NOTE. No leading
-    .copy() here -- this function never mutates its `df` argument in place
-    (drop()/concat() both return new objects), so nothing needs protecting;
-    see the SECOND MEMORY NOTE for why a copy would just be dead weight and
-    its own consolidation-trigger risk.
-
-    Every input column here is already int8 by the time this runs (see
-    build_chow_design_matrix()), and int8*int8 stays int8 in numpy for
-    values this small (no overflow possible, max product is 1) -- so every
-    interaction term produced here is int8 too, with no explicit cast
-    needed. See module docstring's THIRD MEMORY NOTE.
-
-    Returns (df, new_interaction_cols, dropped_zero_variance_cols).
+    Returns (df, new_interaction_cols, dropped_cols) -- dropped_cols covers
+    both skip reasons, for reporting.
     """
+    if masks is None:
+        masks = _claim_type_masks(df)
     new_cols: dict[str, pd.Series] = {}
     dropped: list[str] = []
 
     for col in cols:
         for ct in _CLAIM_TYPES:
-            candidate = df[col] * df[f"claim_type_{ct}"]
             new_col = f"{col}__x__{ct}"
-            if candidate.sum() == 0:
+            if _within_type_status(df[col], masks[ct]) in _DETERMINED:
                 dropped.append(new_col)
                 continue
-            new_cols[new_col] = candidate
+            new_cols[new_col] = df[col] * df[f"claim_type_{ct}"]
+
+    # Within-claim-type dummy trap. Reference choice: prefer a category that
+    # still has a term in ANOTHER claim type, so dropping this one leaves it
+    # with n_i >= 1 -- dropping a category's ONLY term (e.g. a DME-only HCPCS
+    # code in the DME block) keeps nesting valid but leaves a pooled column
+    # with no unrestricted counterpart (n_i = 0, contributing -1 df), which
+    # fit_chow_test.py's name-based df then has to special-case. Caught on
+    # synthetic data before the first real run (2026-09-24). Among eligible
+    # terms, the most frequent is the reference (most stable baseline).
+    n_terms = Counter(c.rsplit("__x__", 1)[0] for c in new_cols)
+    for prefix in _GENUINELY_SHARED_PREFIXES:
+        for ct in _CLAIM_TYPES:
+            suffix = f"__x__{ct}"
+            block = [c for c in new_cols if c.startswith(prefix) and c.endswith(suffix)]
+            if not block:
+                continue
+            block_sum = np.zeros(len(df), dtype=np.int32)
+            for c in block:
+                block_sum += new_cols[c].to_numpy(dtype=np.int32)
+            if np.array_equal(block_sum, df[f"claim_type_{ct}"].to_numpy(dtype=np.int32)):
+                shared = [c for c in block if n_terms[c.rsplit("__x__", 1)[0]] >= 2]
+                ref = max(shared or block, key=lambda c: int(new_cols[c].sum()))
+                del new_cols[ref]
+                n_terms[ref.rsplit("__x__", 1)[0]] -= 1
+                dropped.append(ref)
 
     df = df.drop(columns=cols)
     if new_cols:
@@ -355,52 +459,25 @@ def _interact_with_zero_variance_guard(
 
 
 def add_claim_type_interactions(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str], list[str]]:
-    """Builds the UNRESTRICTED (fully-interacted) model's design matrix, in
-    two passes:
+    """Builds the UNRESTRICTED (fully-interacted) model's design matrix.
 
-    Pass 1 -- numeric claim-type-exclusive/2-of-3 covariates. For every
-    remaining NUMERIC column whose nullness is structurally determined by
-    claim_type -- whether that's a claim-type-EXCLUSIVE field (~166
-    REV_CNTR_*/DMERC_LINE_*/CARR_CLM_*-family columns, populated in exactly
-    1 claim type) or a confirmed 2-of-3 SHARED covariate (carr_num_freq,
-    prvdr_num_freq) -- build interaction terms against only the claim
-    type(s) it's actually populated in, per FEATURE_ENGINEERING.md
-    Section 3's degrees-of-freedom correction. Zero-fill happens ONLY here,
-    on this copy, never in train_model.parquet itself (Section 3 checklist
-    item 3's correction). All new columns for this pass are built into a
-    dict and concatenated ONCE at the end -- see module docstring's MEMORY
-    NOTE. These interaction terms stay at their NATURAL (float64) dtype --
-    real dollar/count fields, not the binary int8 downcast, since those
-    values are genuinely non-binary.
+    Pass 1 -- numeric claim-type-exclusive/2-of-3 covariates: one
+    value*claim_type term per claim type the covariate is present in,
+    zero-filled on this copy only -- SKIPPING (2026-09-24) terms where the
+    value is constant in that claim type (fix C) and the named within-DME
+    duplicates (fix B).
 
-    Pass 2 -- genuinely-3-of-3 categorical dummy groups (ADDED 2026-09-22).
-    `provider_state`/`HCPCS_CD`/`PRNCPAL_DGNS_CD`'s one-hot dummies and the
-    5 NPI presence flags were previously left as untested plain columns
-    (Stage-1 omnibus test scope gap, flagged but not resolved as of
-    2026-09-17's Section 6). Now interacted against all 3 claim_type
-    dummies via _interact_with_zero_variance_guard(), which skips any
-    resulting term that would be constant at zero (see that function's
-    docstring -- confirmed necessary for 13 of HCPCS_CD's 21 categories
-    against DME specifically).
+    Pass 2 -- genuinely-3-of-3 categorical dummy groups, via
+    _interact_with_zero_variance_guard() (constancy guard + within-claim-
+    type dummy trap).
 
-    CORRECTED 2026-09-22, same day as the fix above: this function's
-    leading `df = df.copy()` has been REMOVED. Traced through the full
-    body: neither Pass 1 nor Pass 2 mutates the input `df` object in place
-    anywhere -- every step reassigns the local `df` name to a new object
-    via drop()/concat(). The original object passed in (build_chow_design_
-    matrix()'s output, reused elsewhere in __main__ for
-    build_restricted_design_matrix()) is therefore never touched, copy or
-    no copy. See the module docstring's SECOND MEMORY NOTE.
+    No leading .copy() -- never mutates its input (SECOND MEMORY NOTE).
 
-    Returns (df_with_interactions, list_of_new_interaction_column_names,
-    list_of_skipped_zero_variance_column_names) -- the second value is for
-    the not-yet-written Chow-test fitting step, which needs to know exactly
-    which columns are "unrestricted-model-only" versus shared with the
-    restricted model; the third is purely for visibility/reporting, since a
-    silently-skipped term is exactly the kind of thing worth surfacing
-    rather than hiding.
+    Returns (df_with_interactions, new_interaction_cols, skipped_cols).
     """
+    masks = _claim_type_masks(df)
     interaction_cols: list[str] = []
+    skipped: list[str] = []
     cols_to_drop: list[str] = []
     new_cols: dict[str, pd.Series] = {}
 
@@ -410,46 +487,26 @@ def add_claim_type_interactions(df: pd.DataFrame) -> tuple[pd.DataFrame, list[st
             continue
         if col.startswith(_GENUINELY_SHARED_PREFIXES):
             continue
-        if col.startswith("risk_"):  # defensive -- should already be absent from train_model.parquet
+        if col.startswith("risk_"):
             continue
         if not pd.api.types.is_numeric_dtype(df[col]):
-            # Non-numeric claim-type-exclusive/shared columns are out of
-            # scope here -- this treatment only ever applies to NUMERIC
-            # dollar/count fields (FEATURE_ENGINEERING.md Section 3's
-            # original framing). Checked directly against real data
-            # (2026-09-17): of 84 non-numeric columns still carrying real
-            # NaN in train_model.parquet, only CARR_NUM/PRVDR_NUM were ever
-            # claim-type-exclusive, and both are already consumed into
-            # numeric carr_num_freq/prvdr_num_freq above before this loop
-            # runs. Every other flagged column (ICD_DGNS_CD*/
-            # ICD_PRCDR_CD* family, HCPCS_CD, BETOS_CD, etc.) is ordinary,
-            # legitimate partial real-world missingness in a non-claim-
-            # type-exclusive field -- never a candidate for this treatment.
             continue
 
         absent_types, present_types = _null_pattern(df, col)
-
         if not absent_types:
-            # Genuinely shared 3-of-3, no missingness -- not a claim-type-
-            # exclusive/2-of-3 field. Handled in Pass 2 below if it's one
-            # of the categorical dummy groups; a genuinely-3-of-3 NUMERIC
-            # field (rare -- none currently exist outside the dummy/flag
-            # groups) would fall through untouched here, which is correct:
-            # nothing in this pass claims to handle that case.
             continue
 
-        filled = df[col].fillna(0)  # zero-fill ONLY here -- reads df[col],
-        # never mutates it; produces a new Series.
+        filled = df[col].fillna(0)
         for ct in present_types:
             new_col = f"{col}__x__{ct}"
+            if new_col in _REDUNDANT_INTERACTION_TERMS:
+                skipped.append(new_col)
+                continue
+            if _within_type_status(df[col], masks[ct]) in _DETERMINED:
+                skipped.append(new_col)
+                continue
             new_cols[new_col] = filled * df[f"claim_type_{ct}"]
             interaction_cols.append(new_col)
-
-        # Drop the raw column: keeping it alongside its own interaction
-        # terms would recreate the same collinearity problem already
-        # documented for claim_type's own encoding (Section 3) -- the raw
-        # column still has real NaN (unfittable) and is redundant with the
-        # interaction terms that now carry its information.
         cols_to_drop.append(col)
 
     df = df.drop(columns=cols_to_drop)
@@ -459,58 +516,24 @@ def add_claim_type_interactions(df: pd.DataFrame) -> tuple[pd.DataFrame, list[st
     # --- Pass 2: genuinely-3-of-3 categorical dummy groups ---
     shared_dummy_cols = [c for c in df.columns if c.startswith(_GENUINELY_SHARED_PREFIXES)]
     shared_dummy_cols += [c for c in df.columns if c in _NPI_FLAGS]
-    df, new_pass2_cols, dropped_zero_variance = _interact_with_zero_variance_guard(df, shared_dummy_cols)
+    df, new_pass2_cols, pass2_dropped = _interact_with_zero_variance_guard(df, shared_dummy_cols, masks)
     interaction_cols += new_pass2_cols
 
-    return df, interaction_cols, dropped_zero_variance
+    return df, interaction_cols, skipped + pass2_dropped
 
 
 def build_restricted_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
-    """Builds the RESTRICTED (pooled) model's design matrix -- the actual
-    counterpart being compared against add_claim_type_interactions()'s
-    unrestricted output in the Chow test's likelihood-ratio comparison.
+    """Builds the RESTRICTED (pooled) model's design matrix.
 
-    Two categories, given DIFFERENT treatment on purpose -- this is where
-    the restricted and unrestricted matrices genuinely diverge, which is
-    exactly what the Chow test needs to have something to test:
+    - Claim-type-EXCLUSIVE fields (n_i=1): identical to the unrestricted
+      model -- one interaction term against their one claim type. The
+      named within-DME duplicates (fix B) are skipped here too when they
+      take this form, so both matrices stay name-consistent.
+    - Genuinely SHARED covariates: ONE plain column each (the actual
+      restriction under test); 2-of-3 covariates zero-filled for their
+      absent claim type.
 
-    - Claim-type-EXCLUSIVE fields (n_i=1): IDENTICAL to the unrestricted
-      model -- one interaction term against their one applicable
-      claim_type dummy, zero-filled on this copy. There's no "pooled vs.
-      interacted" distinction possible when a covariate exists in only one
-      claim type to begin with (FEATURE_ENGINEERING.md Section 3 checklist
-      item 2 -- these sit outside the hypothesis being tested, in both
-      models, for the same reason). Confirmed algebraically too: n_i=1
-      contributes n_i-1=0 degrees of freedom to the LR test either way.
-      All such new interaction columns are built into a dict and
-      concatenated ONCE at the end -- see module docstring's MEMORY NOTE.
-    - Genuinely SHARED covariates (2-of-3 numeric, or 3-of-3 categorical
-      dummies/NPI flags): appear as ONE plain column each here, forced to
-      a single shared coefficient -- versus multiple separate interaction
-      terms in the unrestricted model. THIS is the actual restriction
-      under test. 2-of-3 covariates get zero-filled on this copy for their
-      one absent claim type (a value-level modification of an EXISTING
-      column, not a new one -- doesn't need the dict/concat treatment).
-      The 3-of-3 categorical dummies/flags (already int8 -- see
-      build_chow_design_matrix()) need NO special handling at all here --
-      they were never touched by Pass 2's interaction logic, so they're
-      already exactly the single plain column this model needs.
-
-    This function's leading .copy() IS required and kept, unlike
-    add_claim_type_interactions() above -- this function genuinely mutates
-    columns in place (`df[col] = df[col].fillna(0)` for 2-of-3 covariates),
-    and __main__ calls this function and add_claim_type_interactions() on
-    the SAME shared `intermediate` object. Without this copy, mutating in
-    place here would corrupt that shared object out from under the other
-    call. See the module docstring's SECOND MEMORY NOTE for the general
-    rule this follows (copy only when something actually mutates in
-    place).
-
-    Runs on the COPY returned by build_chow_design_matrix() -- same
-    starting point as add_claim_type_interactions(), so both design
-    matrices cover identical rows and an identical covariate universe
-    (required for the likelihood-ratio test's nesting assumption to hold --
-    pre-flight checklist item 1).
+    Leading .copy() kept -- this function mutates columns in place.
     """
     df = df.copy()
 
@@ -528,25 +551,17 @@ def build_restricted_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
             continue
 
         absent_types, present_types = _null_pattern(df, col)
-
         if not absent_types:
-            # Genuinely shared 3-of-3, no NaN -- already a valid single
-            # plain column, nothing to do.
             continue
 
         if len(present_types) == 1:
-            # Claim-type-exclusive (n_i=1): identical treatment to the
-            # unrestricted model -- see docstring above for why.
             ct = present_types[0]
-            filled = df[col].fillna(0)
-            new_cols[f"{col}__x__{ct}"] = filled * df[f"claim_type_{ct}"]
+            new_col = f"{col}__x__{ct}"
             cols_to_drop.append(col)
+            if new_col in _REDUNDANT_INTERACTION_TERMS:
+                continue
+            new_cols[new_col] = df[col].fillna(0) * df[f"claim_type_{ct}"]
         else:
-            # 2-of-3 shared covariate: the actual restriction being tested.
-            # ONE plain column, zero-filled for the one absent claim type --
-            # versus 2 separate interaction terms in the unrestricted model.
-            # In-place value modification of an EXISTING column -- doesn't
-            # add a new column, so no fragmentation risk here.
             df[col] = df[col].fillna(0)
 
     df = df.drop(columns=cols_to_drop)
@@ -557,95 +572,51 @@ def build_restricted_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_full_design_matrix(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str], list[str]]:
-    """Run stages 1+2. This is the UNRESTRICTED (fully-interacted) model's
-    design matrix. See build_restricted_design_matrix() for its pooled
-    counterpart -- built separately, from the same starting point."""
+    """Run stages 1+2 -- the UNRESTRICTED model's design matrix."""
     design = build_chow_design_matrix(df)
-    design, interaction_cols, dropped_zero_variance = add_claim_type_interactions(design)
-    return design, interaction_cols, dropped_zero_variance
+    design, interaction_cols, skipped = add_claim_type_interactions(design)
+    return design, interaction_cols, skipped
 
 
 if __name__ == "__main__":
     train = pd.read_parquet(PROCESSED_DIR / "train_model.parquet")
     intermediate = build_chow_design_matrix(train)
+    report = intermediate.attrs.get("rank_fix_report", {})
 
-    unrestricted, interaction_cols, dropped_zero_variance = add_claim_type_interactions(intermediate)
+    unrestricted, interaction_cols, skipped = add_claim_type_interactions(intermediate)
     restricted = build_restricted_design_matrix(intermediate)
 
-    print(f"train_model.parquet:      {train.shape[1]} columns")
+    print(f"train_model.parquet:        {train.shape[1]} columns")
     print(f"unrestricted design matrix: {unrestricted.shape[1]} columns ({len(interaction_cols)} interaction terms)")
     print(f"restricted design matrix:   {restricted.shape[1]} columns")
 
-    # NEW 2026-09-22: report the memory footprint before/after the int8
-    # downcast, to make the fix's actual effect visible rather than just
-    # asserted.
+    print("\n2026-09-24 rank-deficiency fixes:")
+    print(f"  [B] identity-redundant columns dropped ({len(report.get('identity_dropped', []))}): {report.get('identity_dropped')}")
+    print(f"  [B] within-DME redundant terms skipped: {report.get('within_type_redundant_terms')}")
+    det = report.get("claim_type_determined_dropped", [])
+    print(f"  [A] claim-type-determined columns dropped ({len(det)}): {det}")
+    if report.get("zero_with_gaps_warning"):
+        print(
+            f"  [A] WARNING -- partly-NaN, all-present-values-0 (dropped; zero-fill conflates "
+            f"a present 0 with absence here): {report['zero_with_gaps_warning']}"
+        )
+    npi_left = [c for c in _NPI_FLAGS if c in intermediate.columns]
+    print(f"  [A] NPI flags remaining (expect none): {npi_left or 'none'}")
+    print(f"  [D] carr_num_freq present anywhere (expect False): {any(c.startswith('carr_num_freq') for c in unrestricted.columns) or 'carr_num_freq' in restricted.columns}")
+    trap_refs = [c for c in skipped if c.startswith(_GENUINELY_SHARED_PREFIXES) and "__x__" in c]
+    print(f"  [C] unrestricted terms skipped ({len(skipped)} total; {len(trap_refs)} from dummy groups)")
+
     unrestricted_mb = unrestricted.memory_usage(deep=True).sum() / 1_048_576
     restricted_mb = restricted.memory_usage(deep=True).sum() / 1_048_576
     print(f"\nunrestricted design matrix memory usage: {unrestricted_mb:.1f} MiB")
     print(f"restricted design matrix memory usage:   {restricted_mb:.1f} MiB")
 
-    # NEW 2026-09-22: report every interaction term skipped for zero
-    # variance -- confirmed expected count is 13 (all HCPCS x DME, per the
-    # manual check that motivated this guard), zero elsewhere.
-    print(f"\nInteraction terms skipped for zero variance: {len(dropped_zero_variance)}")
-    hcpcs_dme_dropped = [c for c in dropped_zero_variance if c.startswith("hcpcs_") and c.endswith("__x__dme")]
-    other_dropped = [c for c in dropped_zero_variance if c not in hcpcs_dme_dropped]
-    print(f"  hcpcs_* x dme: {len(hcpcs_dme_dropped)} (expected: 13)")
-    print(f"  everything else: {len(other_dropped)} (expected: 0) -- {other_dropped if other_dropped else '(none)'}")
-
-    # Sanity check on PRVDR_NUM's NaN pattern -- CORRECTED 2026-09-17.
-    n_carrier = (train["claim_type_carrier"] == 1).sum()
-    n_outpatient_residual = (
-        train.loc[train["claim_type_outpatient"] == 1, "PRVDR_NUM"].isna().sum()
-    )
-    expected_nan = n_carrier + n_outpatient_residual
-    n_nan = intermediate["prvdr_num_freq"].isna().sum()
-    status = "OK" if n_nan == expected_nan else "MISMATCH -- investigate before using this design matrix"
-    print(
-        f"\nprvdr_num_freq NaN count (pre-interaction): {n_nan:,} "
-        f"(expected: carrier {n_carrier:,} + outpatient residual {n_outpatient_residual:,} "
-        f"= {expected_nan:,}) [{status}]"
-    )
-
-    # Sanity check on the interaction terms themselves: for a 2-of-3
-    # covariate, exactly 2 interaction columns should exist in the
-    # UNRESTRICTED matrix, never 3.
-    prvdr_terms = [c for c in interaction_cols if c.startswith("prvdr_num_freq__x__")]
-    carr_terms = [c for c in interaction_cols if c.startswith("carr_num_freq__x__")]
-    print(f"\n[unrestricted] prvdr_num_freq interaction terms: {prvdr_terms} (expect exactly 2, never 3)")
-    print(f"[unrestricted] carr_num_freq interaction terms:  {carr_terms} (expect exactly 2, never 3)")
-
-    # Sanity check on the RESTRICTED matrix: the 2-of-3 covariates should
-    # appear as a SINGLE plain column each (no __x__ suffix at all), with
-    # zero NaN remaining.
-    for col in ("prvdr_num_freq", "carr_num_freq"):
+    for col in ("prvdr_num_freq",):
         present = col in restricted.columns
-        no_interaction_variant = not any(c.startswith(f"{col}__x__") for c in restricted.columns)
         no_nan = restricted[col].isna().sum() == 0 if present else False
-        status = "OK" if (present and no_interaction_variant and no_nan) else "MISMATCH -- investigate"
-        print(
-            f"[restricted]   {col}: present_as_single_column={present}, "
-            f"no_interaction_variant={no_interaction_variant}, no_nan={no_nan} [{status}]"
-        )
-
-    # NEW 2026-09-22: confirm the genuinely-3-of-3 categorical groups are
-    # NOW interacted in the unrestricted matrix but STILL plain columns in
-    # the restricted one -- the mirror-image check already established for
-    # the 2-of-3 numeric covariates, now extended to this new group.
-    for prefix, label in [("hcpcs_", "HCPCS"), ("dgns_", "Diagnosis"), ("state_", "State")]:
-        unrestricted_interacted = any(
-            c.startswith(prefix) and "__x__" in c for c in unrestricted.columns
-        )
-        restricted_plain = any(
-            c.startswith(prefix) and "__x__" not in c for c in restricted.columns
-        )
-        print(f"[{label}] unrestricted has interaction terms: {unrestricted_interacted}; restricted has plain columns: {restricted_plain}")
-
-    npi_flag = "has_referring_physician"
-    npi_unrestricted_interacted = any(c.startswith(f"{npi_flag}__x__") for c in unrestricted.columns)
-    npi_restricted_plain = npi_flag in restricted.columns
-    print(f"[NPI flags, e.g. {npi_flag}] unrestricted interacted: {npi_unrestricted_interacted}; restricted plain: {npi_restricted_plain}")
+        print(f"[restricted] {col}: single plain column={present}, no NaN={no_nan}")
 
     col_diff = unrestricted.shape[1] - restricted.shape[1]
     print(f"\nColumn count difference (unrestricted - restricted): {col_diff}")
     print(f"Row count match: {len(unrestricted) == len(restricted) == len(train)}")
+    print("Full-rank verification: run src/check_rank.py (or fit_chow_test.py, which now enforces it).")
