@@ -1000,3 +1000,121 @@ correctly represented in both design matrices — interacted (minus the 39 empir
 in the unrestricted matrix, single plain columns in the restricted one. This section's original
 "Not yet done" note about this scope gap is now closed. What remains open: the actual Chow-test
 fitting code (two `statsmodels.Logit` calls + the likelihood-ratio statistic) — not yet written.
+
+### Both design matrices were rank-deficient: every dependency named, and removed (2026-09-23 to 2026-09-24)
+
+**How it surfaced.** The first `--method firth` smoke test refused to fit: `firthmodels` raised
+"Weighted design matrix is rank deficient." `src/check_rank.py` then showed the *raw* matrices were
+rank-deficient, not just the IRLS-weighted one: **restricted 144 columns / rank 119 (deficiency
+25), unrestricted 310 / rank 275 (deficiency 35)** at `--sample-frac 0.2`. Two theories were ruled
+out by direct checks rather than argued away:
+
+- **Separation-driven weight collapse** (the 6 separating HCPCS codes pushing IRLS weights to zero):
+  ruled out, since the deficiency was identical with and without `--exclude-separating-codes`.
+- **A small-sample artifact of computing the top-20 encoding on a subsample**: ruled out, since the
+  deficiency was identical at `--sample-frac 0.02` and `0.2` (10x the data).
+
+This had been present in every earlier fit. LBFGS optimizes without inverting anything, so it
+pushed through silently, and the `HessianInversionWarning` on every earlier run was this issue, not
+separation. Firth's Newton-Raphson has to invert at every iteration, which is why it failed loudly.
+
+**Correction to `check_rank.py`'s own NPI test, kept visible.** An intermediate check reported
+`has_attending + has_operating + has_rendering == claim_type_outpatient` for only 67.8% of rows and
+called the hypothesis "refuted." The test was wrongly designed. If each of the three flags equals
+`claim_type_outpatient`, their *sum* is 3 on outpatient rows, so the equality can only hold on
+non-outpatient rows; 67.8% was simply the non-outpatient share. That was evidence *for* the
+hypothesis. `src/explain_dependencies.py` replaced ad hoc tests with explicit equations: first
+columns constant everywhere, then columns constant *within* each claim type (exact combinations of
+the claim-type dummies), then orthogonal matching pursuit for the sparsest exact equation behind
+each remaining dependency. It accounts for **all 25 restricted and all 35 unrestricted**
+dependencies (11+9+5 and 14+10+11), each verified to a relative residual of ~1e-15.
+
+| Group | Equation(s) | What it means |
+|---|---|---|
+| Zero-everywhere fields (11 restricted / 14 unrestricted) | MSP 1st/2nd paid, blood deductible, MCO-paid switch, bene-payment amounts, DME screening savings, reduced-payment physician assistant `= 0` | Synthea never populates these. |
+| All 5 NPI flags | `has_performing = carrier`; `has_referring = carrier + dme`; `has_attending = has_operating = has_rendering = outpatient` | No information beyond claim type (see correction below). |
+| Constant within claim type | `CLAIM_QUERY_CODE = 3·outpatient`; `NCH_PROFNL_CMPNT_CHRG_AMT = $4·outpatient`; `REV_CNTR_UNIT_CNT = 1·outpatient`; `LINE_BENE_PRMRY_PYR_PD_AMT = $1·dme` ($0 in carrier) | Fixed values on every claim of that type, most likely Synthea constants. |
+| Outpatient payment = charge | `CLM_OP_PRVDR_PMT_AMT = REV_CNTR_PRVDR_PMT_AMT = CLM_TOT_CHRG_AMT` | Synthea pays the full charge with no contractual adjustment. Same pattern as the carrier `SBMTD = ALOWD` duplicates (Section 2, 2026-09-16). |
+| Outpatient deductible duplicate | `REV_CNTR_CASH_DDCTBL_AMT = NCH_BENE_PTB_DDCTBL_AMT` | The same amount recorded at line level and claim level. |
+| Outpatient cost-sharing identity | `COINSRNC_WGE_ADJSTD = RDCD_COINSRNC = PTNT_RSPNSBLTY − PTB_DDCTBL` | A genuine accounting identity: patient responsibility = deductible + coinsurance. |
+| DME duplicates (unrestricted only) | `LINE_PRMRY_ALOWD_CHRG = LINE_ALOWD_CHRG`; `CARR_CLM_PRMRY_PYR_PD = NCH_CARR_CLM_ALOWD` (within DME) | Duplicates within DME only. They differ in carrier, which is why the pooled matrix doesn't show them. |
+| HCPCS dummy trap within claim type (unrestricted only) | `Σ hcpcs_*__x__carrier = claim_type_carrier`, and the same for DME | `drop_first` chose a single global reference code that never occurs in carrier or DME. It protects the pooled matrix but not the per-claim-type blocks. |
+| `carr_num_freq` = state frequency (unrestricted only) | coefficients ≈ each state's own share (CA 0.099, FL 0.094, NY 0.061…) | Each state maps to one carrier number, so the encoding is a function of state, exactly in the span of the ~50 state dummies within each claim type. It looked "not sparse" only because the solver stopped at 25 terms. It escaped the restricted matrix because the outpatient zero-fill breaks the identity there. |
+
+**A correction to this section's own 2026-09-22 NPI table, kept visible above rather than
+edited.** That table classified 4 of the 5 NPI flags as "empirically 1-of-3" and
+`has_referring_physician` as "genuinely 2-of-3." Both undersold it. The flags are not merely
+claim-type-*exclusive*; each is *identically equal* to a claim-type dummy (or to the sum of two)
+on every row. The 2026-09-22 check looked at which interaction terms were non-zero, not at whether
+the kept terms varied, so it couldn't see this. The RIF-semantics explanation given there
+(performing = professional/carrier; attending/operating/rendering = institutional/outpatient;
+referring spans carrier and DME) still holds. It just means that, in this synthetic data, every
+claim of a type has exactly the role fields that type uses, with no variation left to learn from.
+
+**Consequence for the Chow test itself.** With singular matrices, the LR degrees of freedom are
+`rank(unrestricted) − rank(restricted)`, not the column-count difference. On the matrices above
+that is 275 − 119 = **156**, not the 166 `fit_chow_test.py` reported. Its name-based
+`Σ(n_i − 1)` cross-check was internally consistent but measured the wrong thing whenever either
+matrix was rank-deficient. No Chow-test result produced before 2026-09-24 should be used.
+
+**Fixes, all in `src/build_chow_design_matrix.py` (baseline/Chow only; `train_model.parquet`
+untouched, since XGBoost doesn't need any of this):**
+
+- **A. Claim-type-determined columns: one general rule, not a name list.** A column is dropped when
+  it takes the same value on every row of each claim type it's present in. **"Present" means
+  non-null, and a 0 is a present value** (the standing "0 is a value, NaN is the absence of one"
+  rule, restated explicitly when this fix was approved). So a field that is non-null and always
+  exactly 0 within a claim type counts as constant there, while a claim type where the field is
+  100% NaN is absent and not judged. This one rule removes the zero-everywhere fields, the 5 NPI
+  flags, and the four constant-within-claim-type fields. Two edge cases:
+  - *Partial presence with a nonzero constant*: kept, because the zero-filled term is then
+    `c × presence`, which varies.
+  - *Partial presence where every present value is 0*: dropped (it becomes an all-zero column
+    after the existing zero-fill) but printed as a warning. The zero-fill is conflating a present 0
+    with absence in that case, a pre-existing issue outside this fix.
+- **A (per claim type, unrestricted only).** A column constant in *some* of its claim types keeps
+  its other terms; only the constant claim type's `__x__` term is skipped. Pass 2's zero-variance
+  guard is generalized the same way: a term is skipped when constant within the claim type (all 0
+  *or* all 1), not only when all 0.
+- **B. Named exact identities, verified on the actual data every run** (the build raises if any
+  stop holding), then the redundant side dropped. Kept representatives are `CLM_TOT_CHRG_AMT`,
+  `NCH_BENE_PTB_DDCTBL_AMT`, `REV_CNTR_RDCD_COINSRNC_AMT`, `LINE_ALOWD_CHRG_AMT` and
+  `NCH_CARR_CLM_ALOWD_AMT`. Only the `__x__dme` term is dropped for the two DME duplicates, so the
+  distinct carrier information survives.
+- **C. Within-claim-type dummy trap.** When a dummy group's terms in one claim-type block sum to
+  exactly that claim-type dummy, one term is dropped as the within-type reference. It is applied
+  uniformly to `state_`/`hcpcs_`/`dgns_`.
+- **D. `carr_num_freq` removed**, as redundant with `provider_state`.
+
+**Two further changes in `src/fit_chow_test.py`:**
+
+- **Separating-code exclusion moved upstream.** It now drops the 6 codes' dummies from the shared
+  intermediate before either matrix is built, instead of post hoc per matrix. The end result for
+  the codes is the same (they merge into the reference category in both), but it has to come first
+  now. Otherwise excluding a code *after* fix C chose that block's reference could remove a second
+  term from the same block, leaving the restricted model's pooled reference column outside the
+  unrestricted span, a silent nesting violation.
+- **Full rank is enforced before fitting.** Rank is computed with chunked tall-skinny QR, so no
+  full float64 copy is needed on the 8 GB machine. The script refuses to fit a rank-deficient
+  matrix and requires name-based df = column-count difference = `rank(U) − rank(R)` before the
+  unrestricted fit starts. Restricted-fit summaries saved before this change are rejected as stale.
+
+**Tested on synthetic data before touching real data, and the test caught a real problem.** A
+synthetic frame planted every dependency type above. The first run showed the name-based df
+breaking: fix C had picked the block's most frequent term as reference, and in DME that was a
+DME-only code (like the real `A4253`). That left the category with zero unrestricted terms but a
+pooled restricted column. Nesting still held, but the df bookkeeping didn't. The fix:
+
+- The within-type reference now prefers a category that also has a term in another claim type.
+  The real carrier block has codes shared with outpatient, and the real DME block has `__OTHER__`.
+- The df accounting counts the unavoidable fallback case as n_i = 0 (−1 df), which is exactly
+  consistent with the column counts.
+
+After the fix, with and without the exclusion, both matrices were full rank, the restricted
+columns lay in the unrestricted span (checked directly), all three df computations agreed, and
+LR ≥ 0. Broken identities and mismatched NaN patterns were confirmed to raise rather than drop.
+
+**Status: implemented and pushed; not yet run against real data.** Next: `check_rank.py` on real
+data (expect full rank on both matrices), then the `--method firth` vs `--method standard
+--exclude-separating-codes` comparison. This will be the first Chow-test result produced on
+correctly-specified matrices.
