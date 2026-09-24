@@ -4,52 +4,66 @@ error from firthmodels (--method firth --sample-frac 0.02) caused by a raw
 collinearity in X itself, or only by IRLS weight collapse under severe
 separation (the 6 confirmed structurally-separating HCPCS codes)?
 
-Computes np.linalg.matrix_rank() on the RAW (unweighted) restricted design
-matrix, at a given --sample-frac, both WITH and WITHOUT
---exclude-separating-codes.
+Computes np.linalg.matrix_rank() on the RAW (unweighted) design matrix, at
+a given --sample-frac, for BOTH the restricted and unrestricted matrices,
+both WITH and WITHOUT --exclude-separating-codes (4 checks total).
 
-CONFIRMED 2026-09-23: rank deficient by EXACTLY 25 at BOTH --sample-frac
-0.02 and 0.2 (10x more data, identical deficiency count), and unchanged by
---exclude-separating-codes in both cases -- ruling out separation-driven
-IRLS weight collapse AND a small-sample cardinality-encoding artifact.
-This is a real, sample-size-invariant structural issue.
+CONFIRMED 2026-09-23, RESTRICTED matrix: rank deficient by EXACTLY 25 at
+BOTH --sample-frac 0.02 and 0.2 (10x more data, identical deficiency
+count), and unchanged by --exclude-separating-codes -- ruling out
+separation-driven IRLS weight collapse AND a small-sample cardinality-
+encoding artifact. Real, sample-size-invariant structural issue.
 
 STAGE 1, CONFIRMED: 11 of the 25 are LITERALLY CONSTANT columns (all
-value 0.0), identical in both the with- and without-exclusion runs --
-e.g. REV_CNTR_2ND_MSP_PD_AMT__x__outpatient, DMERC_LINE_SCRN_SVGS_AMT__x__
-dme. Points at a real, specific gap in build_chow_design_matrix.py: Pass 2
-(genuinely-3-of-3 categorical dummy groups) has
+value 0.0), identical across both exclusion settings -- e.g.
+REV_CNTR_2ND_MSP_PD_AMT__x__outpatient, DMERC_LINE_SCRN_SVGS_AMT__x__dme.
+Points at a real gap in build_chow_design_matrix.py: Pass 2 has
 _interact_with_zero_variance_guard() to skip constant-zero interaction
-terms; Pass 1 (numeric claim-type-exclusive/2-of-3 covariates) has NO
-equivalent -- its _null_pattern() helper only checks NULLness per claim
-type, never whether the non-null values are all identically the same
-constant.
+terms; Pass 1 (numeric claim-type-exclusive/2-of-3 covariates) has no
+equivalent -- its _null_pattern() helper checks NULLness only, never
+whether the non-null values are all identically the same constant.
 
-STAGE 2, CONFIRMED (2026-09-23): dropping the 11 constants leaves a real
-remaining deficiency of 14, unchanged by --exclude-separating-codes.
+STAGE 2, CONFIRMED: dropping the 11 constants leaves a real remaining
+deficiency of 14 in the RESTRICTED matrix, IDENTICAL as a column SET
+(not just a count) across both exclusion settings once the QR search is
+protected from touching the claim_type dummies (see CRITICAL CORRECTNESS
+FIX below) -- a clean, reproducible, fully-verified result.
 has_performing_physician == claim_type_carrier EXACTLY (100% of rows) --
-not just "carrier-only" as the 2026-09-22 finding already established, but
-a literal duplicate column: every carrier claim has a performing physician
-recorded and no non-carrier claim does. This cleanly explains 1 of the 14.
-The competing hypothesis (has_attending/operating/rendering_physician
-summing exactly to claim_type_outpatient) is REFUTED -- only 67.8% match,
-not a real accounting identity. The remaining ~13 are a genuinely tangled,
-multi-column structure among REV_CNTR_*/CLM_*_outpatient dollar fields
-(plausibly real CMS revenue-center billing arithmetic -- a total defined
-as the sum of its components) entangled with the 3 outpatient-only NPI
-flags -- not fully named yet.
+a literal duplicate column, not just "carrier-only" as the 2026-09-22
+finding already established. The competing hypothesis (has_attending/
+operating/rendering_physician summing exactly to claim_type_outpatient)
+is REFUTED at 67.8%. The remaining structure is a genuinely tangled,
+multi-column relationship among REV_CNTR_*/CLM_*_outpatient dollar fields
+(plausibly real CMS revenue-center billing arithmetic) entangled with all
+5 NPI presence flags -- not fully named by mechanism, but fully resolved
+by column identification (see the QR drop list, verified to reach full
+rank).
+
+NOT YET CHECKED as of the previous run: whether the UNRESTRICTED matrix
+has an analogous problem. It has a DIFFERENT column structure for the
+same covariates (separate __x__carrier/__x__outpatient/__x__dme terms
+instead of one pooled column), so the same underlying identities could
+show up differently -- e.g. has_performing_physician__x__carrier (the
+only interaction term Pass 2's zero-variance guard keeps for that flag,
+since it's confirmed carrier-only) equals claim_type_carrier *
+claim_type_carrier = claim_type_carrier exactly, the identical redundancy
+in interaction-term form. This matters beyond mere completeness: whatever
+gets excluded must match between the two matrices at the level of the
+underlying COVARIATE, or _compute_df_and_table()'s restricted/unrestricted
+correspondence check in fit_chow_test.py would break. This version checks
+both matrix kinds.
 
 CRITICAL CORRECTNESS FIX (2026-09-23): the first version of
 _find_redundant_columns_via_qr() ran QR pivoting on ALL columns
 unconstrained, and it picked claim_type_carrier/outpatient/dme THEMSELVES
-as part of the "redundant" set in the --exclude-separating-codes run. QR
-pivoting is not unique when columns are entangled in a shared degenerate
-subspace -- nothing stops it from choosing a structurally ESSENTIAL column
-over an equally-valid alternative. Actually dropping a claim_type dummy
-would silently destroy the cell-means, no-shared-intercept design this
-whole project depends on. _PROTECTED_COLS below is now NEVER eligible to
-be named redundant: everything else is orthogonalized against the
-protected block first, and pivoted QR runs only on the residual.
+as part of the "redundant" set in one run. QR pivoting is not unique when
+columns are entangled in a shared degenerate subspace -- nothing stops it
+from choosing a structurally ESSENTIAL column over an equally-valid
+alternative. Actually dropping a claim_type dummy would silently destroy
+the cell-means, no-shared-intercept design this whole project depends on.
+_PROTECTED_COLS below is now NEVER eligible to be named redundant:
+everything else is orthogonalized against the protected block first, and
+pivoted QR runs only on the residual.
 
 Run with (from the repo root, inside the venv):
     python src/check_rank.py
@@ -64,7 +78,11 @@ import numpy as np
 import pandas as pd
 import scipy.linalg
 
-from build_chow_design_matrix import build_chow_design_matrix, build_restricted_design_matrix
+from build_chow_design_matrix import (
+    add_claim_type_interactions,
+    build_chow_design_matrix,
+    build_restricted_design_matrix,
+)
 from fit_chow_test import _load_train, _prepare_xy
 
 # Columns that must NEVER be flagged as "redundant" by the QR search below,
@@ -80,9 +98,10 @@ def parse_args() -> argparse.Namespace:
         default=0.02,
         help="Fraction of train_model.parquet to check (default 0.02). Pass a "
         "larger value (e.g. 0.2, or 1.0 for the full file) -- confirmed 2026-09-23 "
-        "that the deficiency count does NOT change between 0.02 and 0.2, so this "
-        "is no longer expected to resolve at a larger sample, but left "
-        "configurable for further confirmation at the full population.",
+        "that the RESTRICTED matrix's deficiency count does NOT change between "
+        "0.02 and 0.2, so this is no longer expected to resolve at a larger "
+        "sample, but left configurable for further confirmation at the full "
+        "population and for the not-yet-checked unrestricted matrix.",
     )
     parser.add_argument("--stream-batch-size", type=int, default=50_000)
     return parser.parse_args()
@@ -97,7 +116,9 @@ def _find_constant_columns(X: pd.DataFrame) -> list[str]:
 
 def _check_npi_sum_identity(X: pd.DataFrame) -> None:
     """Direct test of two specific, substantive hypotheses (module
-    docstring STAGE 2). Checked directly rather than assumed."""
+    docstring STAGE 2). Only meaningful for the RESTRICTED matrix, where
+    these flags are plain columns -- skipped (columns won't be present
+    under these exact names) for the unrestricted matrix."""
     npi_cols = ["has_attending_physician", "has_operating_physician", "has_rendering_physician"]
     if all(c in X.columns for c in npi_cols) and "claim_type_outpatient" in X.columns:
         npi_sum = X[npi_cols].sum(axis=1)
@@ -107,9 +128,6 @@ def _check_npi_sum_identity(X: pd.DataFrame) -> None:
             f"\n  [NPI identity check] has_attending_physician + has_operating_physician + "
             f"has_rendering_physician == claim_type_outpatient for {exact_match:.4%} of rows ({verdict})"
         )
-    else:
-        print("\n  [NPI identity check] required columns not present in this X -- skipped.")
-
     if "has_performing_physician" in X.columns and "claim_type_carrier" in X.columns:
         exact_match2 = (X["has_performing_physician"] == X["claim_type_carrier"]).mean()
         verdict2 = "EXACT IDENTITY CONFIRMED" if exact_match2 == 1.0 else "not exact"
@@ -126,10 +144,7 @@ def _find_redundant_columns_via_qr(
     non-protected columns after orthogonalizing them against the protected
     block (Q @ (Q.T @ other), subtracted off) -- see module docstring's
     CRITICAL CORRECTNESS FIX for why the protected set exists at all. A
-    column in `protect` can therefore never appear in the returned list;
-    every candidate is a linear combination of OTHER covariates plus the
-    (always-kept) protected columns, never one of the protected columns
-    itself."""
+    column in `protect` can therefore never appear in the returned list."""
     protected = [c for c in X.columns if c in protect]
     other = [c for c in X.columns if c not in protect]
     if not protected:
@@ -149,11 +164,9 @@ def _find_redundant_columns_via_qr(
 
 
 def _identify_remaining_dependencies(X: pd.DataFrame, rank: int) -> None:
-    """SVD null-space view -- which columns are INVOLVED in each remaining
-    dependency (not necessarily a clean sparse combination). Kept
-    alongside the protected QR-based approach below since the two give
-    complementary information: this shows co-involvement, QR gives a
-    directly actionable, SAFE drop set (never a claim_type dummy)."""
+    """SVD null-space view (co-involvement) plus the protected QR-based
+    approach (a directly actionable, SAFE drop set -- never a claim_type
+    dummy), with a full-rank re-verification after dropping."""
     ncols = X.shape[1]
     deficiency = ncols - rank
     if deficiency <= 0:
@@ -193,18 +206,26 @@ def _identify_remaining_dependencies(X: pd.DataFrame, rank: int) -> None:
     _check_npi_sum_identity(X)
 
 
-def _check(sample_frac: float, stream_batch_size: int, exclude_separating: bool) -> None:
-    label = "WITH --exclude-separating-codes" if exclude_separating else "WITHOUT --exclude-separating-codes"
+def _check(sample_frac: float, stream_batch_size: int, exclude_separating: bool, matrix_kind: str) -> None:
+    label = (
+        f"{matrix_kind.upper()} matrix, "
+        f"{'WITH' if exclude_separating else 'WITHOUT'} --exclude-separating-codes"
+    )
     print(f"\n{'=' * 78}\n{label}  (--sample-frac {sample_frac})\n{'=' * 78}")
 
     train = _load_train(sample_frac, stream_batch_size)
     intermediate = build_chow_design_matrix(train)
     del train
 
-    restricted_df = build_restricted_design_matrix(intermediate)
-    del intermediate
-    y, X = _prepare_xy(restricted_df, exclude_separating=exclude_separating)
-    del restricted_df
+    if matrix_kind == "restricted":
+        design_df = build_restricted_design_matrix(intermediate)
+        del intermediate
+    else:
+        design_df, _interaction_cols, _dropped_zero_variance = add_claim_type_interactions(intermediate)
+        del intermediate
+
+    y, X = _prepare_xy(design_df, exclude_separating=exclude_separating)
+    del design_df
 
     print(f"\n  X shape: {X.shape}")
     ncols = X.shape[1]
@@ -243,8 +264,9 @@ def _check(sample_frac: float, stream_batch_size: int, exclude_separating: bool)
 
 def main() -> None:
     args = parse_args()
-    _check(args.sample_frac, args.stream_batch_size, exclude_separating=False)
-    _check(args.sample_frac, args.stream_batch_size, exclude_separating=True)
+    for matrix_kind in ("restricted", "unrestricted"):
+        for exclude in (False, True):
+            _check(args.sample_frac, args.stream_batch_size, exclude, matrix_kind)
 
 
 if __name__ == "__main__":
