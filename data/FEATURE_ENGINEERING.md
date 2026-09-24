@@ -1118,3 +1118,59 @@ LR ≥ 0. Broken identities and mismatched NaN patterns were confirmed to raise 
 data (expect full rank on both matrices), then the `--method firth` vs `--method standard
 --exclude-separating-codes` comparison. This will be the first Chow-test result produced on
 correctly-specified matrices.
+
+### Accounting for the restricted matrix's 117 columns (not the predicted 118) (2026-09-24)
+
+**The gap.** The explained dependencies predicted 118 restricted columns: 144 original columns,
+minus the 25 dependencies `explain_dependencies.py` named, minus `carr_num_freq` (fix D). On real
+data (`--sample-frac 0.2`) the rebuilt restricted matrix has **117**. The rebuilt matrix is full
+rank, so the extra drop didn't break anything. It still had to be accounted for rather than
+assumed.
+
+**Method.** I printed `build_chow_design_matrix()`'s `df.attrs["rank_fix_report"]` on the 0.2
+sample. Then I diffed the rebuilt restricted column set against two things: the 144-column list
+saved in the pre-fix `chow_restricted_fit_summary.json`, and the 25 left-hand sides written out
+in `reports/rank_deficiency_explained__restricted.txt`.
+
+**Result: two differences, and only one of them is a real extra drop.**
+
+1. **A representative swap, not an extra drop.** For the outpatient cost-sharing identity,
+   `explain_dependencies.py` (OMP) named `REV_CNTR_RDCD_COINSRNC_AMT` and
+   `REV_CNTR_COINSRNC_WGE_ADJSTD_C` as the dependent columns and kept
+   `REV_CNTR_PTNT_RSPNSBLTY_PMT`. Fix B does the opposite: it keeps `REV_CNTR_RDCD_COINSRNC_AMT`
+   and drops `REV_CNTR_PTNT_RSPNSBLTY_PMT` along with the wage-adjusted duplicate. Four columns
+   linked by two identities lose two columns either way, and both choices span the same space. The
+   count is the same.
+2. **The real extra column is `LINE_PRMRY_ALOWD_CHRG_AMT__x__dme`.** This is the within-DME
+   duplicate from fix B (`LINE_PRMRY_ALOWD_CHRG_AMT == LINE_ALOWD_CHRG_AMT` within DME).
+   `build_restricted_design_matrix()` skips it deliberately, "so both matrices stay
+   name-consistent." It was *not* a rank dependency in the restricted matrix, which is why
+   `explain_dependencies.py` never listed it and the prediction missed it.
+
+**It was not a `zero_with_gaps` case.** The report's `zero_with_gaps_warning` list is empty. I
+checked on the full population (1,151,951 rows): `LINE_PRMRY_ALOWD_CHRG_AMT` is 100% present in
+DME, equals `LINE_ALOWD_CHRG_AMT` on every DME row, and is 100% NaN (absent, not zero) in carrier
+and outpatient. No present 0 is being conflated with absence here.
+
+**Why the extra drop is correct, and what it reveals about the pre-fix test.** Because
+`LINE_PRMRY_ALOWD_CHRG_AMT` exists only in DME, the restricted builder treated it as
+claim-type-exclusive (n_i = 1) and gave it a `__x__dme` column. Numerically, though, that column
+*is* `LINE_ALOWD_CHRG_AMT × claim_type_dme`. So the old restricted matrix held both the pooled
+`LINE_ALOWD_CHRG_AMT` and its DME-specific slope, which together span the carrier and DME slopes
+separately. **The pooling restriction on `LINE_ALOWD_CHRG_AMT` was silently vacuous in every
+pre-fix Chow run.** The name-based df counted it as one restriction, but the restricted model
+could fit that difference freely. Dropping the duplicate from the restricted matrix is what
+actually imposes the restriction. Keeping it would also break the name-based df check: it would
+be a restricted-only column with no unrestricted counterpart, and `_compute_df_and_table()` would
+correctly raise.
+
+**Correction to the 2026-09-24 table above, kept rather than edited.** The "DME duplicates" row
+says the two pairs "differ in carrier." That is true for `CARR_CLM_PRMRY_PYR_PD_AMT` vs.
+`NCH_CARR_CLM_ALOWD_AMT`: both are present in carrier, and they are equal on only 18.3% of carrier
+rows. It is **not** true for `LINE_PRMRY_ALOWD_CHRG_AMT`, which is *absent* in carrier (100% NaN),
+not different there. That difference is why the two duplicates behave differently in the
+restricted matrix. `CARR_CLM_PRMRY_PYR_PD_AMT` stays a pooled 2-of-3 column, while
+`LINE_PRMRY_ALOWD_CHRG_AMT` is DME-exclusive and gets dropped.
+
+**Full reconciliation:** 144 − 25 explained − 1 (`carr_num_freq`) − 1
+(`LINE_PRMRY_ALOWD_CHRG_AMT__x__dme`) = **117**. This matches the real data.
