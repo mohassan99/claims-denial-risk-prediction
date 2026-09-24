@@ -23,30 +23,33 @@ _interact_with_zero_variance_guard() to skip constant-zero interaction
 terms; Pass 1 (numeric claim-type-exclusive/2-of-3 covariates) has NO
 equivalent -- its _null_pattern() helper only checks NULLness per claim
 type, never whether the non-null values are all identically the same
-constant (plausible for niche real-world fields -- secondary-payer-
-coordination amounts, managed-care-paid switches -- that a synthetic
-generator may simply never populate with a nonzero value). Explains why
-this doesn't resolve with more data: a population-wide constant field
-stays constant at any sample size.
+constant.
 
-STAGE 2, IN PROGRESS: dropping the 11 constants leaves a REAL remaining
-deficiency of 14, unchanged by --exclude-separating-codes. The NPI
-presence flags (has_referring/performing/attending/operating/rendering_
-physician) and claim_type_* dummies recur across nearly every printed
-SVD null-space vector for this residual -- plausibly connected to an
-already-documented finding (decisions-and-learnings.md, 2026-09-22): 4 of
-the 5 NPI flags are empirically claim-type-exclusive (has_performing_
-physician carrier-only; has_attending/operating/rendering_physician all
-outpatient-only). HYPOTHESIS: if CMS's outpatient billing rules require
-EXACTLY ONE of those three physician roles populated per outpatient
-claim, their sum would equal claim_type_outpatient EXACTLY -- a genuine
-accounting identity, not a bug. _check_npi_sum_identity() tests this
-directly. Separately, a cluster of REV_CNTR_*/CLM_*_outpatient dollar-
-amount interaction terms also recur together, plausibly a real CMS
-billing arithmetic identity (a total defined as the sum of its
-components) -- not yet identified by name. _find_redundant_columns_via_qr()
-gives a directly actionable "drop exactly these columns" answer via QR
-column pivoting, independent of whether every mechanism gets named.
+STAGE 2, CONFIRMED (2026-09-23): dropping the 11 constants leaves a real
+remaining deficiency of 14, unchanged by --exclude-separating-codes.
+has_performing_physician == claim_type_carrier EXACTLY (100% of rows) --
+not just "carrier-only" as the 2026-09-22 finding already established, but
+a literal duplicate column: every carrier claim has a performing physician
+recorded and no non-carrier claim does. This cleanly explains 1 of the 14.
+The competing hypothesis (has_attending/operating/rendering_physician
+summing exactly to claim_type_outpatient) is REFUTED -- only 67.8% match,
+not a real accounting identity. The remaining ~13 are a genuinely tangled,
+multi-column structure among REV_CNTR_*/CLM_*_outpatient dollar fields
+(plausibly real CMS revenue-center billing arithmetic -- a total defined
+as the sum of its components) entangled with the 3 outpatient-only NPI
+flags -- not fully named yet.
+
+CRITICAL CORRECTNESS FIX (2026-09-23): the first version of
+_find_redundant_columns_via_qr() ran QR pivoting on ALL columns
+unconstrained, and it picked claim_type_carrier/outpatient/dme THEMSELVES
+as part of the "redundant" set in the --exclude-separating-codes run. QR
+pivoting is not unique when columns are entangled in a shared degenerate
+subspace -- nothing stops it from choosing a structurally ESSENTIAL column
+over an equally-valid alternative. Actually dropping a claim_type dummy
+would silently destroy the cell-means, no-shared-intercept design this
+whole project depends on. _PROTECTED_COLS below is now NEVER eligible to
+be named redundant: everything else is orthogonalized against the
+protected block first, and pivoted QR runs only on the residual.
 
 Run with (from the repo root, inside the venv):
     python src/check_rank.py
@@ -63,6 +66,10 @@ import scipy.linalg
 
 from build_chow_design_matrix import build_chow_design_matrix, build_restricted_design_matrix
 from fit_chow_test import _load_train, _prepare_xy
+
+# Columns that must NEVER be flagged as "redundant" by the QR search below,
+# no matter what -- see module docstring's CRITICAL CORRECTNESS FIX.
+_PROTECTED_COLS = {"claim_type_carrier", "claim_type_outpatient", "claim_type_dme"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -89,13 +96,8 @@ def _find_constant_columns(X: pd.DataFrame) -> list[str]:
 
 
 def _check_npi_sum_identity(X: pd.DataFrame) -> None:
-    """Direct test of a specific, substantive hypothesis (module docstring
-    STAGE 2): if CMS's outpatient billing rules require EXACTLY ONE of
-    has_attending/operating/rendering_physician populated per outpatient
-    claim, their sum equals claim_type_outpatient EXACTLY for every row --
-    a genuine accounting identity, not a coding bug. Checked directly
-    rather than assumed. Also checks has_performing_physician against
-    claim_type_carrier, the other empirically-claim-type-exclusive flag."""
+    """Direct test of two specific, substantive hypotheses (module
+    docstring STAGE 2). Checked directly rather than assumed."""
     npi_cols = ["has_attending_physician", "has_operating_physician", "has_rendering_physician"]
     if all(c in X.columns for c in npi_cols) and "claim_type_outpatient" in X.columns:
         npi_sum = X[npi_cols].sum(axis=1)
@@ -117,25 +119,41 @@ def _check_npi_sum_identity(X: pd.DataFrame) -> None:
         )
 
 
-def _find_redundant_columns_via_qr(X: pd.DataFrame, deficiency: int) -> list[str]:
-    """QR decomposition with column pivoting greedily orders columns by how
-    much NEW (linearly independent) information each adds, given columns
-    already selected. The LAST `deficiency` columns in pivot order are a
-    valid, directly actionable set to drop to reach full rank -- unlike
-    SVD's null-space view (which shows which columns are INVOLVED in a
-    dependency, not which specific subset to remove to resolve it)."""
-    _, _, pivot = scipy.linalg.qr(X.to_numpy(dtype=np.float64), mode="economic", pivoting=True)
+def _find_redundant_columns_via_qr(
+    X: pd.DataFrame, deficiency: int, protect: set[str] = _PROTECTED_COLS
+) -> list[str]:
+    """QR decomposition with column pivoting, applied ONLY to the
+    non-protected columns after orthogonalizing them against the protected
+    block (Q @ (Q.T @ other), subtracted off) -- see module docstring's
+    CRITICAL CORRECTNESS FIX for why the protected set exists at all. A
+    column in `protect` can therefore never appear in the returned list;
+    every candidate is a linear combination of OTHER covariates plus the
+    (always-kept) protected columns, never one of the protected columns
+    itself."""
+    protected = [c for c in X.columns if c in protect]
+    other = [c for c in X.columns if c not in protect]
+    if not protected:
+        _, _, pivot = scipy.linalg.qr(X.to_numpy(dtype=np.float64), mode="economic", pivoting=True)
+        redundant_idx = pivot[-deficiency:]
+        colnames = X.columns.to_numpy()
+        return [str(colnames[i]) for i in redundant_idx]
+
+    Xp = X[protected].to_numpy(dtype=np.float64)
+    Xo = X[other].to_numpy(dtype=np.float64)
+    Qp, _ = np.linalg.qr(Xp)
+    Xo_orth = Xo - Qp @ (Qp.T @ Xo)
+
+    _, _, pivot = scipy.linalg.qr(Xo_orth, mode="economic", pivoting=True)
     redundant_idx = pivot[-deficiency:]
-    colnames = X.columns.to_numpy()
-    return [str(colnames[i]) for i in redundant_idx]
+    return [other[i] for i in redundant_idx]
 
 
 def _identify_remaining_dependencies(X: pd.DataFrame, rank: int) -> None:
     """SVD null-space view -- which columns are INVOLVED in each remaining
-    dependency (not necessarily a clean sparse combination; see module
-    docstring). Kept alongside the QR-based approach below since the two
-    give complementary information: this shows co-involvement, QR gives a
-    directly actionable drop set."""
+    dependency (not necessarily a clean sparse combination). Kept
+    alongside the protected QR-based approach below since the two give
+    complementary information: this shows co-involvement, QR gives a
+    directly actionable, SAFE drop set (never a claim_type dummy)."""
     ncols = X.shape[1]
     deficiency = ncols - rank
     if deficiency <= 0:
@@ -149,16 +167,27 @@ def _identify_remaining_dependencies(X: pd.DataFrame, rank: int) -> None:
         top = [(str(colnames[j]), round(float(vec[j]), 3)) for j in order]
         print(f"    dependency {i + 1}: {top}")
 
-    print(f"\n  Directly actionable alternative (QR with column pivoting) -- drop these {deficiency} column(s) to reach full rank:")
+    present_protected = sorted(set(X.columns) & _PROTECTED_COLS)
+    print(
+        f"\n  Directly actionable alternative (QR with column pivoting, "
+        f"PROTECTED from being dropped: {present_protected}) -- "
+        f"drop these {deficiency} column(s) to reach full rank:"
+    )
     redundant = _find_redundant_columns_via_qr(X, deficiency)
     for c in redundant:
         print(f"    {c}")
+    dropped_a_protected_col = bool(set(redundant) & _PROTECTED_COLS)
+    if dropped_a_protected_col:
+        raise RuntimeError(
+            f"BUG: _find_redundant_columns_via_qr returned a protected column in {redundant} "
+            "-- the orthogonal-projection guard failed. Do not trust this drop list."
+        )
     verify_rank = np.linalg.matrix_rank(X.drop(columns=redundant).to_numpy(dtype=np.float64))
     verify_ncols = X.shape[1] - deficiency
     print(
         f"  Verification: dropping these {deficiency} column(s) gives rank "
         f"{verify_rank} of {verify_ncols} columns "
-        f"({'CONFIRMED full rank' if verify_rank == verify_ncols else 'STILL DEFICIENT -- QR pivot choice was not sufficient, investigate further'})"
+        f"({'CONFIRMED full rank, no protected column touched' if verify_rank == verify_ncols else 'STILL DEFICIENT -- investigate further'})"
     )
 
     _check_npi_sum_identity(X)
