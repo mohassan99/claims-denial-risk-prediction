@@ -10,39 +10,43 @@ matrix, at a given --sample-frac, both WITH and WITHOUT
 
 CONFIRMED 2026-09-23: rank deficient by EXACTLY 25 at BOTH --sample-frac
 0.02 and 0.2 (10x more data, identical deficiency count), and unchanged by
---exclude-separating-codes in both cases. Two theories fully ruled out by
-this: (1) separation-driven IRLS weight collapse (deficiency doesn't move
-when the 6 separating codes are removed), and (2) a small-sample artifact
-of computing the top-20 cardinality encoding on an already-subsampled
-DataFrame (deficiency is IDENTICAL at 10x the sample size). This is a
-real, sample-size-invariant structural issue.
+--exclude-separating-codes in both cases -- ruling out separation-driven
+IRLS weight collapse AND a small-sample cardinality-encoding artifact.
+This is a real, sample-size-invariant structural issue.
 
-CONFIRMED MECHANISM (2026-09-23, from the printed null-space vectors):
-most of the 25 dependencies show ONE column sitting at a coefficient near
-+-1.0 with every other column negligible (e.g. REV_CNTR_2ND_MSP_PD_AMT__x__
-outpatient, REV_CNTR_BENE_PMT_AMT__x__outpatient,
-REV_CNTR_1ST_MSP_PD_AMT__x__outpatient, DMERC_LINE_SCRN_SVGS_AMT__x__dme).
-That's the signature of a single column that's LITERALLY CONSTANT (almost
-certainly all-zero) across the entire dataset, not a genuine two-variable
-relationship -- and it points at a real, specific gap in
-build_chow_design_matrix.py: Pass 2 (the genuinely-3-of-3 categorical
-dummy groups) has _interact_with_zero_variance_guard() to skip interaction
-terms that come out constant-zero, but Pass 1 (the numeric claim-type-
-exclusive/2-of-3 covariates) has NO equivalent guard -- its _null_pattern()
-helper only checks whether a field is NULL per claim type, never whether
-its NON-null values are all identically the same constant (e.g. always
-exactly $0.00, plausible for niche real-world fields like secondary-payer-
-coordination amounts or managed-care-paid switches that a synthetic
-generator may simply never populate with a nonzero value). This would
-explain why it doesn't resolve with more data -- a population-wide
-constant field stays constant at any sample size. _find_constant_columns()
-below checks this directly (a column's own distinct-value count), which is
-unambiguous, rather than continuing to eyeball noisy SVD output -- SVD's
-null-space basis is not unique when MULTIPLE independent all-zero columns
-exist together, so it can visually "mix" unrelated constant columns into
-the same printed vector (see dependencies 15/16 in the 0.2 run, which
-likely aren't a real two-variable relationship at all, just two separately-
-constant columns sharing a 2-D null subspace with an arbitrary basis).
+STAGE 1, CONFIRMED: 11 of the 25 are LITERALLY CONSTANT columns (all
+value 0.0), identical in both the with- and without-exclusion runs --
+e.g. REV_CNTR_2ND_MSP_PD_AMT__x__outpatient, DMERC_LINE_SCRN_SVGS_AMT__x__
+dme. Points at a real, specific gap in build_chow_design_matrix.py: Pass 2
+(genuinely-3-of-3 categorical dummy groups) has
+_interact_with_zero_variance_guard() to skip constant-zero interaction
+terms; Pass 1 (numeric claim-type-exclusive/2-of-3 covariates) has NO
+equivalent -- its _null_pattern() helper only checks NULLness per claim
+type, never whether the non-null values are all identically the same
+constant (plausible for niche real-world fields -- secondary-payer-
+coordination amounts, managed-care-paid switches -- that a synthetic
+generator may simply never populate with a nonzero value). Explains why
+this doesn't resolve with more data: a population-wide constant field
+stays constant at any sample size.
+
+STAGE 2, IN PROGRESS: dropping the 11 constants leaves a REAL remaining
+deficiency of 14, unchanged by --exclude-separating-codes. The NPI
+presence flags (has_referring/performing/attending/operating/rendering_
+physician) and claim_type_* dummies recur across nearly every printed
+SVD null-space vector for this residual -- plausibly connected to an
+already-documented finding (decisions-and-learnings.md, 2026-09-22): 4 of
+the 5 NPI flags are empirically claim-type-exclusive (has_performing_
+physician carrier-only; has_attending/operating/rendering_physician all
+outpatient-only). HYPOTHESIS: if CMS's outpatient billing rules require
+EXACTLY ONE of those three physician roles populated per outpatient
+claim, their sum would equal claim_type_outpatient EXACTLY -- a genuine
+accounting identity, not a bug. _check_npi_sum_identity() tests this
+directly. Separately, a cluster of REV_CNTR_*/CLM_*_outpatient dollar-
+amount interaction terms also recur together, plausibly a real CMS
+billing arithmetic identity (a total defined as the sum of its
+components) -- not yet identified by name. _find_redundant_columns_via_qr()
+gives a directly actionable "drop exactly these columns" answer via QR
+column pivoting, independent of whether every mechanism gets named.
 
 Run with (from the repo root, inside the venv):
     python src/check_rank.py
@@ -55,6 +59,7 @@ import argparse
 
 import numpy as np
 import pandas as pd
+import scipy.linalg
 
 from build_chow_design_matrix import build_chow_design_matrix, build_restricted_design_matrix
 from fit_chow_test import _load_train, _prepare_xy
@@ -78,24 +83,59 @@ def parse_args() -> argparse.Namespace:
 
 def _find_constant_columns(X: pd.DataFrame) -> list[str]:
     """Columns with exactly one distinct value across every row -- the
-    definitive, unambiguous first check for rank deficiency, since
-    build_chow_design_matrix.py's Pass 1 (numeric claim-type-exclusive/
-    2-of-3 covariates) checks only whether a field is NULL per claim type,
-    never whether its non-null values are all identically the SAME
-    constant. A constant column (especially an all-zero one, which a
-    value*claim_type_dummy interaction term would be if the underlying
-    field is always exactly 0 within that claim type) trivially reduces
-    rank by 1 regardless of sample size."""
+    definitive, unambiguous first check for rank deficiency. See module
+    docstring's STAGE 1."""
     return [c for c in X.columns if X[c].nunique(dropna=False) <= 1]
 
 
+def _check_npi_sum_identity(X: pd.DataFrame) -> None:
+    """Direct test of a specific, substantive hypothesis (module docstring
+    STAGE 2): if CMS's outpatient billing rules require EXACTLY ONE of
+    has_attending/operating/rendering_physician populated per outpatient
+    claim, their sum equals claim_type_outpatient EXACTLY for every row --
+    a genuine accounting identity, not a coding bug. Checked directly
+    rather than assumed. Also checks has_performing_physician against
+    claim_type_carrier, the other empirically-claim-type-exclusive flag."""
+    npi_cols = ["has_attending_physician", "has_operating_physician", "has_rendering_physician"]
+    if all(c in X.columns for c in npi_cols) and "claim_type_outpatient" in X.columns:
+        npi_sum = X[npi_cols].sum(axis=1)
+        exact_match = (npi_sum == X["claim_type_outpatient"]).mean()
+        verdict = "EXACT IDENTITY CONFIRMED" if exact_match == 1.0 else "not exact -- hypothesis refuted or only partial"
+        print(
+            f"\n  [NPI identity check] has_attending_physician + has_operating_physician + "
+            f"has_rendering_physician == claim_type_outpatient for {exact_match:.4%} of rows ({verdict})"
+        )
+    else:
+        print("\n  [NPI identity check] required columns not present in this X -- skipped.")
+
+    if "has_performing_physician" in X.columns and "claim_type_carrier" in X.columns:
+        exact_match2 = (X["has_performing_physician"] == X["claim_type_carrier"]).mean()
+        verdict2 = "EXACT IDENTITY CONFIRMED" if exact_match2 == 1.0 else "not exact"
+        print(
+            f"  [NPI identity check] has_performing_physician == claim_type_carrier for "
+            f"{exact_match2:.4%} of rows ({verdict2})"
+        )
+
+
+def _find_redundant_columns_via_qr(X: pd.DataFrame, deficiency: int) -> list[str]:
+    """QR decomposition with column pivoting greedily orders columns by how
+    much NEW (linearly independent) information each adds, given columns
+    already selected. The LAST `deficiency` columns in pivot order are a
+    valid, directly actionable set to drop to reach full rank -- unlike
+    SVD's null-space view (which shows which columns are INVOLVED in a
+    dependency, not which specific subset to remove to resolve it)."""
+    _, _, pivot = scipy.linalg.qr(X.to_numpy(dtype=np.float64), mode="economic", pivoting=True)
+    redundant_idx = pivot[-deficiency:]
+    colnames = X.columns.to_numpy()
+    return [str(colnames[i]) for i in redundant_idx]
+
+
 def _identify_remaining_dependencies(X: pd.DataFrame, rank: int) -> None:
-    """For each null-space direction of a (hopefully much smaller) residual
-    problem, print the columns with the largest-magnitude coefficients --
-    only called after constant columns are already removed, so any
-    remaining deficiency here is a genuine multi-column relationship, not
-    a constant column getting smeared across the printed output by SVD's
-    non-unique basis for a degenerate subspace."""
+    """SVD null-space view -- which columns are INVOLVED in each remaining
+    dependency (not necessarily a clean sparse combination; see module
+    docstring). Kept alongside the QR-based approach below since the two
+    give complementary information: this shows co-involvement, QR gives a
+    directly actionable drop set."""
     ncols = X.shape[1]
     deficiency = ncols - rank
     if deficiency <= 0:
@@ -108,6 +148,20 @@ def _identify_remaining_dependencies(X: pd.DataFrame, rank: int) -> None:
         order = np.argsort(-np.abs(vec))[:6]
         top = [(str(colnames[j]), round(float(vec[j]), 3)) for j in order]
         print(f"    dependency {i + 1}: {top}")
+
+    print(f"\n  Directly actionable alternative (QR with column pivoting) -- drop these {deficiency} column(s) to reach full rank:")
+    redundant = _find_redundant_columns_via_qr(X, deficiency)
+    for c in redundant:
+        print(f"    {c}")
+    verify_rank = np.linalg.matrix_rank(X.drop(columns=redundant).to_numpy(dtype=np.float64))
+    verify_ncols = X.shape[1] - deficiency
+    print(
+        f"  Verification: dropping these {deficiency} column(s) gives rank "
+        f"{verify_rank} of {verify_ncols} columns "
+        f"({'CONFIRMED full rank' if verify_rank == verify_ncols else 'STILL DEFICIENT -- QR pivot choice was not sufficient, investigate further'})"
+    )
+
+    _check_npi_sum_identity(X)
 
 
 def _check(sample_frac: float, stream_batch_size: int, exclude_separating: bool) -> None:
