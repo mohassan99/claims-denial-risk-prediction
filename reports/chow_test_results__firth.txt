@@ -1,0 +1,31 @@
+Chow test -- claim-type homogeneity of shared covariates
+============================================================
+Method:                              Firth's penalized MLE (chunked Newton-Raphson, src/chunked_logit.py; restricted fit penalized by the full model's information)
+Test form:                           joint-penalized-LR-on-reparameterized-design (2026-09-24)
+Separating-code exclusion:           OFF
+--sample-frac:                       full train set
+n obs:                               1,151,951
+restricted (pooled) columns / rank:  117 / 117
+unrestricted columns / rank:         275 / 275
+degrees of freedom:                  158  (name-based = column-count = rank-based = tested coefficients)  [12 covariate(s) with n_i=1 (contributing 0 df each), 18 covariate(s) with n_i=2 (contributing 1 df each), 70 covariate(s) with n_i=3 (contributing 2 df each)]
+
+log-likelihood, restricted:    -272375.5892   (converged, 76 iterations, max|score| 3.27e-06)
+log-likelihood, unrestricted:  -270009.3435   (converged, 71 iterations, max|score| 4.89e-06)
+unpenalized log-likelihoods:   -273281.3660 / -270897.8331
+LR statistic:                  4732.4914
+p-value (chi2, df=158):   0
+
+H0 (pooled coefficients adequate for every shared covariate) REJECTED at alpha=0.05
+
+Reminder: a rejection means at least one shared covariate has a real claim-type interaction -- it does NOT mean every shared covariate does. Stage 2 (per-variable testing) localizes which ones, per FEATURE_ENGINEERING.md Section 3.
+
+Unrestricted interaction terms skipped (constant within claim type, within-DME duplicate, or within-claim-type dummy-trap reference -- none carry information beyond columns kept): 34
+
+NOTE: 130 raw column(s) were excluded from this baseline's feature set pending a Phase 2 encoding decision -- see _PENDING_* groups in this file's source.
+
+CAVEAT (Firth method): the chi-square approximation used for the
+p-value above is well-established away from separation, but under
+TRUE separation it is empirically validated (Heinze & Schemper
+2002), not a proven exact asymptotic result -- LR tests near a
+parameter-space boundary can follow a mixture of chi-squares (Self
+& Liang 1987). Compare against the --exclude-separating-codes run.
