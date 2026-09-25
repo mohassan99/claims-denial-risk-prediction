@@ -229,7 +229,9 @@ _REDUNDANT_INTERACTION_TERMS = {f"{col}__x__{ct}" for col, ct, _ in _REDUNDANT_W
 _DETERMINED = ("determined", "zero_with_gaps")
 
 
-def top_n_encode(series: pd.Series, n: int, prefix: str) -> pd.DataFrame:
+def top_n_encode(
+    series: pd.Series, n: int, prefix: str, categories: list[str] | None = None
+) -> tuple[pd.DataFrame, list[str]]:
     """One-hot encode the top-n most frequent categories. Everything else
     buckets into '__OTHER__'; real NaN buckets into its own '__MISSING__'
     category rather than being silently dropped or folded into '__OTHER__'.
@@ -239,20 +241,38 @@ def top_n_encode(series: pd.Series, n: int, prefix: str) -> pd.DataFrame:
     inside a claim-type interaction block when that reference never occurs
     in the claim type. _interact_with_zero_variance_guard() handles that
     case (module docstring, fix C). dtype=int8 -- see THIRD MEMORY NOTE.
+
+    `categories`, added 2026-09-25 for the Phase 2 baseline model: pass the
+    list returned from a TRAIN call here to encode val/test against the same
+    fixed category set (own-split top-n would silently redefine what
+    "__OTHER__" means between splits -- a real code moving in or out of the
+    top-n between train and val is a wrong-vocabulary bug, not a shift the
+    model should absorb). Returns (dummies, categories_used) always, so the
+    caller can pass categories_used straight into the next split's call.
     """
-    top_categories = series.value_counts(dropna=True).head(n).index.tolist()
-    bucketed = series.where(series.isin(top_categories), other="__OTHER__")
+    if categories is None:
+        categories = series.value_counts(dropna=True).head(n).index.tolist()
+    bucketed = series.where(series.isin(categories), other="__OTHER__")
     bucketed = bucketed.where(series.notna(), other="__MISSING__")
-    return pd.get_dummies(bucketed, prefix=prefix, drop_first=True, dtype=_BINARY_DTYPE)
+    dummies = pd.get_dummies(bucketed, prefix=prefix, drop_first=True, dtype=_BINARY_DTYPE)
+    return dummies, categories
 
 
-def frequency_encode(series: pd.Series) -> pd.Series:
+def frequency_encode(series: pd.Series, freq_map: pd.Series | None = None) -> tuple[pd.Series, pd.Series]:
     """Map each category to its own frequency (share of non-null rows) --
     for PRVDR_NUM, whose high cardinality makes one-hot infeasible. Real NaN
     is preserved, NOT filled (a 2-of-3 covariate whose absent claim type
-    must stay NaN for the interaction logic below)."""
-    freq = series.value_counts(normalize=True, dropna=True)
-    return series.map(freq)
+    must stay NaN for the interaction logic below).
+
+    `freq_map`, added 2026-09-25: pass the map returned from a TRAIN call to
+    score val/test against train's own frequencies, not the val/test split's
+    own -- a provider unseen in train maps to NaN (handled downstream the
+    same as any other absent-in-this-claim-type value), never a val-specific
+    frequency the model was never fit against. Returns (encoded, freq_map)
+    always, mirroring top_n_encode."""
+    if freq_map is None:
+        freq_map = series.value_counts(normalize=True, dropna=True)
+    return series.map(freq_map), freq_map
 
 
 def _claim_type_masks(df: pd.DataFrame) -> dict[str, np.ndarray]:
@@ -313,7 +333,9 @@ def _verify_identity(
         )
 
 
-def build_chow_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
+def build_chow_design_matrix(
+    df: pd.DataFrame, encoders: dict | None = None, return_encoders: bool = False
+):
     """Encode the shared/2-of-3 covariates that needed cardinality
     treatment, then remove everything the 2026-09-24 rank-deficiency
     investigation proved redundant (module docstring, fixes A, B, D).
@@ -322,9 +344,17 @@ def build_chow_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
     df.attrs["rank_fix_report"] records what was removed and why, for
     __main__ / callers to print (attrs is informational only).
 
+    `encoders`/`return_encoders`, added 2026-09-25 for the Phase 2 baseline
+    model (src/fit_baseline_model.py), which needs val/test encoded against
+    TRAIN's categories/frequencies, not their own -- see top_n_encode's and
+    frequency_encode's docstrings. Every existing caller (the Chow-test
+    scripts) passes neither, so gets exactly the old behavior: encoders
+    fit fresh from `df` and a bare DataFrame returned, unchanged.
+
     Leading .copy() kept -- protects the caller's train_model.parquet frame.
     """
     df = df.copy()
+    encoders = dict(encoders) if encoders else {}
 
     binary_downcast = {col: _BINARY_DTYPE for col in (*_CLAIM_TYPE_COLS, *_NPI_FLAGS) if col in df.columns}
     if binary_downcast:
@@ -345,32 +375,88 @@ def build_chow_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
     df = df.drop(columns=identity_dropped)
 
     # --- Encoding (fix D: CARR_NUM no longer frequency-encoded) ---
+    # `categories=`/`freq_map=` fix WHICH values map to which bucket; that
+    # alone isn't enough to guarantee identical output COLUMNS across
+    # splits, since pd.get_dummies only emits a column for a category that
+    # actually appears in the data handed to it -- a category absent from
+    # val's rows (e.g. an __MISSING__ bucket with no NaN in val, or a state
+    # with zero val claims) would otherwise silently vanish from val's
+    # matrix instead of appearing as an all-zero column. So every dummy
+    # block is additionally reindexed to the exact column list recorded
+    # from the FIRST (train) call -- fill_value=0 for anything missing,
+    # and reindex also drops anything unexpected (there shouldn't be any,
+    # since categories/freq_map already fix the value-to-bucket mapping).
     state_dummies = pd.get_dummies(
         df["provider_state"], prefix="state", drop_first=True, dtype=_BINARY_DTYPE
     )
-    hcpcs_dummies = top_n_encode(df["HCPCS_CD"], TOP_N_HCPCS, prefix="hcpcs")
-    dgns_dummies = top_n_encode(df["PRNCPAL_DGNS_CD"], TOP_N_DGNS, prefix="dgns")
-    freq_encoded = pd.DataFrame(
-        {"prvdr_num_freq": frequency_encode(df["PRVDR_NUM"])},
-        index=df.index,
+    if "state_columns" in encoders:
+        state_dummies = state_dummies.reindex(columns=encoders["state_columns"], fill_value=0).astype(_BINARY_DTYPE)
+    else:
+        encoders["state_columns"] = list(state_dummies.columns)
+
+    hcpcs_dummies, hcpcs_cats = top_n_encode(
+        df["HCPCS_CD"], TOP_N_HCPCS, prefix="hcpcs", categories=encoders.get("hcpcs_categories")
     )
+    encoders["hcpcs_categories"] = hcpcs_cats
+    if "hcpcs_columns" in encoders:
+        hcpcs_dummies = hcpcs_dummies.reindex(columns=encoders["hcpcs_columns"], fill_value=0).astype(_BINARY_DTYPE)
+    else:
+        encoders["hcpcs_columns"] = list(hcpcs_dummies.columns)
+
+    dgns_dummies, dgns_cats = top_n_encode(
+        df["PRNCPAL_DGNS_CD"], TOP_N_DGNS, prefix="dgns", categories=encoders.get("dgns_categories")
+    )
+    encoders["dgns_categories"] = dgns_cats
+    if "dgns_columns" in encoders:
+        dgns_dummies = dgns_dummies.reindex(columns=encoders["dgns_columns"], fill_value=0).astype(_BINARY_DTYPE)
+    else:
+        encoders["dgns_columns"] = list(dgns_dummies.columns)
+
+    prvdr_freq, prvdr_freq_map = frequency_encode(df["PRVDR_NUM"], freq_map=encoders.get("prvdr_num_freq_map"))
+    encoders["prvdr_num_freq_map"] = prvdr_freq_map
+    freq_encoded = pd.DataFrame({"prvdr_num_freq": prvdr_freq}, index=df.index)
     df = pd.concat([df, state_dummies, hcpcs_dummies, dgns_dummies, freq_encoded], axis=1)
     df = df.drop(columns=["provider_state", "HCPCS_CD", "PRNCPAL_DGNS_CD", "PRVDR_NUM", "CARR_NUM"])
 
     # --- Fix A: drop claim-type-determined columns ---
-    determined_dropped: list[str] = []
+    # Reused verbatim from `encoders` when given (val/test), rather than
+    # recomputed from this split's own data: a column that happens to be
+    # constant within one claim type in train but NOT in val (or the
+    # reverse) would otherwise make train's and val's intermediates
+    # disagree on which columns even exist -- silently breaking the fixed
+    # design-matrix column set the baseline model needs. train's decision
+    # governs; a warning is printed (not raised) if val's own constancy
+    # pattern would have disagreed, since that's a real, if second-order,
+    # distribution-shift signal worth seeing, not a build-breaking one.
     zero_with_gaps_warn: list[str] = []
-    for col in df.columns:
-        if col in _NEVER_INTERACT or col.startswith("risk_"):
-            continue
-        if not pd.api.types.is_numeric_dtype(df[col]):
-            continue
-        statuses = [_within_type_status(df[col], masks[ct]) for ct in _CLAIM_TYPES]
-        present = [s for s in statuses if s != "absent"]
-        if present and all(s in _DETERMINED for s in present):
-            determined_dropped.append(col)
-            if "zero_with_gaps" in present:
-                zero_with_gaps_warn.append(col)
+    if "determined_dropped" in encoders:
+        determined_dropped = [c for c in encoders["determined_dropped"] if c in df.columns]
+        disagreements = []
+        for col in determined_dropped:
+            statuses = [_within_type_status(df[col], masks[ct]) for ct in _CLAIM_TYPES]
+            present = [s for s in statuses if s != "absent"]
+            if present and not all(s in _DETERMINED for s in present):
+                disagreements.append(col)
+        if disagreements:
+            print(
+                f"    [note] {len(disagreements)} column(s) train found claim-type-determined "
+                f"are NOT determined on this split's own data (kept dropped, per train's "
+                f"decision, for a fixed column set): {disagreements}"
+            )
+    else:
+        determined_dropped = []
+        for col in df.columns:
+            if col in _NEVER_INTERACT or col.startswith("risk_"):
+                continue
+            if not pd.api.types.is_numeric_dtype(df[col]):
+                continue
+            statuses = [_within_type_status(df[col], masks[ct]) for ct in _CLAIM_TYPES]
+            present = [s for s in statuses if s != "absent"]
+            if present and all(s in _DETERMINED for s in present):
+                determined_dropped.append(col)
+                if "zero_with_gaps" in present:
+                    zero_with_gaps_warn.append(col)
+        encoders["determined_dropped"] = determined_dropped
     df = df.drop(columns=determined_dropped)
 
     df.attrs["rank_fix_report"] = {
@@ -380,6 +466,8 @@ def build_chow_design_matrix(df: pd.DataFrame) -> pd.DataFrame:
         "zero_with_gaps_warning": zero_with_gaps_warn,
         "carr_num_freq_removed": True,
     }
+    if return_encoders:
+        return df, encoders
     return df
 
 
@@ -576,6 +664,72 @@ def build_full_design_matrix(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str],
     design = build_chow_design_matrix(df)
     design, interaction_cols, skipped = add_claim_type_interactions(design)
     return design, interaction_cols, skipped
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 baseline mixed model (added 2026-09-25)
+# ---------------------------------------------------------------------------
+# The model Chow Stage 2 actually selected (reports/chow_stage2_results__firth.txt,
+# 2026-09-24 corrected-label run): 5 of the 11 genuinely-shared covariates
+# need claim-type-specific effects (kept as interaction terms, same as the
+# unrestricted matrix); the other 6 can share one pooled coefficient (kept
+# as a single column, same as the restricted matrix). Every claim-type-
+# EXCLUSIVE covariate (n_i=1) is unaffected either way -- both matrices
+# already treat those identically.
+MIXED_INTERACT_NUMERIC = {"prvdr_num_freq", "CARR_CLM_CASH_DDCTBL_APLD_AMT"}
+MIXED_INTERACT_PREFIXES = ("state_", "hcpcs_", "dgns_")  # provider_state, HCPCS_CD, PRNCPAL_DGNS_CD
+MIXED_POOL_NUMERIC = {
+    "NCH_CARR_CLM_SBMTD_CHRG_AMT",
+    "LINE_BENE_PTB_DDCTBL_AMT",
+    "LINE_SRVC_CNT",
+    "LINE_ALOWD_CHRG_AMT",
+    "NCH_CARR_CLM_ALOWD_AMT",
+    "LINE_NCH_PMT_AMT",
+}
+
+
+def build_mixed_design_matrix(intermediate: pd.DataFrame) -> pd.DataFrame:
+    """Builds the Phase 2 baseline model's design matrix from an already-
+    built shared intermediate (build_chow_design_matrix() output, called by
+    the caller so it can pass `encoders=`/`return_encoders=` for val/test --
+    see that function's docstring).
+
+    Implementation: build the UNRESTRICTED matrix (every shared covariate
+    interacted, exactly like the Chow test), then for MIXED_POOL_NUMERIC
+    only, replace its per-claim-type interaction term(s) with ONE pooled
+    column taken from the RESTRICTED matrix. Reusing both existing,
+    already-verified builders (rather than writing a third variant of the
+    same claim-type logic) means every rank-deficiency fix (A-D) and every
+    presence/constancy edge case they handle is inherited automatically,
+    not re-solved here.
+
+    Does NOT itself guarantee train/val column alignment (add_claim_type_
+    interactions' per-split skip decisions -- fix C -- can differ trivially
+    between splits, e.g. a category constant in val's claim type by chance
+    but not train's). The caller (fit_baseline_model.py) builds train's
+    matrix first, then reindexes val/test's matrix to train's exact column
+    list (fill_value=0) -- the same fixed-vocabulary discipline already
+    applied to the categorical/frequency encoders themselves.
+    """
+    unrestricted, _, _ = add_claim_type_interactions(intermediate)
+    restricted = build_restricted_design_matrix(intermediate)
+
+    pool_interaction_cols = [
+        c for c in unrestricted.columns
+        if "__x__" in c and c.rsplit("__x__", 1)[0] in MIXED_POOL_NUMERIC
+    ]
+    mixed = unrestricted.drop(columns=pool_interaction_cols)
+    pooled_present = [v for v in MIXED_POOL_NUMERIC if v in restricted.columns]
+    missing = MIXED_POOL_NUMERIC - set(pooled_present)
+    if missing:
+        raise ValueError(
+            f"build_mixed_design_matrix: expected pooled column(s) not found in the "
+            f"restricted design matrix -- {sorted(missing)}. Did Stage 2's variable "
+            "list change? Update MIXED_POOL_NUMERIC/MIXED_INTERACT_NUMERIC to match "
+            "the current reports/chow_stage2_results__firth.txt."
+        )
+    mixed = pd.concat([mixed, restricted[pooled_present]], axis=1)
+    return mixed
 
 
 if __name__ == "__main__":
