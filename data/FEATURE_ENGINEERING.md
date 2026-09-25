@@ -1296,3 +1296,68 @@ match to ~1e-11.
 5 others. It should wait for the `provider_outlier` / `duplicate_claim` decision
 (`reports/SESSION_LOG.md`). If carrier's label changes, the Stage 1 and Stage 2 results change
 with it.
+
+### Chow test rerun on the corrected label (2026-09-24, after the carrier provider-key fix)
+
+The label was rebuilt after fixing the carrier provider-key bug (TARGET_DEFINITION.md, 2026-09-24
+addendum). Carrier's denial rate went from 5.6% to 10.0%, and the overall rate from 12.1% to 14.9%.
+Outpatient and DME labels are unchanged claim for claim. `build_features.py` and both Chow stages
+were then rerun on the full train set. **The results above this heading describe the old label and
+are superseded by this section.** They stay in place as the record.
+
+**Separation is gone.** On the new training set, no claim-type × top-20 HCPCS cell and no
+claim-type × state cell has an all-or-nothing denial rate. The 6 formerly separating codes now
+have ordinary carrier denial rates, for example 96156 at 2,025 / 45,788 and 99408 at
+1,903 / 41,704, and so does G8839 (275 / 6,036). **`--exclude-separating-codes` is therefore
+obsolete.** It stays in the code, but there is nothing left for it to exclude. One degenerate cell
+remains: diagnosis N186 appears on exactly **one** carrier claim in the training set, and that
+claim is not denied. It is a single observation, not a structural wall.
+
+**Stage 1: H0 is still rejected, by every method, and the methods now agree.**
+
+| Method | Restricted LL | Unrestricted LL | LR (df 158) |
+|---|---|---|---|
+| Firth, penalized LR (primary) | −356,299.46 | −354,978.42 | **2,642.1**, p ≈ 0 |
+| Firth, unpenalized LL at the same estimates | −357,240.33 | −355,918.76 | 2,643.1 |
+| Standard MLE | −357,240.05 (converged) | −355,917.97 (supremum; one coefficient infinite) | 2,644.2 |
+
+- **Standard MLE's restricted model now converges** in 8 iterations.
+- **Its unrestricted model has a formally infinite MLE** because of the single N186 × carrier
+  claim, so it is not a valid χ² test on its own.
+- **The three statistics agree within 0.1%**, which shows that the one-claim cell contributes
+  essentially nothing. Firth is primary.
+- **The Firth fits converge in 9 and 17 iterations** (75 and 71 on the old label). The slow
+  convergence before was the separation.
+- **The LR fell from 4,732.5 to 2,642.1**, which fits the view that a large share of the old
+  statistic was the label bug.
+
+**Stage 2 (Firth, Holm-adjusted): 5 of 11 variables interact.**
+
+| Variable | df | LR | Holm p | Verdict | Old-label verdict |
+|---|---|---|---|---|---|
+| provider_state | 100 | 1,068.4 | 9.0e-161 | interact | interact (LR 327.9) |
+| HCPCS_CD | 10 | 695.3 | 6.4e-142 | interact | interact (LR 3,260.4) |
+| PRNCPAL_DGNS_CD | 40 | 593.3 | 1.1e-98 | interact | interact (LR 825.4) |
+| prvdr_num_freq | 1 | 158.7 | 1.7e-35 | interact | interact |
+| CARR_CLM_CASH_DDCTBL_APLD_AMT | 1 | 8.8 | 0.021 | interact | interact |
+| NCH_CARR_CLM_SBMTD_CHRG_AMT | 1 | 6.1 | 0.080 | pool | pool |
+| LINE_BENE_PTB_DDCTBL_AMT | 1 | 4.2 | 0.21 | pool | pool |
+| **LINE_SRVC_CNT** | 1 | 1.7 | 0.74 | **pool** | **interact** (LR 21.0) |
+| LINE_ALOWD_CHRG_AMT | 1 | 0.3 | 1 | pool | pool |
+| NCH_CARR_CLM_ALOWD_AMT | 1 | 0.3 | 1 | pool | pool |
+| LINE_NCH_PMT_AMT | 1 | 0.2 | 1 | pool | pool |
+
+**What changed and why.**
+- **HCPCS's LR dropped 79%** (3,260 → 695). Most of the old statistic was the artifact: 34 of 37
+  carrier codes could never be denied. HCPCS still interacts on the corrected label.
+- **State's LR tripled** (328 → 1,068). Carrier denials now include `provider_outlier`, which
+  ranks carrier billing NPIs. Those NPIs are geographically concentrated, so state carries
+  claim-type-specific signal it couldn't carry before.
+- **`LINE_SRVC_CNT` flipped from interact to pool.** Its old claim-type difference was also an
+  artifact of the exempt carrier claims.
+- **`prvdr_num_freq`'s LR is unchanged to three decimals.** It exists only on outpatient and DME
+  claims, whose labels didn't change.
+
+**Next (Section 3's construction).** The baseline mixed model interacts provider_state, HCPCS_CD,
+PRNCPAL_DGNS_CD, prvdr_num_freq and CARR_CLM_CASH_DDCTBL_APLD_AMT with claim type, and pools the
+other 6 shared variables. It has not been built yet.

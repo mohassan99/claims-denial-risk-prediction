@@ -9,10 +9,10 @@ restricted (pooled) columns / rank:  117 / 117
 unrestricted columns / rank:         275 / 275
 degrees of freedom:                  158  (name-based = column-count = rank-based = tested coefficients)  [12 covariate(s) with n_i=1 (contributing 0 df each), 18 covariate(s) with n_i=2 (contributing 1 df each), 70 covariate(s) with n_i=3 (contributing 2 df each)]
 
-log-likelihood, restricted:    -272375.5892   (converged, 76 iterations, max|score| 3.27e-06)
-log-likelihood, unrestricted:  -270009.3435   (converged, 71 iterations, max|score| 4.89e-06)
-unpenalized log-likelihoods:   -273281.3660 / -270897.8331
-LR statistic:                  4732.4914
+log-likelihood, restricted:    -356299.4584   (converged, 9 iterations, max|score| 1.23e-06)
+log-likelihood, unrestricted:  -354978.4201   (converged, 17 iterations, max|score| 1.72e-06)
+unpenalized log-likelihoods:   -357240.3297 / -355918.7640
+LR statistic:                  2642.0766
 p-value (chi2, df=158):   0
 
 H0 (pooled coefficients adequate for every shared covariate) REJECTED at alpha=0.05

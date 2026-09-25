@@ -1,11 +1,11 @@
 {
   "test_form": "joint-penalized-LR-on-reparameterized-design (2026-09-24)",
-  "llf": -356299.4584319731,
-  "llf_unpenalized": -357240.329704413,
+  "llf": -357240.0468146372,
+  "llf_unpenalized": -357240.0468146372,
   "converged": true,
-  "n_iter": 9,
-  "max_abs_score": 1.2306806462664133e-06,
-  "newton_decrement": 3.226523516628244e-14,
+  "n_iter": 8,
+  "max_abs_score": 8.277978120752039e-07,
+  "newton_decrement": 1.4638702970575493e-14,
   "nobs": 1151951,
   "label_fingerprint": "5be42dbbf3db25d8f32062a9f2e0b345e0dd7cb0",
   "ncols": 117,
@@ -130,6 +130,6 @@
     "state_WY"
   ],
   "sample_frac": null,
-  "method": "firth",
+  "method": "standard",
   "exclude_separating_codes": false
 }

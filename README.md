@@ -94,3 +94,18 @@ The fix is a memory-bounded Newton-Raphson solver (`src/chunked_logit.py`), vali
 The work also surfaced that 34 of 37 carrier procedure codes have zero denials. The likely cause
 is two label rules that key on a provider field that is empty for every carrier claim. That is an
 open label decision, not yet changed. Full trail in `data/FEATURE_ENGINEERING.md` Section 6.
+
+*Progress, 2026-09-24 (later the same day): label fix.* Chasing the Chow test's separation led to
+a real bug in the engineered label. Two risk rules (outlier provider, duplicate claim) identified
+providers by a field that is empty on every professional (carrier) claim, so they could never
+fire on 62% of the data. Carrier claims now use the billing NPI.
+- Carrier's denial rate went from 5.6% to 10.0%, and the overall rate from 12.1% to 14.9%.
+  Outpatient and DME labels are unchanged claim for claim.
+- The separation disappeared.
+- The Chow test still rejects pooling: Firth LR = 2,642 on 158 df, with standard MLE agreeing
+  within 0.1%. 5 of 11 shared variables need claim-type-specific effects.
+
+Because the overall denial rate had looked right, the label build now also fails if any rule
+silently stops firing for a claim type, or if a grouping key is missing for one. See
+`data/TARGET_DEFINITION.md` (2026-09-24 addendum) and `reports/label_audit.txt`.
+
