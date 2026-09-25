@@ -118,6 +118,14 @@ Key scripts in `src/`:
   on val (PR-AUC/ROC-AUC/Brier, per claim type). Builds train's array, fits, and frees it BEFORE
   building val's matrix — the first full run without this ordering was OOM-killed holding train's
   and val's matrices alive together (see SESSION_LOG.md's 2026-09-25 entry).
+- `fit_xgboost.py` (2026-09-25) — Phase 2 XGBoost, same train/val split and metrics as the
+  baseline. Confirmed (not assumed) that none of `build_chow_design_matrix.py`'s machinery is
+  needed: top-n/frequency encoding, the rank-deficiency fixes, and the `__x__claim_type`
+  interaction terms are all linear-model-only concerns. Categoricals go in at full cardinality via
+  pandas `category` dtype + `enable_categorical=True`; NaN is passed through natively. Gains the
+  ~130 `fit_chow_test._PENDING_*` columns the baseline couldn't use (no cardinality decision needed
+  for a tree). Train's category list per column is fit once and reused on val, same
+  train-governs-val discipline as the baseline's encoders.
 - statsmodels' lbfgs is NOT used for fitting anymore: it never left beta = 0 on these matrices.
 
 **Chow test results on the corrected label (full train set):** Firth LR 2,642.1 on 158 df, H0
@@ -133,15 +141,29 @@ weakest-grounded ones). Calibration tight in every claim type. Fit with Firth (s
 on a rare-category near-separation; not investigated further since Firth converges cleanly and
 fast). Full table in SESSION_LOG.md and `reports/baseline_model_results__firth.txt`.
 
+**XGBoost results (2026-09-25, val set, 89 trees, early-stopped):** overall PR-AUC 0.583, ROC-AUC
+0.816 — beats the baseline everywhere, most on carrier (PR-AUC 0.188 vs 0.141, ROC-AUC 0.706 vs
+0.612), its weakest claim type either way. Outpatient 0.820/0.903, DME 0.260/0.715. Confirmed
+XGBoost needs none of the baseline's encoding (see `fit_xgboost.py`'s docstring); it also gets to
+use ~130 columns the baseline couldn't. Top features: HCPCS_CD by a wide margin, then several raw
+high-cardinality provider-identifier columns (ORG_NPI_NUM, TAX_NUM, CARR_CLM_BLG_NPI_NUM,
+PRF_PHYSN_UPIN, PRVDR_NUM) — plausibly a legitimate "this provider is denied often" signal (the
+baseline's `prvdr_num_freq` carried the same signal, just pre-aggregated), but worth confirming
+with SHAP rather than assuming, since raw ID splitting can also memorize small-sample provider
+noise. `LINE_PRMRY_ALOWD_CHRG_AMT` ranks #2; checked and it is NOT new leakage — it's an exact
+DME-only duplicate of `LINE_ALOWD_CHRG_AMT` (already in the baseline's pooled features,
+`build_chow_design_matrix.py`'s fix B), so it adds no information beyond what the baseline already
+used, just weighted more heavily by the tree. Full table in `reports/xgboost_results.txt`.
+
 ## Task queue (do in order; log each in SESSION_LOG.md)
 
 1. ~~Build the Phase 2 baseline mixed model~~ — done 2026-09-25 (`fit_baseline_model.py`).
 2. ~~Baseline metrics on val~~ — done 2026-09-25, see above.
-3. **XGBoost** on `train_model.parquet`, same metrics, per claim type. Reuse
-   `fit_baseline_model.py`'s train/val encoding-consistency pattern if XGBoost needs any of the
-   same categorical/frequency encoding (it likely doesn't — XGBoost handles raw categoricals/NaN
-   natively — but confirm rather than assume before skipping that work).
-4. **SHAP**, then Phase 3.
+3. ~~XGBoost~~ — done 2026-09-25 (`fit_xgboost.py`), see above.
+4. **SHAP** on the XGBoost model — in particular, look at whether the raw provider-ID features
+   (ORG_NPI_NUM/TAX_NUM/CARR_CLM_BLG_NPI_NUM/PRF_PHYSN_UPIN/PRVDR_NUM) are contributing a real,
+   generalizable "provider denial history" signal or overfitting to individual providers' noise —
+   then Phase 3.
 
 ## Open decisions for the user (don't act on these alone)
 

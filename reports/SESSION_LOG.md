@@ -290,3 +290,101 @@ minutes.
 
 XGBoost on `train_model.parquet`/`val_model.parquet`, same metrics (PR-AUC primary, per claim
 type), then SHAP.
+
+---
+
+## 2026-09-25 (continued): finished pushing the baseline model, then built and evaluated XGBoost
+
+### Housekeeping: finished the interrupted push
+
+The baseline-model commit from earlier this session (`09299dd` locally) needed pushing via the
+GitHub MCP connector (the cloud session's own `git push` still hits the proxy 403). Split across
+two `push_files` calls by mistake -- the first covered `CLAUDE.md`, `README.md`,
+`reports/SESSION_LOG.md`, `reports/baseline_model_results__firth.txt` (commit `a2a5fa2`) but
+missed `src/build_chow_design_matrix.py`, `src/fit_baseline_model.py`, and
+`reports/baseline_model_fit__firth.json`; caught immediately via `get_commit`'s file list and
+pushed those three in a follow-up commit (`d0936eb`) that says so in its own message. Verified both
+landed with the right file counts, then `git fetch` + `git reset --hard origin/main` on the local
+clone (GitHub is source of truth, same discipline as this session's two earlier duplicate-commit
+fixes; local `09299dd` duplicated content now split across the two pushed commits under different
+hashes).
+
+### XGBoost (task queue item 3)
+
+**Confirmed, not assumed, that XGBoost needs none of the baseline's encoding machinery** --
+CLAUDE.md's task explicitly asked this be checked rather than skipped past. Reasoning (full detail
+in `src/fit_xgboost.py`'s docstring):
+- Top-n/frequency encoding (`build_chow_design_matrix.py`) exists only to keep a linear model's
+  dummy-column count bounded. A tree splits on a raw categorical value directly, so `provider_state`,
+  `HCPCS_CD`, `PRNCPAL_DGNS_CD`, `PRVDR_NUM`, `CARR_NUM` all go in at full cardinality via pandas
+  `category` dtype + xgboost's native categorical split support (`tree_method="hist",
+  enable_categorical=True`).
+- The rank-deficiency fixes (constant-within-claim-type columns, exact linear identities) are also
+  linear-model-only -- they cost a tree nothing, so none of that removal is reused.
+- No `__x__claim_type` interaction terms either: a tree splits on `claim_type_*` directly and then
+  splits differently per branch, which already gives every covariate an implicit claim-type-specific
+  effect.
+- Missing values are passed through as NaN, not zero-filled -- xgboost's hist method learns a
+  default split direction per split, a real advantage over the baseline's forced zero-fill.
+- **New capability the baseline didn't have:** the ~130 columns `fit_chow_test.py`'s `_PENDING_*`
+  groups exclude (secondary/tertiary diagnosis & procedure codes, legacy provider ID strings, other
+  CMS categorical codes, line sequence numbers) were excluded only because no cardinality-reduction
+  scheme had been picked for them yet -- irrelevant for a tree, so they're included here. Raw dates
+  stay excluded, same as the baseline (no Phase 2 date transform decided for either model).
+
+Train/val category consistency handled the same way as the baseline's encoders: train's category
+list per column is fit once and reused verbatim on val (a val-only value becomes NaN, not an error)
+-- `_apply_categories()` in `fit_xgboost.py`.
+
+**Fit:** `XGBClassifier(tree_method="hist", enable_categorical=True, max_depth=6,
+learning_rate=0.1)`, early-stopped on val PR-AUC (`eval_metric="aucpr"`, patience 30) --
+stopped at 89 trees of 500 allowed. Peak memory ~5.8 GB on the full 1,151,951-row train set (159
+columns, 108 categorical), no OOM; ran in well under the full 500-tree budget.
+
+**Val-set metrics, never only overall:**
+
+| | n | positive rate | PR-AUC | ROC-AUC | Brier |
+|---|---|---|---|---|---|
+| Overall | 287,988 | 14.88% | 0.5832 | 0.8161 | 0.0858 |
+| Carrier | 179,028 | 10.07% | 0.1881 | 0.7061 | 0.0862 |
+| Outpatient | 92,321 | 24.01% | 0.8200 | 0.9025 | 0.0781 |
+| DME | 16,639 | 16.04% | 0.2603 | 0.7149 | 0.1238 |
+
+**Beats the baseline logistic model in every claim type** (baseline: overall 0.5574/0.7724,
+carrier 0.1407/0.6124, outpatient 0.8154/0.8927, DME 0.2616/0.7059 PR-AUC/ROC-AUC). The biggest
+gain is on carrier -- still the hardest claim type for either model, but XGBoost closes a real
+share of the gap (PR-AUC +33% relative, ROC-AUC +0.09). Outpatient and DME move less, consistent
+with the baseline already capturing most of the signal there (`deprecated_code` is close to
+deterministic in outpatient regardless of model).
+
+**Feature importance, two things worth a closer look with SHAP (not blocking, not acted on here):**
+1. `HCPCS_CD` dominates by a wide margin (0.377 of total gain), consistent with it being the
+   single most Chow-significant shared variable and the baseline's largest interaction block.
+2. Several raw provider-identifier columns rank highly: `ORG_NPI_NUM`, `TAX_NUM`,
+   `CARR_CLM_BLG_NPI_NUM`, `PRF_PHYSN_UPIN`, `PRVDR_NUM`. Plausibly a legitimate "this provider is
+   denied more often" signal -- the same kind of thing the baseline's `prvdr_num_freq` already
+   captured, just pre-aggregated into one number there instead of split on directly here. But raw
+   ID splitting can also memorize individual providers' small-sample noise rather than a
+   generalizable pattern, and that's not distinguishable from gain-based importance alone. Left as
+   an open question for the SHAP pass (task queue item 4), not something to act on now.
+
+**Checked, and NOT new leakage:** `LINE_PRMRY_ALOWD_CHRG_AMT` ranks #2 by gain (0.199). Verified
+it's an exact DME-only duplicate of `LINE_ALOWD_CHRG_AMT` (already documented in
+`build_chow_design_matrix.py`'s fix B, and already part of the baseline's pooled features) --
+confirmed numerically (DME: denial rate 1.3% when >0, 20.0% when both fields are 0, identical for
+both columns). So this isn't new information the baseline didn't already have access to, just a
+raw duplicate the tree happened to weight instead of its twin -- `build_chow_design_matrix.py`'s
+identity-removal (fix B) is linear-model-only and correctly not applied to the XGBoost feature set
+by design (see `fit_xgboost.py`'s docstring), so both copies are present and equally informative.
+
+### Housekeeping
+
+- Result files: `reports/xgboost_results.txt` (readable report incl. top-20 feature importance),
+  `reports/xgboost_fit.json` (hyperparameters, metrics, top-20 importances).
+- `--sample-frac 0.02` and `0.2` smoke tests both run before the full run, per standing practice;
+  0.2 already beat the baseline overall (PR-AUC 0.5716 vs 0.5574) using only 20% of train.
+
+### Next
+
+SHAP on the XGBoost model -- in particular the provider-identifier question above -- then Phase 3
+(Azure ML deploy).

@@ -1,0 +1,65 @@
+{
+  "n_estimators_allowed": 500,
+  "best_iteration": 89,
+  "max_depth": 6,
+  "learning_rate": 0.1,
+  "n_features": 159,
+  "n_categorical_features": 108,
+  "train_nobs": 1151951,
+  "val_metrics_overall": {
+    "n": 287988,
+    "positive_rate": 0.14882564551300748,
+    "pr_auc": 0.5832263878683532,
+    "roc_auc": 0.8160540289516746,
+    "brier": 0.08575526624917984,
+    "mean_predicted": 0.14805296063423157
+  },
+  "val_metrics_by_claim_type": {
+    "carrier": {
+      "n": 179028,
+      "positive_rate": 0.10068257479276985,
+      "pr_auc": 0.18810076201835702,
+      "roc_auc": 0.7060804426909009,
+      "brier": 0.08618909865617752,
+      "mean_predicted": 0.1002517119050026
+    },
+    "outpatient": {
+      "n": 92321,
+      "positive_rate": 0.24009705267490603,
+      "pr_auc": 0.820011250062586,
+      "roc_auc": 0.9024920585965108,
+      "brier": 0.07806550711393356,
+      "mean_predicted": 0.23853875696659088
+    },
+    "dme": {
+      "n": 16639,
+      "positive_rate": 0.1604062744155298,
+      "pr_auc": 0.2603208808800837,
+      "roc_auc": 0.714918791082856,
+      "brier": 0.12375395745038986,
+      "mean_predicted": 0.16031475365161896
+    }
+  },
+  "top_20_feature_importance": {
+    "HCPCS_CD": 0.3773826062679291,
+    "LINE_PRMRY_ALOWD_CHRG_AMT": 0.19918929040431976,
+    "CARR_LINE_CLIA_LAB_NUM": 0.06165708601474762,
+    "LINE_PLACE_OF_SRVC_CD": 0.055657848715782166,
+    "PRF_PHYSN_UPIN": 0.052491094917058945,
+    "PRNCPAL_DGNS_CD": 0.03549743816256523,
+    "DMERC_LINE_PRCNG_STATE_CD": 0.033915285021066666,
+    "CARR_CLM_BLG_NPI_NUM": 0.021531367674469948,
+    "ORG_NPI_NUM": 0.020639043301343918,
+    "TAX_NUM": 0.01702919229865074,
+    "PRVDR_NUM": 0.016592079773545265,
+    "CARR_CLM_RFRNG_PIN_NUM": 0.015954528003931046,
+    "CARR_LINE_PRCNG_LCLTY_CD": 0.015453272499144077,
+    "BETOS_CD": 0.00931447185575962,
+    "REV_CNTR_TOT_CHRG_AMT": 0.007237634155899286,
+    "LINE_NUM": 0.004102583043277264,
+    "ICD_DGNS_CD20": 0.003863294143229723,
+    "CARR_NUM": 0.003008035244420171,
+    "NCH_CARR_CLM_SBMTD_CHRG_AMT": 0.002979131182655692,
+    "ICD_DGNS_CD19": 0.001921537215821445
+  }
+}

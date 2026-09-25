@@ -1,0 +1,32 @@
+Phase 2 XGBoost -- val set results
+==============================================================
+Trees: 89 (early-stopped; max_depth=6, learning_rate=0.1)
+Features: 159 (108 native categorical, full cardinality -- no top-n/frequency reduction)
+Train: 1,151,951 rows
+
+OVERALL        n= 287,988  pos_rate=0.1488  PR-AUC=0.5832  ROC-AUC=0.8161  Brier=0.0858  mean_p=0.1481
+CARRIER        n= 179,028  pos_rate=0.1007  PR-AUC=0.1881  ROC-AUC=0.7061  Brier=0.0862  mean_p=0.1003
+OUTPATIENT     n=  92,321  pos_rate=0.2401  PR-AUC=0.8200  ROC-AUC=0.9025  Brier=0.0781  mean_p=0.2385
+DME            n=  16,639  pos_rate=0.1604  PR-AUC=0.2603  ROC-AUC=0.7149  Brier=0.1238  mean_p=0.1603
+
+Top 20 features by gain-based importance:
+  HCPCS_CD                                 0.3774
+  LINE_PRMRY_ALOWD_CHRG_AMT                0.1992
+  CARR_LINE_CLIA_LAB_NUM                   0.0617
+  LINE_PLACE_OF_SRVC_CD                    0.0557
+  PRF_PHYSN_UPIN                           0.0525
+  PRNCPAL_DGNS_CD                          0.0355
+  DMERC_LINE_PRCNG_STATE_CD                0.0339
+  CARR_CLM_BLG_NPI_NUM                     0.0215
+  ORG_NPI_NUM                              0.0206
+  TAX_NUM                                  0.0170
+  PRVDR_NUM                                0.0166
+  CARR_CLM_RFRNG_PIN_NUM                   0.0160
+  CARR_LINE_PRCNG_LCLTY_CD                 0.0155
+  BETOS_CD                                 0.0093
+  REV_CNTR_TOT_CHRG_AMT                    0.0072
+  LINE_NUM                                 0.0041
+  ICD_DGNS_CD20                            0.0039
+  CARR_NUM                                 0.0030
+  NCH_CARR_CLM_SBMTD_CHRG_AMT              0.0030
+  ICD_DGNS_CD19                            0.0019

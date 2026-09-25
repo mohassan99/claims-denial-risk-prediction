@@ -126,4 +126,29 @@ Calibration is tight in every claim type (predicted mean within 0.2 points of th
 Outpatient is by far the easiest claim type to predict, because its `deprecated_code` risk rule is
 close to deterministic; carrier is the hardest, consistent with its risk factors being the
 weakest-grounded ones in `denial_reasons.py`. Full results in
-`reports/baseline_model_results__firth.txt`. Next: XGBoost on the same split, then SHAP.
+`reports/baseline_model_results__firth.txt`.
+
+*Progress, 2026-09-25: XGBoost.* Fit `src/fit_xgboost.py` on the same train/val split, this time
+confirming (not assuming) what a tree-based model actually needs: none of the baseline's top-n/
+frequency encoding, rank-deficiency fixes, or claim-type interaction terms, since those all exist
+to work around linear-model limitations trees don't share. Categorical features go in at full
+cardinality (pandas `category` dtype, xgboost's native categorical splits) and missing values are
+passed through natively rather than zero-filled — and the model gets to use roughly 130 columns
+the baseline couldn't (secondary diagnosis/procedure codes, legacy provider IDs, other CMS
+categorical codes) because a tree needs no cardinality-reduction decision for them first.
+
+| | PR-AUC | ROC-AUC | positive rate |
+|---|---|---|---|
+| Overall | 0.583 | 0.816 | 14.9% |
+| Carrier | 0.188 | 0.706 | 10.1% |
+| Outpatient | 0.820 | 0.903 | 24.0% |
+| DME | 0.260 | 0.715 | 16.0% |
+
+Beats the baseline logistic model in every claim type, most on carrier — still the hardest claim
+type for either model, but XGBoost closes a meaningful share of the gap. The single most
+important feature by a wide margin is `HCPCS_CD`; several raw provider-identifier columns
+(billing/organization NPI, tax number, referring-physician UPIN) also rank highly, a plausible
+"this provider is denied more often" signal in the same spirit as the baseline's `prvdr_num_freq`
+— flagged for a closer look with SHAP rather than assumed, since raw high-cardinality ID splits
+can also memorize individual providers' small-sample noise. Full results in
+`reports/xgboost_results.txt`. Next: SHAP on the XGBoost model, then Phase 3 (Azure ML deploy).
