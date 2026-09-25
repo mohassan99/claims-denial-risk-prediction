@@ -482,6 +482,99 @@ def rule_missing_hcpcs(
 
 
 # ---------------------------------------------------------------------------
+# Provider identity across claim types (added 2026-09-24)
+# ---------------------------------------------------------------------------
+# BUG FIXED HERE. rule_provider_outlier and rule_duplicate_claim both
+# identify "the provider" with PRVDR_NUM, the institutional provider number
+# (CCN). That field exists on outpatient and DME claims, but it is 100% null
+# on every carrier (professional) claim -- carrier claims carry the provider
+# in CARR_CLM_BLG_NPI_NUM, the billing NPI. pandas' groupby drops null keys
+# without a word, so for ~62% of all claims neither rule could ever fire:
+# carrier's denial rate came out 5.6% vs 24.1% outpatient / 16.3% DME, and
+# 34 of 37 carrier HCPCS codes had zero denials. Found 2026-09-24 in Phase 2
+# while chasing separation in the Chow test (FEATURE_ENGINEERING.md
+# Section 6; TARGET_DEFINITION.md addendum of the same date).
+#
+# The fix: one explicit, per-claim-type provider key. Verified on the full
+# combined file before use: CARR_CLM_BLG_NPI_NUM is 0% null on carrier
+# (5,358 distinct billing NPIs; identical to ORG_NPI_NUM on every carrier
+# row), and PRVDR_NUM is 0% / 0.03% null on DME / outpatient. Values are
+# namespaced ("NPI:" vs "PRV:") so an NPI and a provider number can never
+# collide by accident. Outpatient and DME keep exactly their old grouping,
+# so their risk flags are unchanged -- checked bit-for-bit after the fix.
+PROVIDER_KEY_SOURCE = {
+    "carrier.csv": ("CARR_CLM_BLG_NPI_NUM", "NPI:"),
+    "outpatient.csv": ("PRVDR_NUM", "PRV:"),
+    "dme.csv": ("PRVDR_NUM", "PRV:"),
+}
+
+# Which providers are compared with which in rule_provider_outlier's
+# top-5% cut. Outpatient and DME stay pooled together exactly as before (so
+# their flags don't move); carrier's billing physicians/groups form their
+# own pool, since a professional billing NPI and a facility/supplier aren't
+# on the same volume or payment scale.
+PROVIDER_POOL = {
+    "carrier.csv": "professional",
+    "outpatient.csv": "institutional_dme",
+    "dme.csv": "institutional_dme",
+}
+
+
+def build_provider_key(df: pd.DataFrame, source_file_col: str = "_source_file") -> pd.Series:
+    """Namespaced provider identifier per claim type (see block comment
+    above). Raises on a claim file with no declared provider field rather
+    than silently returning null for it -- the exact failure mode this
+    replaces."""
+    unknown = set(df[source_file_col].unique()) - set(PROVIDER_KEY_SOURCE)
+    if unknown:
+        raise ValueError(
+            f"No provider-key field declared for claim file(s) {sorted(unknown)} -- "
+            "add them to PROVIDER_KEY_SOURCE (after checking which field is populated)."
+        )
+    key = pd.Series(pd.NA, index=df.index, dtype="object")
+    for source, (col, prefix) in PROVIDER_KEY_SOURCE.items():
+        mask = (df[source_file_col] == source).to_numpy()
+        if mask.any():
+            vals = df.loc[mask, col]
+            key.loc[mask] = (prefix + vals.astype(str)).where(vals.notna(), pd.NA)
+    return key
+
+
+def build_provider_pool(df: pd.DataFrame, source_file_col: str = "_source_file") -> pd.Series:
+    return df[source_file_col].map(PROVIDER_POOL)
+
+
+def require_key_coverage(
+    df: pd.DataFrame,
+    rule_name: str,
+    key_cols: list[str],
+    source_file_col: str = "_source_file",
+    max_null_share: float = 0.01,
+    allowed_gaps: dict[tuple[str, str], str] | None = None,
+) -> None:
+    """GUARDRAIL (added 2026-09-24). Before a rule groups on key columns,
+    confirm every key is actually populated in every claim type. pandas
+    drops rows with a null group key silently, which is how the PRVDR_NUM
+    bug hid for two weeks. Raises unless each key's null share is at most
+    max_null_share in every claim type, except for gaps explicitly declared
+    in allowed_gaps as {(key_col, source_file): "reason"}."""
+    allowed_gaps = allowed_gaps or {}
+    problems = []
+    for col in key_cols:
+        shares = df[col].isna().groupby(df[source_file_col]).mean()
+        for source, share in shares.items():
+            if share > max_null_share and (col, source) not in allowed_gaps:
+                problems.append(f"{col} is {share:.1%} null in {source}")
+    if problems:
+        raise ValueError(
+            f"{rule_name}: group key(s) not populated -- rows with a null key would be "
+            f"silently dropped by groupby, so the rule could never fire for them: "
+            + "; ".join(problems)
+            + ". Fix the key, or declare the gap in allowed_gaps with a reason."
+        )
+
+
+# ---------------------------------------------------------------------------
 # Combined label
 # ---------------------------------------------------------------------------
 def build_is_denied(

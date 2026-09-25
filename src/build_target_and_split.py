@@ -11,14 +11,63 @@ from pathlib import Path
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-from denial_reasons import apply_payment_consequence, calibration_report, sample_denials
+from denial_reasons import (
+    apply_payment_consequence,
+    audit_risk_factors_by_claim_type,
+    calibration_report,
+    sample_denials,
+)
 
 PROCESSED_DIR = Path(__file__).resolve().parents[1] / "data" / "processed"
+REPORTS_DIR = Path(__file__).resolve().parents[1] / "reports"
+
+# GUARDRAIL (added 2026-09-24): a large claim-type x HCPCS cell with EXACTLY
+# zero denials is reported every build. This alone would have exposed the
+# PRVDR_NUM bug in Phase 1: 34 of 37 carrier codes sat at 0.000.
+ZERO_CELL_MIN_CLAIMS = 1_000
 
 # If the real-data denial rate lands outside 10-15% on first run, adjust this
 # and rerun -- don't hand-edit REASON_CATALOG base_prob values individually
 # unless the calibration_report shows one specific factor is over/under-firing.
 CALIBRATION_SCALE = 1.4
+
+
+def write_label_audit(df: pd.DataFrame, result: pd.DataFrame) -> None:
+    """GUARDRAILS (added 2026-09-24) -- the label is checked per claim type,
+    not just overall. (1) Every risk factor's firing rate in every claim type
+    against RISK_FACTOR_EXPECTATION -- raises on any violation. (2) Denial
+    rate per claim type. (3) Large claim-type x HCPCS cells with zero
+    denials, which must each be explainable. Written to
+    reports/label_audit.txt so the numbers are reviewable, not just printed."""
+    source = df["_source_file"]
+    rates = audit_risk_factors_by_claim_type(result, source)
+    by_type = result["is_denied"].groupby(source.to_numpy()).agg(["size", "mean"])
+    code = df["HCPCS_CD"].astype("object").where(df["HCPCS_CD"].notna(), "<missing>")
+    cells = result["is_denied"].groupby([source.to_numpy(), code.to_numpy()]).agg(["size", "sum"])
+    zero = cells[(cells["sum"] == 0) & (cells["size"] >= ZERO_CELL_MIN_CLAIMS)].sort_values("size", ascending=False)
+    lines = [
+        "Label audit -- written by build_target_and_split.py on every build",
+        "=" * 66,
+        f"Overall is_denied rate: {result['is_denied'].mean():.2%}",
+        "",
+        "Denial rate by claim type:",
+        by_type.to_string(),
+        "",
+        "Risk-factor firing rate by claim type (every cell checked against",
+        "denial_reasons.RISK_FACTOR_EXPECTATION -- this build passed):",
+        rates.round(4).to_string(),
+        "",
+        f"Claim-type x HCPCS cells with >= {ZERO_CELL_MIN_CLAIMS:,} claims and ZERO denials: {len(zero)}",
+        (zero.to_string() if len(zero) else "(none)"),
+    ]
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    (REPORTS_DIR / "label_audit.txt").write_text("\n".join(lines) + "\n")
+    print("\n" + "\n".join(lines))
+    if len(zero):
+        print(
+            f"\nWARNING: {len(zero)} large zero-denial cell(s) above. Each must have a documented "
+            "reason (TARGET_DEFINITION.md) -- a cell nobody can explain is how the PRVDR_NUM bug hid."
+        )
 
 
 def main() -> None:
@@ -30,6 +79,7 @@ def main() -> None:
 
     result = sample_denials(df, calibration_scale=CALIBRATION_SCALE)
     calibration_report(result)
+    write_label_audit(df, result)
 
     df = apply_payment_consequence(df, result)
     df = df.join(result)

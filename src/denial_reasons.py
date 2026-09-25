@@ -82,6 +82,9 @@ import numpy as np
 import pandas as pd
 
 from denial_rules import (
+    build_provider_key,
+    build_provider_pool,
+    require_key_coverage,
     rule_deprecated_code,
     rule_dx_procedure_mismatch,
     rule_duplicate_claim,
@@ -253,45 +256,136 @@ REASON_PRIORITY = [
 
 
 def compute_risk_factors(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
-    """Run each risk-factor detector, return one boolean column per factor."""
+    """Run each risk-factor detector, return one boolean column per factor.
+
+    CHANGED 2026-09-24 (the carrier provider-key fix, see denial_rules.py's
+    "Provider identity across claim types" block): duplicate_claim and
+    provider_outlier now group on a per-claim-type provider key
+    (build_provider_key: billing NPI for carrier, PRVDR_NUM for outpatient
+    and DME), and provider_outlier ranks providers within their own pool
+    (professional vs. institutional/DME). Before this, both grouped on
+    PRVDR_NUM, which is null on every carrier claim, so neither could fire
+    for ~62% of the data. Passing provider_col= explicitly still selects a
+    single raw column (the old behavior), for reproducing pre-fix labels.
+    Both rules' group keys are now checked for coverage in every claim type
+    before grouping (require_key_coverage); a key that's mostly null in
+    some claim type raises instead of silently disabling the rule there.
+    """
+    source_col = kwargs.get("source_file_col", "_source_file")
+    bene_col = kwargs.get("bene_id_col", "BENE_ID")
+    hcpcs_col = kwargs.get("hcpcs_col", "HCPCS_CD")
+    date_col = kwargs.get("claim_date_col", "CLM_FROM_DT")
+    claim_id_col = kwargs.get("claim_id_col", "CLM_ID")
+    payment_col = kwargs.get("payment_col", "CLM_PMT_AMT")
+
+    if "provider_col" in kwargs:  # legacy single-column behavior
+        prov = df
+        provider_col = kwargs["provider_col"]
+        specialty_col = kwargs.get("specialty_col", None)
+    else:
+        # A slim working frame, so the full claims frame is never copied.
+        prov = df[[source_col, bene_col, hcpcs_col, date_col, claim_id_col, payment_col]].assign(
+            _provider_key=build_provider_key(df, source_col),
+            _provider_pool=build_provider_pool(df, source_col),
+        )
+        provider_col = "_provider_key"
+        specialty_col = kwargs.get("specialty_col", "_provider_pool")
+        require_key_coverage(prov, "provider_outlier", [provider_col], source_col)
+        # HCPCS is missing on ~62% of carrier lines by the data itself (that
+        # is what missing_hcpcs flags); duplicate_claim can only compare
+        # lines that HAVE a code. Declared, not silent.
+        require_key_coverage(
+            prov, "duplicate_claim", [bene_col, hcpcs_col, date_col, provider_col], source_col,
+            allowed_gaps={(hcpcs_col, "carrier.csv"): "missing HCPCS is its own risk factor (missing_hcpcs)"},
+        )
+
     out = pd.DataFrame(index=df.index)
     out["missing_hcpcs"] = RISK_FACTOR_FUNCS["missing_hcpcs"](
         df,
-        kwargs.get("hcpcs_col", "HCPCS_CD"),
-        kwargs.get("source_file_col", "_source_file"),
+        hcpcs_col,
+        source_col,
         kwargs.get("line_num_col", "LINE_NUM"),
     )
-    out["deprecated_code"] = RISK_FACTOR_FUNCS["deprecated_code"](
-        df,
-        kwargs.get("hcpcs_col", "HCPCS_CD"),
-        kwargs.get("claim_date_col", "CLM_FROM_DT"),
-    )
+    out["deprecated_code"] = RISK_FACTOR_FUNCS["deprecated_code"](df, hcpcs_col, date_col)
     out["duplicate_claim"] = RISK_FACTOR_FUNCS["duplicate_claim"](
-        df,
-        kwargs.get("bene_id_col", "BENE_ID"),
-        kwargs.get("hcpcs_col", "HCPCS_CD"),
-        kwargs.get("claim_date_col", "CLM_FROM_DT"),
-        kwargs.get("provider_col", "PRVDR_NUM"),
-        kwargs.get("claim_id_col", "CLM_ID"),
+        prov, bene_col, hcpcs_col, date_col, provider_col, claim_id_col,
     )
-    out["missing_prior_auth"] = RISK_FACTOR_FUNCS["missing_prior_auth"](
-        df,
-        kwargs.get("bene_id_col", "BENE_ID"),
-        kwargs.get("hcpcs_col", "HCPCS_CD"),
-        kwargs.get("claim_date_col", "CLM_FROM_DT"),
-    )
+    out["missing_prior_auth"] = RISK_FACTOR_FUNCS["missing_prior_auth"](df, bene_col, hcpcs_col, date_col)
     out["dx_procedure_mismatch"] = RISK_FACTOR_FUNCS["dx_procedure_mismatch"](
         df,
-        kwargs.get("hcpcs_col", "HCPCS_CD"),
+        hcpcs_col,
         kwargs.get("dx_cols", ("PRNCPAL_DGNS_CD",)),
     )
     out["provider_outlier"] = RISK_FACTOR_FUNCS["provider_outlier"](
-        df,
-        kwargs.get("provider_col", "PRVDR_NUM"),
-        kwargs.get("specialty_col", None),
-        kwargs.get("payment_col", "CLM_PMT_AMT"),
+        prov, provider_col, specialty_col, payment_col,
     )
     return out
+
+
+# ---------------------------------------------------------------------------
+# GUARDRAIL (added 2026-09-24): every (risk factor, claim type) cell must be
+# explicitly accounted for. "fires" = must activate on > 0 claims of that
+# type; "zero" = must activate on none, with the reason written down. Checked
+# by audit_risk_factors_by_claim_type() on every label build. A factor that
+# silently stops firing for a claim type (the PRVDR_NUM bug) or starts
+# firing where it structurally shouldn't now stops the build instead of
+# surfacing weeks later as a modeling anomaly. Every "zero" was verified on
+# the full combined file on 2026-09-24.
+RISK_FACTOR_EXPECTATION: dict[str, dict[str, str]] = {
+    "missing_hcpcs": {
+        "carrier.csv": "fires",
+        "outpatient.csv": "zero: HCPCS_CD is populated on every outpatient line in this release",
+        "dme.csv": "zero: HCPCS_CD is populated on every DME line in this release",
+    },
+    "deprecated_code": {
+        "outpatient.csv": "fires",
+        "carrier.csv": "zero: none of the 99241-99245/99251-99255 consult codes occur on carrier lines in this release",
+        "dme.csv": "zero: DME lines carry Level II supply codes, never E/M consult codes",
+    },
+    "duplicate_claim": {
+        "outpatient.csv": "fires",
+        "dme.csv": "fires",
+        # Checked 2026-09-24 AFTER the provider-key fix: not one carrier
+        # (beneficiary, HCPCS, service date) combination appears on two
+        # different CLM_IDs, even with the provider dropped from the key
+        # entirely. So this is a property of the synthetic data, not the key
+        # bug -- the rule can now fire on carrier, there is just nothing to find.
+        "carrier.csv": "zero: no carrier (bene, HCPCS, date) repeats across CLM_IDs in this release, with or without the provider key",
+    },
+    "missing_prior_auth": {
+        "dme.csv": "fires",
+        "carrier.csv": "zero: rule targets E*/K* DME Level II codes, which never occur on carrier lines here",
+        "outpatient.csv": "zero: rule targets E*/K* DME Level II codes, which never occur on outpatient lines here",
+    },
+    "dx_procedure_mismatch": {"carrier.csv": "fires", "outpatient.csv": "fires", "dme.csv": "fires"},
+    "provider_outlier": {"carrier.csv": "fires", "outpatient.csv": "fires", "dme.csv": "fires"},
+}
+
+
+def audit_risk_factors_by_claim_type(
+    result: pd.DataFrame, source_file: pd.Series
+) -> pd.DataFrame:
+    """Firing rate of every risk factor within every claim type, checked
+    against RISK_FACTOR_EXPECTATION. Returns the rate table; raises listing
+    every violated or undeclared cell."""
+    risk_cols = [c for c in result.columns if c.startswith("risk_")]
+    rates = result[risk_cols].groupby(source_file.to_numpy()).mean().T
+    rates.index = [c.removeprefix("risk_") for c in rates.index]
+    problems = []
+    for factor in rates.index:
+        expected = RISK_FACTOR_EXPECTATION.get(factor, {})
+        for source in rates.columns:
+            rate = rates.loc[factor, source]
+            rule = expected.get(source)
+            if rule is None:
+                problems.append(f"{factor} x {source}: no expectation declared (rate {rate:.4f})")
+            elif rule == "fires" and rate == 0:
+                problems.append(f"{factor} x {source}: expected to fire, fires on 0 claims")
+            elif rule.startswith("zero") and rate > 0:
+                problems.append(f"{factor} x {source}: declared '{rule}', but fires on {rate:.4%}")
+    if problems:
+        raise ValueError("Risk-factor-by-claim-type audit failed:\n  " + "\n  ".join(problems))
+    return rates
 
 
 def noisy_or_probability(risk_factors: pd.DataFrame, base_probs: dict[str, float]) -> pd.Series:
