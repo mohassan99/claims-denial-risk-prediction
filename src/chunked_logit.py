@@ -48,7 +48,12 @@ Firth penalty's scale-dependence (log|D X'WX D| = log|X'WX| + 2 sum log d)
 is added back. Step control mirrors firthmodels: Fisher-scoring step
 (= Newton for the logit link), clipped to max_step per coefficient,
 step-halving until the (penalized) log-likelihood does not decrease;
-converged when max|score| < gtol AND max|step| < xtol.
+converged when max|score| < gtol AND max|step| < xtol. max_step defaults
+to 20 (firthmodels uses 5): on the scaled columns, 5 made fits take ~100
+clipped iterations to walk large coefficients out, while 20 reached the
+identical optimum (penalized log-likelihood equal to ~1e-10 at 0.02) in
+roughly a third of the iterations. Step-halving, not the clip, is what
+guarantees ascent. The full-data Stage 1 Firth fits were run at 5.
 """
 
 from __future__ import annotations
@@ -122,7 +127,15 @@ class ChunkedLogit:
                 score += X[s : s + self.chunk_rows].T @ resid[s : s + self.chunk_rows]
             return ll, ll, score, info
 
-        L = np.linalg.cholesky(info)
+        try:
+            L = np.linalg.cholesky(info)
+        except np.linalg.LinAlgError:
+            # A trial step so large the weights underflowed and X'WX lost
+            # positive-definiteness: the penalty log|X'WX| is -inf there, so
+            # the penalized likelihood is -inf -- report that, and fit()'s
+            # step-halving backs off. (Found 2026-09-24 testing an unclipped
+            # step on the 0.02 data.)
+            return -np.inf, ll, np.zeros(k), info
         logdet = 2.0 * float(np.log(np.diag(L)).sum())
         score = np.zeros(k)
         for s in range(0, n, self.chunk_rows):
@@ -140,7 +153,7 @@ class ChunkedLogit:
         fixed_zero: np.ndarray | None = None,
         beta_init: np.ndarray | None = None,
         max_iter: int = 200,
-        max_step: float = 5.0,
+        max_step: float = 20.0,
         max_halfstep: int = 25,
         gtol: float = 1e-4,
         xtol: float = 1e-4,

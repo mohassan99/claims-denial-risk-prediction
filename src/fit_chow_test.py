@@ -352,7 +352,8 @@ def _output_paths(args: argparse.Namespace) -> tuple[Path, Path]:
 
 
 def _stratified_sample_streaming(
-    parquet_path: Path, frac: float, label_col: str, batch_size: int, seed: int = 42
+    parquet_path: Path, frac: float, label_col: str, batch_size: int, seed: int = 42,
+    columns: list[str] | None = None,
 ) -> pd.DataFrame:
     """Pick a stratified sample of row positions from a label-only read,
     then stream the file in batches, keeping only sampled rows. Never
@@ -391,7 +392,7 @@ def _stratified_sample_streaming(
 
     parts = []
     row_offset = 0
-    for batch in pf.iter_batches(batch_size=batch_size):
+    for batch in pf.iter_batches(batch_size=batch_size, columns=columns):
         n = batch.num_rows
         batch_mask = keep_mask[row_offset : row_offset + n]
         row_offset += n
@@ -412,12 +413,29 @@ def _stratified_sample_streaming(
     return result
 
 
+def _columns_to_load(parquet_path: Path) -> list[str]:
+    """Every column of train_model.parquet EXCEPT the ones _prepare_xy drops
+    anyway (_NON_FEATURE_COLS), keeping the label. Added 2026-09-24: the
+    first full-size run was OOM-killed (peak RSS 5.5 GB in a ~7 GB box)
+    while materializing the reparameterized design, because ~130 raw
+    object-dtype columns (secondary dx/procedure codes, dates, legacy IDs)
+    were loaded, carried through build_chow_design_matrix, and only then
+    dropped -- and freed string memory isn't reliably returned to the OS.
+    Not loading them is equivalent (verified at --sample-frac 0.2: both
+    design matrices identical, column for column and value for value);
+    the only visible difference is that rank_fix_report no longer lists
+    never-loaded columns."""
+    names = pq.ParquetFile(parquet_path).schema_arrow.names
+    return [c for c in names if c not in _NON_FEATURE_COLS or c == LABEL_COL]
+
+
 def _load_train(sample_frac: float | None, stream_batch_size: int) -> pd.DataFrame:
+    columns = _columns_to_load(TRAIN_PARQUET_PATH)
     if sample_frac is None:
-        print("Loading train_model.parquet (full)...")
-        return pd.read_parquet(TRAIN_PARQUET_PATH)
+        print(f"Loading train_model.parquet (full; {len(columns)} columns needed for the design matrices)...")
+        return pd.read_parquet(TRAIN_PARQUET_PATH, columns=columns)
     print(f"Streaming a --sample-frac {sample_frac} stratified subsample of train_model.parquet...")
-    return _stratified_sample_streaming(TRAIN_PARQUET_PATH, sample_frac, LABEL_COL, stream_batch_size)
+    return _stratified_sample_streaming(TRAIN_PARQUET_PATH, sample_frac, LABEL_COL, stream_batch_size, columns=columns)
 
 
 def _prepare_xy(design_df: pd.DataFrame, exclude_separating: bool = False) -> tuple[pd.Series, pd.DataFrame]:
