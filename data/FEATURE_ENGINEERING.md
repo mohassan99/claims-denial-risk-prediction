@@ -1174,3 +1174,88 @@ restricted matrix. `CARR_CLM_PRMRY_PYR_PD_AMT` stays a pooled 2-of-3 column, whi
 
 **Full reconciliation:** 144 − 25 explained − 1 (`carr_num_freq`) − 1
 (`LINE_PRMRY_ALOWD_CHRG_AMT__x__dme`) = **117**. This matches the real data.
+
+### First Chow-test results on the full-rank matrices, and two fitting problems found on the way (2026-09-24)
+
+**Result.** On the full train set (1,151,951 claims), Firth's penalized likelihood-ratio test
+**rejects H0**. The pooled model is not adequate for every shared covariate: **LR = 4,732.5 on
+158 df, p ≈ 0** (below float precision). df = 158 is confirmed four independent ways: the
+name-based Σ(n_i − 1), the column-count difference (275 − 117), the rank difference (both
+matrices full rank), and the number of tested coefficients. The unpenalized log-likelihoods at the
+same estimates (−273,281.4 restricted vs. −270,897.8 unrestricted) differ by a similar 4,767.1, so
+the rejection does not come from the penalty. The **standard-MLE-with-exclusion comparison could
+not produce a valid test**. See "Separation is much wider than 6 codes" below.
+
+**Problem 1: every earlier standard-method fit was an optimizer failure, not a result.**
+statsmodels' `lbfgs` never moved off its starting point, β = 0. At β = 0 every predicted
+probability is 0.5 and the log-likelihood is exactly n·ln(0.5). Every "converged" standard fit
+reported exactly that value: −15,969.42 at `--sample-frac 0.02` (n = 23,039) and **−159,694.87 at
+0.2 (n = 230,391), the same number as the pre-fix `chow_test_results.txt`**. It is far worse than
+simply predicting the 12.1% base rate for everyone (about −85,170 at 0.2). The likely cause is
+dollar columns up to ~$410,000 sitting next to 0/1 dummies: the first step overflowed `exp()` (the
+RuntimeWarnings on every run), and the optimizer's own convergence flag didn't catch it. **The
+earlier "identical log-likelihoods, LR = 0" finding, which `diagnose_separation.py` was written to
+explain, was this failure.** The separation it found is real (below), but separation is not what
+made the two log-likelihoods identical.
+
+**Problem 2: two separately-penalized Firth fits are not Firth's penalized LR test.** Each Firth
+fit adds 0.5·log|X′WX| for its *own* design. The two models have different dimensions and
+parameterizations, so the difference of two separately-penalized log-likelihoods mixes a
+penalty-difference term into the statistic. On the same 0.02 data that approach gave **339.1**, vs.
+**213.2** for the proper test. The standard penalized LR test (Heinze & Schemper 2002; what
+`logistf` and `firthmodels`' own `.lrt()` do) fits the restricted model *as the full model with the
+tested coefficients held at 0*, still penalized by the full model's information.
+
+**The fix: put the Chow test in "full model, some coefficients = 0" form.** For a shared covariate
+`x`, {x_pooled, x·D_2, x·D_3} spans the same space as {x·D_1, x·D_2, x·D_3}. So
+`U′ = [every restricted column, Z]`, where Z is the unrestricted-only interaction terms minus one
+per pooled covariate, *is* the unrestricted model. H0 is then exactly "Z's coefficients = 0". This
+is verified, not assumed, on every run:
+- U′ is full rank.
+- U′ has as many columns as the unrestricted matrix.
+- Every unrestricted term left out of Z lies in span(U′).
+
+On the 0.02 data, U′'s penalized log-likelihood equals the original unrestricted matrix's to
+1e-12.
+
+**Problem 3: memory.** `firthmodels` allocates three extra k × n float64 buffers besides X, about
+10 GB at full size. New `src/chunked_logit.py` accumulates everything Newton-Raphson needs (X′WX,
+the Firth hat diagonals, the modified score) over row chunks, on column-scaled data. It is
+validated against `firthmodels` (penalized LL equal to ~1e-12, and Stage 2 p-values equal to
+~1e-11) and against statsmodels' Newton fits (~1e-8). Peak RSS for a full-size fit is about 4.9 GB.
+That came after one OOM kill, fixed by not loading the ~130 raw columns the design matrices never
+use (verified to give identical matrices). `fit_chow_test.py` now refuses to compute an LR from any
+fit that reports non-convergence.
+
+**Separation is much wider than 6 codes, and `--exclude-separating-codes` cannot remove it.** On
+the full train set:
+
+| Within carrier (718,074 claims) | Claims | Denials |
+|---|---|---|
+| HCPCS null (`__MISSING__`) | 448,567 | 31,250 |
+| G0444, 96127, G0442 (the only codes with any denial) | 108,977 | 9,046 |
+| **The other 34 codes**, including the known 6 plus **G8839** (6,036) and every `__OTHER__` code (4,906) | **160,530** | **0** |
+
+So 13.9% of the whole train set sits in carrier HCPCS cells with an exact 0.000 denial rate, not
+just the 6 codes `diagnose_separation.py` flagged. Excluding the 6 codes' dummies also doesn't
+remove their claims. It merges them into carrier's reference cell, which then has zero denials
+itself. Run on the full data, the standard exclusion fit behaves accordingly:
+- The restricted (pooled) fit converged (LL −274,120.89, 80 iterations).
+- The unrestricted fit showed the textbook separation signature: log-likelihood flat at
+  −271,242.34, score → 1e-10, Newton steps stuck at ~1 per iteration, then a singular information
+  matrix.
+
+The MLE does not exist, so there is no valid χ² test from it. The supremum-based "LR" (≈ 5,757,
+153 df) points the same way but is not reported as a result. **Firth is the primary (and only
+valid) Stage 1 result.** Its caveat stands (`_fit_logit_firth` docstring): under true separation,
+the χ² reference distribution for the penalized LR is simulation-validated, not proven. With
+LR = 4,732.5 on 158 df, no plausible reference distribution changes the conclusion.
+
+**The likely root cause is in the label, not the features. It is an open decision, not changed
+here.** `rule_provider_outlier` and `rule_duplicate_claim` (`denial_rules.py`) both group on
+`PRVDR_NUM`, which is **100% null for carrier claims** (verified on the full train set: null share
+1.0 carrier, 0.0004 outpatient, 0.0 DME). pandas' `groupby(dropna=True)` drops those rows, so
+neither risk factor can ever fire for a carrier claim. That leaves carrier denials driven only by
+`missing_hcpcs` (the `__MISSING__` cell) and code-specific rules that apply to just three codes.
+The carrier denial rate is 5.6%, vs. 24.1% outpatient and 16.3% DME. Any fix changes `is_denied`
+and invalidates every result above; see `reports/SESSION_LOG.md`.
