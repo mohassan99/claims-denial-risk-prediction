@@ -92,7 +92,7 @@ outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since th
 - `data/TARGET_DEFINITION.md` covers the label; `data/data_dictionary.md` is a column reference.
 - Read the relevant doc section before re-deriving anything.
 
-## Current state (as of 2026-09-24, end of session)
+## Current state (as of 2026-09-25, end of session)
 
 **Label:** fixed 2026-09-24. `provider_outlier` / `duplicate_claim` now key on the billing NPI for
 carrier claims (`denial_rules.build_provider_key`). Rate 14.9% overall (carrier 10.0%, outpatient
@@ -101,7 +101,12 @@ carrier claims (`denial_rules.build_provider_key`). Rate 14.9% overall (carrier 
 `RISK_FACTOR_EXPECTATION`. See TARGET_DEFINITION.md's 2026-09-24 addendum.
 
 Key scripts in `src/`:
-- `build_chow_design_matrix.py` — restricted/unrestricted design matrices (rank fixes A–D).
+- `build_chow_design_matrix.py` — restricted/unrestricted design matrices (rank fixes A–D), plus
+  (2026-09-25) `build_mixed_design_matrix()` (the baseline model's 5-interact/6-pool design) and
+  optional `encoders=`/`return_encoders=` on `build_chow_design_matrix()` so a categorical
+  encoding (top-n HCPCS/dx/state categories, provider frequency map, which columns were dropped as
+  claim-type-determined) fit on train can be reused unchanged on val/test — needed the first time
+  this project encoded two splits into the same feature space.
 - `chunked_logit.py` — memory-bounded Newton-Raphson logistic (ordinary or Firth), with
   coefficients optionally held at 0 under the full model's penalty. Validated against
   firthmodels and statsmodels. Peak ~4.9 GB at full size.
@@ -109,22 +114,33 @@ Key scripts in `src/`:
   tests Z = 0 (Firth = Heinze-Schemper penalized LR). Enforces full rank, span equality, df
   agreement (4 ways), convergence, and a label fingerprint on the cached restricted fit.
 - `fit_chow_stage2.py` — per-variable penalized LR tests, Holm-adjusted, resumable.
+- `fit_baseline_model.py` (2026-09-25) — fits the Phase 2 baseline mixed model on train, evaluates
+  on val (PR-AUC/ROC-AUC/Brier, per claim type). Builds train's array, fits, and frees it BEFORE
+  building val's matrix — the first full run without this ordering was OOM-killed holding train's
+  and val's matrices alive together (see SESSION_LOG.md's 2026-09-25 entry).
 - statsmodels' lbfgs is NOT used for fitting anymore: it never left beta = 0 on these matrices.
 
-**Results on the corrected label (full train set):** Firth LR 2,642.1 on 158 df, H0 rejected.
-Standard MLE agrees within 0.1% but is formally non-convergent because of one claim (dx N186 x
-carrier). Stage 2: interact provider_state, HCPCS_CD, PRNCPAL_DGNS_CD, prvdr_num_freq,
+**Chow test results on the corrected label (full train set):** Firth LR 2,642.1 on 158 df, H0
+rejected. Standard MLE agrees within 0.1% but is formally non-convergent because of one claim (dx
+N186 x carrier). Stage 2: interact provider_state, HCPCS_CD, PRNCPAL_DGNS_CD, prvdr_num_freq,
 CARR_CLM_CASH_DDCTBL_APLD_AMT; pool the other 6. `--exclude-separating-codes` is obsolete (no
 separation left). Details in FEATURE_ENGINEERING.md Section 6's last addendum.
 
+**Baseline mixed model results (2026-09-25, val set):** overall PR-AUC 0.557, ROC-AUC 0.772
+(14.9% positive rate). Per claim type: outpatient 0.815/0.893 (deprecated_code is near-
+deterministic there), DME 0.262/0.706, carrier 0.141/0.612 (its risk factors are the
+weakest-grounded ones). Calibration tight in every claim type. Fit with Firth (standard MLE stalls
+on a rare-category near-separation; not investigated further since Firth converges cleanly and
+fast). Full table in SESSION_LOG.md and `reports/baseline_model_results__firth.txt`.
+
 ## Task queue (do in order; log each in SESSION_LOG.md)
 
-1. **Build the Phase 2 baseline mixed model** per Section 3: claim_type dummies + the 5
-   interacted variables as interaction terms + the 6 pooled variables as single columns.
-   Fit with `chunked_logit` (Firth or standard), train set.
-2. **Baseline metrics on val**: PR-AUC (primary, 14.9% positives), ROC-AUC, calibration, and
-   per-claim-type breakdown (never only overall).
-3. **XGBoost** on `train_model.parquet`, same metrics, per claim type.
+1. ~~Build the Phase 2 baseline mixed model~~ — done 2026-09-25 (`fit_baseline_model.py`).
+2. ~~Baseline metrics on val~~ — done 2026-09-25, see above.
+3. **XGBoost** on `train_model.parquet`, same metrics, per claim type. Reuse
+   `fit_baseline_model.py`'s train/val encoding-consistency pattern if XGBoost needs any of the
+   same categorical/frequency encoding (it likely doesn't — XGBoost handles raw categoricals/NaN
+   natively — but confirm rather than assume before skipping that work).
 4. **SHAP**, then Phase 3.
 
 ## Open decisions for the user (don't act on these alone)

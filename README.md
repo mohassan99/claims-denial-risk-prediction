@@ -109,3 +109,21 @@ Because the overall denial rate had looked right, the label build now also fails
 silently stops firing for a claim type, or if a grouping key is missing for one. See
 `data/TARGET_DEFINITION.md` (2026-09-24 addendum) and `reports/label_audit.txt`.
 
+*Progress, 2026-09-25: Phase 2 baseline mixed model.* Built and evaluated the model the Chow test
+selected: 5 shared variables (state, HCPCS, principal diagnosis, provider claim frequency, carrier
+cash deductible) kept as claim-type interaction terms, the other 6 pooled to one coefficient each.
+Fit with `chunked_logit`'s Firth-penalized MLE (`src/fit_baseline_model.py`) on the full train set
+(1,151,951 rows), evaluated on val, never only overall:
+
+| | PR-AUC | ROC-AUC | positive rate |
+|---|---|---|---|
+| Overall | 0.557 | 0.772 | 14.9% |
+| Carrier | 0.141 | 0.612 | 10.1% |
+| Outpatient | 0.815 | 0.893 | 24.0% |
+| DME | 0.262 | 0.706 | 16.0% |
+
+Calibration is tight in every claim type (predicted mean within 0.2 points of the actual rate).
+Outpatient is by far the easiest claim type to predict, because its `deprecated_code` risk rule is
+close to deterministic; carrier is the hardest, consistent with its risk factors being the
+weakest-grounded ones in `denial_reasons.py`. Full results in
+`reports/baseline_model_results__firth.txt`. Next: XGBoost on the same split, then SHAP.

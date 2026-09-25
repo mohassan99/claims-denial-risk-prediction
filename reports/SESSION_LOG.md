@@ -211,3 +211,82 @@ python src/run_eda.py
 
 Build the baseline mixed model: interact the 5 variables above and pool the other 6. Then
 PR-AUC on validation, broken out by claim type, then XGBoost and SHAP.
+
+---
+
+## 2026-09-25: Phase 2 baseline mixed model, fit and evaluated on val
+
+### Results
+
+**Built the model Chow Stage 2 actually selected.** `src/build_chow_design_matrix.py` gained
+`build_mixed_design_matrix()`: the 5 variables Stage 2 found claim-type-specific (provider_state,
+HCPCS_CD, PRNCPAL_DGNS_CD, prvdr_num_freq, CARR_CLM_CASH_DDCTBL_APLD_AMT) stay as claim-type
+interaction terms; the other 6 shared variables are pooled to one coefficient each; every
+claim-type-exclusive covariate is unaffected either way. It reuses the existing, already-verified
+unrestricted/restricted builders rather than re-deriving the same claim-type logic a third time.
+
+**Fit with Firth's penalized MLE** (`src/fit_baseline_model.py`, `chunked_logit.ChunkedLogit`) on
+the full train set (1,151,951 rows, 269 columns). Converged in 17 iterations. Standard MLE was
+tried first and stalled (a rare-category near-separation, score near 0 but step stuck) --
+switched straight to Firth after confirming the same pattern at `--sample-frac 0.2`, where Firth
+converged cleanly in 12 iterations.
+
+**Val-set metrics, never only overall:**
+
+| | n | positive rate | PR-AUC | ROC-AUC | Brier | mean predicted |
+|---|---|---|---|---|---|---|
+| Overall | 287,988 | 14.88% | 0.557 | 0.772 | 0.088 | 0.148 |
+| Carrier | 179,028 | 10.07% | 0.141 | 0.612 | 0.089 | 0.100 |
+| Outpatient | 92,321 | 24.01% | 0.815 | 0.893 | 0.079 | 0.238 |
+| DME | 16,639 | 16.04% | 0.262 | 0.706 | 0.125 | 0.163 |
+
+Calibration is tight everywhere (mean predicted probability within ~0.2 points of the actual rate
+in every claim type) -- expected, since the claim-type dummies act as per-claim-type intercepts.
+Outpatient is the easiest claim type by a wide margin (its `deprecated_code` rule is close to
+deterministic); carrier is the hardest, consistent with carrier's risk factors
+(`missing_hcpcs`, `provider_outlier`) being the weakest-grounded ones in `denial_reasons.py`, not
+a sign of a modeling problem.
+
+### Train/val encoding consistency (new problem, not faced by the Chow test)
+
+The Chow test only ever needed train. This is the first script needing two splits in the same
+feature space, which raised two real risks, both fixed:
+1. **Categorical vocabulary drift.** `top_n_encode`/`frequency_encode` in
+   `build_chow_design_matrix.py` gained optional `categories=`/`freq_map=` params. Train fits them
+   once (`return_encoders=True`); val reuses train's exact categories and provider frequencies,
+   not its own -- a code just inside val's own top-20 but outside train's would otherwise silently
+   get its own dummy instead of falling into `__OTHER__`, against coefficients that were never fit
+   for it.
+2. **Per-split constancy decisions.** The rank-deficiency fix that drops claim-type-determined
+   columns could, in principle, disagree between splits (a field constant in train's DME rows by
+   chance, not val's). Train's decision is now carried in the `encoders` dict and reused verbatim
+   on val, with a printed note (not a build failure) if val's own data would have disagreed.
+3. **Belt and suspenders:** val's final design matrix is reindexed to train's exact column list
+   (fill 0) before prediction, regardless of the above. In this run: 1 column
+   (`dgns_N186__x__carrier`, the single-claim interaction from the open minimum-support decision)
+   existed in train and not val -- correctly zero-filled.
+
+### One fixed bug: an out-of-memory kill on the first full-size run
+
+The first full-run attempt built val's design matrix (train_intermediate + train_mixed + X_train
+DataFrame + X_val DataFrame) all before fitting, then converted X_train to a fresh float64 numpy
+array for `ChunkedLogit` -- at that moment X_train, X_val, and the new float64 copy were all alive
+together, and the container's memory cgroup killed the process at 6.1 GB anon-rss. Fixed by
+reordering: build train's matrix, convert to array, fit, discard the array -- THEN build val's
+matrix, only once training's large arrays are gone. This follows the same discipline
+`fit_chow_test.py` already used for its own two design matrices; this script just hadn't needed it
+before doing a train+val combination for the first time. Full run after the fix: no OOM, ~4
+minutes.
+
+### Housekeeping
+
+- Result files: `reports/baseline_model_results__firth.txt` (readable report),
+  `reports/baseline_model_fit__firth.json` (coefficients, encoders, metrics -- for reuse when
+  writing up the XGBoost comparison later).
+- `--sample-frac 0.02` and `0.2` smoke tests both run and checked before the full run, per
+  standing practice.
+
+### Next
+
+XGBoost on `train_model.parquet`/`val_model.parquet`, same metrics (PR-AUC primary, per claim
+type), then SHAP.

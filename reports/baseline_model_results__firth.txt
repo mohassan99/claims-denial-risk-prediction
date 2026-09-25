@@ -1,0 +1,10 @@
+Phase 2 baseline mixed logistic model -- val set results
+==============================================================
+Method: firth
+Design: 269 columns (5 Chow-selected variables interacted by claim type, 6 pooled, all claim-type-exclusive covariates unaffected)
+Train: 1,151,951 rows, log-likelihood -355965.7142, 17 Newton iterations
+
+OVERALL        n= 287,988  pos_rate=0.1488  PR-AUC=0.5574  ROC-AUC=0.7724  Brier=0.0880  mean_p=0.1481
+CARRIER        n= 179,028  pos_rate=0.1007  PR-AUC=0.1407  ROC-AUC=0.6124  Brier=0.0892  mean_p=0.1002
+OUTPATIENT     n=  92,321  pos_rate=0.2401  PR-AUC=0.8154  ROC-AUC=0.8927  Brier=0.0791  mean_p=0.2384
+DME            n=  16,639  pos_rate=0.1604  PR-AUC=0.2616  ROC-AUC=0.7059  Brier=0.1248  mean_p=0.1628
