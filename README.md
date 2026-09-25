@@ -75,3 +75,22 @@ column-by-column classification once cross-checks caught it missing real cases â
 covariates that looked shared but turned out to be empirically claim-type-specific once actual
 per-category variance was checked, not just null rates. Full reasoning in
 `data/FEATURE_ENGINEERING.md` Section 6. Fitting code and results not yet built.
+
+*Progress, 2026-09-24:* first valid Chow-test result. On the full train set (1.15M claims),
+Firth's penalized likelihood-ratio test rejects pooled coefficients: **LR = 4,732.5 on 158 df**.
+df is cross-checked four independent ways, and both design matrices are verified full rank.
+Per-variable follow-up tests (Holm-adjusted) show 6 of 11 shared variables need claim-type-specific
+effects: HCPCS, principal diagnosis, provider frequency, state, service count, and carrier cash
+deductible. The other 5 can be pooled.
+
+Getting there meant catching two silent failures in the earlier fitting code, now fixed and kept
+on the record:
+- The optimizer never left its starting point. Every earlier log-likelihood equals nÂ·ln(0.5)
+  exactly.
+- Two separately-penalized Firth fits don't form Firth's likelihood-ratio test.
+
+The fix is a memory-bounded Newton-Raphson solver (`src/chunked_logit.py`), validated against
+`firthmodels` and `statsmodels`. It puts the test in "full model, tested coefficients = 0" form.
+The work also surfaced that 34 of 37 carrier procedure codes have zero denials. The likely cause
+is two label rules that key on a provider field that is empty for every carrier claim. That is an
+open label decision, not yet changed. Full trail in `data/FEATURE_ENGINEERING.md` Section 6.

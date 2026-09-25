@@ -1259,3 +1259,40 @@ neither risk factor can ever fire for a carrier claim. That leaves carrier denia
 `missing_hcpcs` (the `__MISSING__` cell) and code-specific rules that apply to just three codes.
 The carrier denial rate is 5.6%, vs. 24.1% outpatient and 16.3% DME. Any fix changes `is_denied`
 and invalidates every result above; see `reports/SESSION_LOG.md`.
+
+### Stage 2: which shared covariates actually differ by claim type (2026-09-24)
+
+Stage 1 rejected H0, so Section 3's Stage 2 ran (`src/fit_chow_stage2.py`, Firth, full train set).
+**Each variable is tested on its own.** Only that variable's tested coefficients are held at 0,
+with the full model's penalty kept, which is the same penalized LR as Stage 1 applied to one block.
+The three categorical groups are tested as whole variables. The 11 variables' df sum to exactly
+Stage 1's 158. Every constrained fit converged. p-values are Holm-adjusted across the 11 tests.
+The machinery was checked on the 0.02 data against `firthmodels`' own `.lrt()`, and the p-values
+match to ~1e-11.
+
+| Variable | df | LR | Holm p | Verdict |
+|---|---|---|---|---|
+| HCPCS_CD | 10 | 3,260.4 | ≈ 0 | interact |
+| PRNCPAL_DGNS_CD | 40 | 825.4 | 2.5e-146 | interact |
+| prvdr_num_freq | 1 | 158.7 | 1.9e-35 | interact |
+| provider_state | 100 | 327.9 | 3.8e-25 | interact |
+| LINE_SRVC_CNT | 1 | 21.0 | 3.2e-05 | interact |
+| CARR_CLM_CASH_DDCTBL_APLD_AMT | 1 | 8.6 | 0.020 | interact |
+| NCH_CARR_CLM_SBMTD_CHRG_AMT | 1 | 6.2 | 0.065 | pool |
+| LINE_BENE_PTB_DDCTBL_AMT | 1 | 4.2 | 0.16 | pool |
+| LINE_ALOWD_CHRG_AMT | 1 | 0.8 | 1 | pool |
+| LINE_NCH_PMT_AMT | 1 | 0.4 | 1 | pool |
+| NCH_CARR_CLM_ALOWD_AMT | 1 | 0.3 | 1 | pool |
+
+**How to read this before building the mixed model.**
+- **HCPCS_CD's huge LR is at least partly the carrier separation above, not a pricing or
+  clinical effect.** 34 of 37 carrier codes can't be denied at all under the current label. So
+  any HCPCS code shared with outpatient necessarily "behaves differently" in carrier.
+- **`prvdr_num_freq` compares outpatient and DME only**, because `PRVDR_NUM` is absent in carrier.
+- **The five "pool" verdicts are all carrier/DME dollar fields.** Their DME slopes are not
+  distinguishable from their carrier slopes.
+
+**Not acted on yet.** Section 3's mixed model is: interact the 6 rejected variables, and pool the
+5 others. It should wait for the `provider_outlier` / `duplicate_claim` decision
+(`reports/SESSION_LOG.md`). If carrier's label changes, the Stage 1 and Stage 2 results change
+with it.
