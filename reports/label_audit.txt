@@ -12,11 +12,11 @@ Risk-factor firing rate by claim type (every cell checked against
 denial_reasons.RISK_FACTOR_EXPECTATION -- this build passed):
                        carrier.csv  dme.csv  outpatient.csv
 missing_hcpcs               0.5439   0.0000          0.0000
-deprecated_code              0.0000   0.0000          0.1669
-duplicate_claim              0.0000   0.0001          0.0017
-missing_prior_auth           0.0000   0.0138          0.0000
-dx_procedure_mismatch        0.0599   0.6410          0.1310
-provider_outlier              0.4175   0.2593          0.5796
+deprecated_code             0.0000   0.0000          0.1669
+duplicate_claim             0.0000   0.0001          0.0017
+missing_prior_auth          0.0000   0.0138          0.0000
+dx_procedure_mismatch       0.0599   0.6410          0.1310
+provider_outlier            0.4175   0.2593          0.5796
 
 Claim-type x HCPCS cells with >= 1,000 claims and ZERO denials: 0
 (none)
