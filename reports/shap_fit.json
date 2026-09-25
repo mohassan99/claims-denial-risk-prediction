@@ -97,7 +97,6 @@
       "corr_log_train_count_vs_mean_abs_shap": 0.23404125304898832,
       "mean_abs_shap_low_train_count_half": 0.10236477851867676,
       "mean_abs_shap_high_train_count_half": 0.27407875657081604
-    },
-    "PRVDR_NUM_placeholder_unused": null
+    }
   }
 }
