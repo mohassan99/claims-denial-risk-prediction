@@ -1,7 +1,7 @@
 # Claims Denial Risk Prediction — Claude Code instructions
 
 Portfolio project: predict claim-denial risk on CMS Synthetic Medicare Claims (carrier,
-outpatient, DME), with an engineered noisy-OR label (`is_denied`, ~12.1%). Phases: 0 setup,
+outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since the 2026-09-24 carrier fix; was 12.1%). Phases: 0 setup,
 1 data/EDA (done), **2 baseline logistic + Chow test (in progress)** then XGBoost + SHAP,
 3 Azure ML deploy, 4 GenAI layer, 5 report/video, 6 README/portfolio.
 
@@ -38,6 +38,8 @@ outpatient, DME), with an engineered noisy-OR label (`is_denied`, ~12.1%). Phase
 
 - You commit and push from the local repo now (the old "Claude pushes via GitHub API, user pulls"
   pattern no longer applies). **Always `git pull origin main` before pushing.**
+- If working from a cloud workspace that can't push: commit there, deliver a `git bundle` to the
+  repo folder, and have the user run `git pull origin main && git pull <bundle> main && git push`.
 - Commit incrementally, one verified change per commit, with messages that explain *why*.
 - After each phase step, append to README's Progress section (append only, never rewrite it).
 - Never commit secrets; `.env` stays gitignored. No coursework references anywhere in the repo.
@@ -60,6 +62,19 @@ outpatient, DME), with an engineered noisy-OR label (`is_denied`, ~12.1%). Phase
 - Before writing code against a third-party package, verify its actual installed API
   (`inspect.signature`, docstring). Before relying on a package name, confirm it exists on PyPI.
 - Test new design-matrix logic on synthetic data with planted cases before running on real data.
+- **Audit every rule, feature and check per claim type, never only overall** (added 2026-09-24).
+  An overall rate can look right while one claim type is silently exempt: that is how
+  `provider_outlier`/`duplicate_claim` never fired on carrier for two weeks. Concretely:
+  - before any `groupby` on ID/key columns, confirm each key is populated in every claim type
+    (`denial_rules.require_key_coverage`);
+  - a new risk factor must get a `denial_reasons.RISK_FACTOR_EXPECTATION` row for every claim
+    type ("fires" or "zero: <verified reason>"), or the label build fails;
+  - any large cell with an exact 0% or 100% rate (claim type × code, etc.) must be explained in
+    writing before moving on (`reports/label_audit.txt` lists them every build).
+- A gap between claim types that nobody can explain (e.g. carrier 5.6% vs outpatient 24%) is a
+  finding to chase down, not background.
+- Any cached fit/intermediate must be keyed to the exact label it was built from (the Chow scripts
+  fingerprint the label vector); never reuse a cache across a label rebuild.
 
 ## Documentation conventions
 
@@ -69,54 +84,49 @@ outpatient, DME), with an engineered noisy-OR label (`is_denied`, ~12.1%). Phase
 - `data/TARGET_DEFINITION.md` covers the label; `data/data_dictionary.md` is a column reference.
 - Read the relevant doc section before re-deriving anything.
 
-## Current state (as of 2026-09-24)
+## Current state (as of 2026-09-24, end of session)
+
+**Label:** fixed 2026-09-24. `provider_outlier` / `duplicate_claim` now key on the billing NPI for
+carrier claims (`denial_rules.build_provider_key`). Rate 14.9% overall (carrier 10.0%, outpatient
+24.1%, DME 16.2%), `CALIBRATION_SCALE` still 1.4. `build_target_and_split.py` writes
+`reports/label_audit.txt` and fails if any risk factor x claim type cell breaks
+`RISK_FACTOR_EXPECTATION`. See TARGET_DEFINITION.md's 2026-09-24 addendum.
 
 Key scripts in `src/`:
-- `build_chow_design_matrix.py` — builds restricted (pooled) and unrestricted (claim-type-
-  interacted) design matrices; now removes every rank-deficiency dependency (fixes A–D, see its
-  docstring and FEATURE_ENGINEERING Section 6).
-- `fit_chow_test.py` — fits both, LR test. `--method {standard,firth}`,
-  `--exclude-separating-codes`, `--sample-frac`, `--restricted-only` / `--skip-restricted`.
-  Refuses to fit unless both matrices are full rank and name-based df == column-count diff ==
-  rank diff. Rejects restricted-fit summaries saved before 2026-09-24 (no `rank` field).
-- `check_rank.py`, `explain_dependencies.py` — rank diagnostics; the latter writes each
-  dependency as an exact equation.
-- `diagnose_separation.py`, `verify_provider_outlier_mechanism.py` — separation diagnostics.
+- `build_chow_design_matrix.py` — restricted/unrestricted design matrices (rank fixes A–D).
+- `chunked_logit.py` — memory-bounded Newton-Raphson logistic (ordinary or Firth), with
+  coefficients optionally held at 0 under the full model's penalty. Validated against
+  firthmodels and statsmodels. Peak ~4.9 GB at full size.
+- `fit_chow_test.py` — Stage 1. Reparameterizes the unrestricted design as [restricted, Z] and
+  tests Z = 0 (Firth = Heinze-Schemper penalized LR). Enforces full rank, span equality, df
+  agreement (4 ways), convergence, and a label fingerprint on the cached restricted fit.
+- `fit_chow_stage2.py` — per-variable penalized LR tests, Holm-adjusted, resumable.
+- statsmodels' lbfgs is NOT used for fitting anymore: it never left beta = 0 on these matrices.
 
-Verified on real data (`--sample-frac 0.2`): all four matrices full rank — restricted 117
-cols (111 with exclusion), unrestricted 275 (263 with exclusion). Expected df = 275 − 117 = 158.
-
-Separation (confirmed): 6 HCPCS codes (94010, 96156, 99401, 99408, 99495, M1069) have an exact
-0.000 denial rate within carrier, full population. Two fixes are implemented, meant to be compared:
-Firth (`--method firth`) vs standard MLE with `--exclude-separating-codes`.
+**Results on the corrected label (full train set):** Firth LR 2,642.1 on 158 df, H0 rejected.
+Standard MLE agrees within 0.1% but is formally non-convergent because of one claim (dx N186 x
+carrier). Stage 2: interact provider_state, HCPCS_CD, PRNCPAL_DGNS_CD, prvdr_num_freq,
+CARR_CLM_CASH_DDCTBL_APLD_AMT; pool the other 6. `--exclude-separating-codes` is obsolete (no
+separation left). Details in FEATURE_ENGINEERING.md Section 6's last addendum.
 
 ## Task queue (do in order; log each in SESSION_LOG.md)
 
-1. **Account for the restricted matrix's extra dropped column.** Explained dependencies predict 118
-   restricted columns; real data gives 117. Print `build_chow_design_matrix()`'s
-   `df.attrs["rank_fix_report"]` on a 0.2 sample and diff the dropped lists against
-   FEATURE_ENGINEERING Section 6's table. Identify the extra column and whether it was a
-   `zero_with_gaps` case (a present 0 conflated with absence by the zero-fill). Document it.
-2. **Smoke tests** (`--sample-frac 0.02`): `--method firth`, then `--method standard
-   --exclude-separating-codes`. Check convergence, finite distinct log-likelihoods, LR ≥ 0.
-3. **Full staged runs** for both methods (restricted-only, then skip-restricted).
-4. **Compare** the two: reject/not-reject agreement, LR, p, df. Report exclusion as primary if they
-   disagree (Firth's chi-square under true separation is simulation-validated, not proven; see
-   `_fit_logit_firth` docstring). Write results into FEATURE_ENGINEERING Section 6 and README.
-5. If H0 is rejected: Stage 2 per-variable LR tests (FEATURE_ENGINEERING Section 3).
-6. Then Phase 2 continues: baseline metrics (PR-AUC), XGBoost, SHAP (see project Build Guide).
+1. **Build the Phase 2 baseline mixed model** per Section 3: claim_type dummies + the 5
+   interacted variables as interaction terms + the 6 pooled variables as single columns.
+   Fit with `chunked_logit` (Firth or standard), train set.
+2. **Baseline metrics on val**: PR-AUC (primary, 14.9% positives), ROC-AUC, calibration, and
+   per-claim-type breakdown (never only overall).
+3. **XGBoost** on `train_model.parquet`, same metrics, per claim type.
+4. **SHAP**, then Phase 3.
 
 ## Open decisions for the user (don't act on these alone)
 
-- **Possible target-construction bug in `provider_outlier`.** The presence audit shows
-  `PRVDR_NUM` is 100% null for all carrier claims. If `rule_provider_outlier` in
-  `denial_rules.py` groups on `PRVDR_NUM`, pandas' `groupby(dropna=True)` means the factor can
-  never fire for any carrier claim (~62% of data). First confirm which column the rule groups on
-  (read the function). If confirmed, write it up with options (e.g. group carrier claims on
-  `CARR_NUM` or a carrier provider field) and wait for the user; changing it changes `is_denied`
-  and invalidates downstream results. Also correct `fit_chow_test.py`'s docstring, which says
-  PRVDR_NUM is NaN "for these specific claims" — it's NaN for all carrier claims.
+- **CALIBRATION_SCALE**: kept at 1.4 (rate 14.9%, inside the 10–15% target) so the fix changed
+  carrier labels only. Retuning to ~1.0 (~12.4%) would also move every outpatient/DME label.
+- **Minimum support for interaction terms**: dx N186 x carrier has one claim. A rule like "skip
+  interaction terms with < N nonzero rows" would make standard MLE converge, but changes the
+  Chow test's tested set and df.
 - 3 fixed-constant fields (`CARR_CLM_PMT_DNL_CD`, `CLM_DISP_CD`, `CLM_MDCR_NON_PMT_RSN_CD`):
-  move to `build_features.py` `DROP_COLUMNS` now, or wait until XGBoost?
+  move to `build_features.py` `DROP_COLUMNS`?
 - ~130 raw columns excluded from the baseline pending an encoding decision (see `_PENDING_*` in
   `fit_chow_test.py`); secondary diagnosis/procedure codes are the one group likely worth encoding.
