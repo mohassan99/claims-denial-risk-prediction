@@ -95,6 +95,8 @@ PROCESSED_DIR = Path(__file__).resolve().parents[1] / "data" / "processed"
 REPORTS_DIR = Path(__file__).resolve().parents[1] / "reports"
 TRAIN_PATH = PROCESSED_DIR / "train_model.parquet"
 VAL_PATH = PROCESSED_DIR / "val_model.parquet"
+MODEL_PATH = REPORTS_DIR / "xgboost_model.json"
+MODEL_META_PATH = REPORTS_DIR / "xgboost_model_meta.json"
 
 _CLAIM_TYPES = ("carrier", "outpatient", "dme")
 
@@ -208,6 +210,16 @@ def main() -> None:
     model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
     best_iter = model.best_iteration
     print(f"    early-stopped at {best_iter} trees (of {args.n_estimators} allowed, patience {args.early_stopping_rounds})")
+
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    model.save_model(MODEL_PATH)
+    MODEL_META_PATH.write_text(json.dumps({
+        "colnames": list(X_train.columns),
+        "cat_cols": cat_cols,
+        "categories_by_col": {k: list(v) for k, v in categories_by_col.items()},
+        "best_iteration": int(best_iter),
+    }, indent=2))
+    print(f"    saved fitted model to {MODEL_PATH} (+ column/category metadata to {MODEL_META_PATH})")
 
     print("\n=== Evaluating on val ===")
     p_val = model.predict_proba(X_val)[:, 1]

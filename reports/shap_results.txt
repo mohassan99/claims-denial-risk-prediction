@@ -1,0 +1,72 @@
+Phase 2 XGBoost -- SHAP explainability
+==============================================================
+Model: 89 trees (loaded from xgboost_model.json, verified against reported val metrics)
+SHAP sample: 20,000 of 287,988 val rows (stratified by label, seed=42)
+
+Top 20 features by mean |SHAP| (overall):
+  HCPCS_CD                                 0.7813
+  LINE_PLACE_OF_SRVC_CD                    0.1655
+  CARR_CLM_BLG_NPI_NUM                     0.1182
+  PRNCPAL_DGNS_CD                          0.0929
+  PRVDR_NUM                                0.0865
+  LINE_NUM                                 0.0751
+  ORG_NPI_NUM                              0.0704
+  TAX_NUM                                  0.0679
+  CARR_LINE_PRCNG_LCLTY_CD                 0.0341
+  CARR_LINE_CLIA_LAB_NUM                   0.0218
+  CARR_CLM_RFRNG_PIN_NUM                   0.0131
+  provider_state                           0.0116
+  PRF_PHYSN_UPIN                           0.0094
+  ICD_DGNS_CD6                             0.0093
+  ICD_DGNS_CD20                            0.0092
+  ICD_DGNS_CD3                             0.0085
+  ICD_DGNS_CD4                             0.0083
+  CARR_NUM                                 0.0072
+  ICD_DGNS_CD12                            0.0070
+  REV_CNTR_TOT_CHRG_AMT                    0.0068
+
+Top 10 by mean |SHAP|, per claim type (never only overall):
+  CARRIER:
+    HCPCS_CD                               0.4598
+    LINE_PLACE_OF_SRVC_CD                  0.2249
+    CARR_CLM_BLG_NPI_NUM                   0.1596
+    PRNCPAL_DGNS_CD                        0.0996
+    LINE_NUM                               0.0953
+    TAX_NUM                                0.0887
+    ORG_NPI_NUM                            0.0460
+    CARR_LINE_PRCNG_LCLTY_CD               0.0433
+    CARR_LINE_CLIA_LAB_NUM                 0.0195
+    PRVDR_NUM                              0.0164
+  OUTPATIENT:
+    HCPCS_CD                               1.3910
+    PRVDR_NUM                              0.2183
+    ORG_NPI_NUM                            0.1087
+    PRNCPAL_DGNS_CD                        0.0785
+    CARR_CLM_BLG_NPI_NUM                   0.0477
+    LINE_PLACE_OF_SRVC_CD                  0.0424
+    TAX_NUM                                0.0270
+    LINE_NUM                               0.0241
+    CARR_LINE_CLIA_LAB_NUM                 0.0203
+    CARR_LINE_PRCNG_LCLTY_CD               0.0188
+  DME:
+    HCPCS_CD                               0.8119
+    LINE_PLACE_OF_SRVC_CD                  0.2161
+    LINE_NUM                               0.1422
+    ORG_NPI_NUM                            0.1154
+    PRNCPAL_DGNS_CD                        0.1017
+    PRVDR_NUM                              0.1001
+    TAX_NUM                                0.0749
+    CARR_CLM_BLG_NPI_NUM                   0.0701
+    CARR_LINE_CLIA_LAB_NUM                 0.0546
+    LINE_PRMRY_ALOWD_CHRG_AMT              0.0283
+
+Provider-identifier question -- correlation of |mean SHAP| with log(train claim count),
+per category of each flagged ID column. Positive/near-zero => bigger claim history gives
+at least as much SHAP weight (consistent with a real provider-risk signal). Negative =>
+low-claim-count categories carry more SHAP weight (consistent with memorizing small-sample
+noise rather than a generalizable pattern).
+  ORG_NPI_NUM              corr=+0.017  low-claim-count half mean|SHAP|=0.0818  high-claim-count half mean|SHAP|=0.0818  (n_categories=4683, overall mean|SHAP|=0.0704)
+  TAX_NUM                  corr=-0.186  low-claim-count half mean|SHAP|=0.1388  high-claim-count half mean|SHAP|=0.0901  (n_categories=1314, overall mean|SHAP|=0.0679)
+  CARR_CLM_BLG_NPI_NUM     corr=+0.065  low-claim-count half mean|SHAP|=0.1608  high-claim-count half mean|SHAP|=0.1587  (n_categories=3152, overall mean|SHAP|=0.1182)
+  PRF_PHYSN_UPIN           corr=-0.150  low-claim-count half mean|SHAP|=0.0422  high-claim-count half mean|SHAP|=0.0324  (n_categories=145, overall mean|SHAP|=0.0094)
+  PRVDR_NUM                corr=+0.234  low-claim-count half mean|SHAP|=0.1024  high-claim-count half mean|SHAP|=0.2741  (n_categories=2440, overall mean|SHAP|=0.0865)

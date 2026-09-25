@@ -388,3 +388,113 @@ by design (see `fit_xgboost.py`'s docstring), so both copies are present and equ
 
 SHAP on the XGBoost model -- in particular the provider-identifier question above -- then Phase 3
 (Azure ML deploy).
+
+## 2026-09-25 (continued): SHAP on the XGBoost model -- Phase 2 complete
+
+### What I did
+
+1. **Model persistence.** Added model-saving to `fit_xgboost.py`: right after fitting,
+   `model.save_model(reports/xgboost_model.json)` (native XGBoost booster format) plus a metadata
+   JSON (`reports/xgboost_model_meta.json` -- column order, which columns are categorical, train's
+   exact category list per categorical column, best iteration). The booster file alone doesn't
+   carry the pandas category-dtype mapping needed to reconstruct feature vectors identically, so
+   both are needed together. Re-ran the full fit (no `--sample-frac`) to produce these -- it
+   reproduced identical results to the earlier full run (89 trees, same metrics to displayed
+   precision), confirming the save addition didn't change fitting behavior.
+2. **Synthetic-data validation first** (standing practice for new modeling-adjacent code, before
+   touching real data): built a small synthetic XGBoost model with a categorical column, a numeric
+   column with injected NaN, and planted signal + label noise, then confirmed
+   `shap.TreeExplainer(model, feature_perturbation="tree_path_dependent")`'s SHAP values sum to
+   (predicted margin - expected_value) to ~1.67e-6 -- i.e. the explainer correctly handles
+   XGBoost's native categorical splits and missing-value routing.
+3. **`src/fit_shap.py` (new).** Loads the saved model + metadata -- does NOT refit -- then, before
+   anything else, re-verifies the loaded model reproduces `reports/xgboost_fit.json`'s already-
+   reported val metrics (PR-AUC, ROC-AUC, Brier, mean predicted) to 1e-6. This closes a real risk:
+   without it, SHAP could silently explain a subtly different model than the one already written
+   up (stale file, category-list mismatch, etc.) and nobody would notice. It passed cleanly.
+   Then draws a 20,000-row sample of val, stratified by label (same idea as
+   `fit_chow_test.py`'s streaming stratified sampler, but done in memory since val already fits),
+   and runs `TreeExplainer` on it. Sanity-checked per run: `shap_values.sum(axis=1) +
+   expected_value` reconstructs `model.predict(X, output_margin=True)` to 5.2e-6 max error on the
+   full sample -- the pipeline is explaining the right model correctly.
+4. Reports mean |SHAP| importance overall and per claim type (never only overall, per this
+   project's standing audit rule), and answers the provider-ID question quantitatively: for each
+   of the 5 flagged raw ID columns (ORG_NPI_NUM, TAX_NUM, CARR_CLM_BLG_NPI_NUM, PRF_PHYSN_UPIN,
+   PRVDR_NUM), correlates each category's mean |SHAP| in the sample against log(its claim count in
+   train).
+5. Hit one bug along the way: the JSON writer crashed on `recon_err` (a numpy float32 scalar,
+   `TypeError: Object of type float32 is not JSON serializable`) -- fixed with an explicit
+   `float()` cast, re-ran the smoke test (`--sample-size 2000`) to confirm the fix, then ran the
+   full 20,000-row pass.
+
+### Results: SHAP overall and per claim type
+
+Loaded model verified against reported val metrics before explaining (match to 1e-6). SHAP
+reconstruction error 5.245e-6 (max, over the full sample).
+
+Top features by mean |SHAP| (overall): HCPCS_CD 0.781, LINE_PLACE_OF_SRVC_CD 0.166,
+CARR_CLM_BLG_NPI_NUM 0.118, PRNCPAL_DGNS_CD 0.093, PRVDR_NUM 0.087, LINE_NUM 0.075, ORG_NPI_NUM
+0.070, TAX_NUM 0.068, CARR_LINE_PRCNG_LCLTY_CD 0.034, CARR_LINE_CLIA_LAB_NUM 0.022. Full top-20 and
+per-claim-type top-10 tables (carrier/outpatient/dme) in `reports/shap_results.txt` /
+`reports/shap_fit.json`.
+
+**Finding 1 -- gain and SHAP disagree for one feature.** `LINE_PRMRY_ALOWD_CHRG_AMT` was gain-based
+importance's #2 feature (0.199, previous session) but doesn't appear anywhere in SHAP's overall
+top 20; it only shows up at #10 within DME specifically (0.028). This is not a leakage retraction
+-- already verified last session to be an exact DME-only duplicate of a feature the baseline
+already used -- but it is a genuine methodological finding worth documenting: gain sums total
+split-quality improvement, which a feature can dominate via a few very effective splits even if
+its typical per-prediction contribution is small; SHAP reflects actual average per-prediction
+impact and is the more trustworthy "what does the model actually rely on" answer of the two. Going
+forward, this project's top-line feature-importance claims should cite SHAP, not gain, when they
+disagree -- both are kept in their respective report files for anyone who wants to see the
+divergence directly.
+
+**Finding 2 -- the provider-ID question, answered per column (not one verdict).** Correlation of
+|mean SHAP| with log(train claim count), per flagged column:
+
+| Column | corr | low-count-half mean\|SHAP\| | high-count-half mean\|SHAP\| | n categories | overall mean\|SHAP\| |
+|---|---|---|---|---|---|
+| PRVDR_NUM | +0.234 | 0.102 | 0.274 | 2,440 | 0.087 |
+| CARR_CLM_BLG_NPI_NUM | +0.065 | 0.161 | 0.159 | 3,152 | 0.118 |
+| ORG_NPI_NUM | +0.017 | 0.082 | 0.082 | 4,683 | 0.070 |
+| PRF_PHYSN_UPIN | -0.150 | 0.042 | 0.032 | 145 | 0.009 |
+| TAX_NUM | -0.186 | 0.139 | 0.090 | 1,314 | 0.068 |
+
+Reading: `PRVDR_NUM` is the clearest case of a genuine, volume-supported signal -- providers with
+more claims in train get *more* SHAP weight (0.274 vs 0.102), not less, which is what you'd expect
+if the model is picking up a real, statistically-supported "this provider's claims get denied more
+often" pattern. It corroborates the baseline model's large `prvdr_num_freq` coefficient -- same
+underlying signal, just pre-aggregated there vs. raw-split here. `CARR_CLM_BLG_NPI_NUM` and
+`ORG_NPI_NUM` are essentially flat -- no evidence of memorization, but no strong evidence of a
+volume-driven signal either; call these unresolved rather than cleared. `TAX_NUM` and
+`PRF_PHYSN_UPIN` both show the negative correlation the memorization concern predicted -- lower-
+volume categories carrying disproportionately more SHAP weight -- but both are minor overall
+contributors (mean |SHAP| 0.068 and 0.009 respectively, well below HCPCS_CD's 0.781 or even
+PRVDR_NUM's 0.087), so this is a real but small-magnitude finding: worth naming honestly in the
+writeup, not a reason to distrust the model's headline PR-AUC/ROC-AUC numbers, since these two
+features aren't carrying much of the model's overall weight to begin with.
+
+**Bottom line on task queue item 4:** the raw provider-ID features are not uniformly one thing.
+Recommend keeping all 5 in the model (none is large enough to meaningfully skew results even in
+the worst case, and PRVDR_NUM in particular is a genuine asset), but flagging TAX_NUM and
+PRF_PHYSN_UPIN's memorization signature explicitly in the final written report/interpretation
+deliverable (Phase 5) rather than treating XGBoost's feature list as self-evidently trustworthy.
+
+### Housekeeping
+
+- New files: `src/fit_shap.py`, `reports/shap_results.txt`, `reports/shap_fit.json`. Modified:
+  `src/fit_xgboost.py` (model-saving addition; re-run confirmed identical `xgboost_results.txt`/
+  `xgboost_fit.json` content to before, so those two files are unchanged).
+- `reports/xgboost_model.json` (~21.8 MB) and `reports/xgboost_model_meta.json` (~605 KB) are
+  real, needed on disk (`fit_shap.py` requires them), but are gitignored rather than pushed: this
+  cloud session's GitHub-push path requires reading a file's exact content into the tool call, and
+  a file this size doesn't fit that discipline. Both are fully deterministic
+  (`random_state=42`) from `train_model.parquet` -- `python src/fit_xgboost.py` regenerates them
+  byte-for-byte identically on any machine with the pinned deps. Not a data-loss risk, same
+  reasoning as `data/processed/` already being gitignored for regenerable large files.
+- This closes out Phase 2 (baseline + Chow test + XGBoost + SHAP), per the top-of-file phase list.
+
+### Next
+
+Phase 3: Azure ML deploy. No open decision blocking it as of this entry.

@@ -1,0 +1,103 @@
+{
+  "sample_size": 20000,
+  "seed": 42,
+  "shap_reconstruction_max_error": 5.245208740234375e-06,
+  "mean_abs_shap_overall_top20": {
+    "HCPCS_CD": 0.7812871932983398,
+    "LINE_PLACE_OF_SRVC_CD": 0.1654718816280365,
+    "CARR_CLM_BLG_NPI_NUM": 0.11819776892662048,
+    "PRNCPAL_DGNS_CD": 0.09292362630367279,
+    "PRVDR_NUM": 0.08653111010789871,
+    "LINE_NUM": 0.0750853568315506,
+    "ORG_NPI_NUM": 0.0703575387597084,
+    "TAX_NUM": 0.06794721633195877,
+    "CARR_LINE_PRCNG_LCLTY_CD": 0.03409148380160332,
+    "CARR_LINE_CLIA_LAB_NUM": 0.02181268483400345,
+    "CARR_CLM_RFRNG_PIN_NUM": 0.013117819093167782,
+    "provider_state": 0.011640268377959728,
+    "PRF_PHYSN_UPIN": 0.009418494068086147,
+    "ICD_DGNS_CD6": 0.00930051039904356,
+    "ICD_DGNS_CD20": 0.009209145791828632,
+    "ICD_DGNS_CD3": 0.008501953445374966,
+    "ICD_DGNS_CD4": 0.008296346291899681,
+    "CARR_NUM": 0.007189467549324036,
+    "ICD_DGNS_CD12": 0.007012735586613417,
+    "REV_CNTR_TOT_CHRG_AMT": 0.006819710601121187
+  },
+  "mean_abs_shap_by_claim_type_top10": {
+    "carrier": {
+      "HCPCS_CD": 0.4597843885421753,
+      "LINE_PLACE_OF_SRVC_CD": 0.22493471205234528,
+      "CARR_CLM_BLG_NPI_NUM": 0.1596187800168991,
+      "PRNCPAL_DGNS_CD": 0.09959062933921814,
+      "LINE_NUM": 0.09528672695159912,
+      "TAX_NUM": 0.0886949747800827,
+      "ORG_NPI_NUM": 0.04599094018340111,
+      "CARR_LINE_PRCNG_LCLTY_CD": 0.04333047568798065,
+      "CARR_LINE_CLIA_LAB_NUM": 0.019472293555736542,
+      "PRVDR_NUM": 0.016378501430153847
+    },
+    "outpatient": {
+      "HCPCS_CD": 1.3909661769866943,
+      "PRVDR_NUM": 0.2183089703321457,
+      "ORG_NPI_NUM": 0.10874522477388382,
+      "PRNCPAL_DGNS_CD": 0.07854928076267242,
+      "CARR_CLM_BLG_NPI_NUM": 0.04774107784032822,
+      "LINE_PLACE_OF_SRVC_CD": 0.04240565747022629,
+      "TAX_NUM": 0.02696901187300682,
+      "LINE_NUM": 0.024122292175889015,
+      "CARR_LINE_CLIA_LAB_NUM": 0.020287202671170235,
+      "CARR_LINE_PRCNG_LCLTY_CD": 0.018772557377815247
+    },
+    "dme": {
+      "HCPCS_CD": 0.8118636608123779,
+      "LINE_PLACE_OF_SRVC_CD": 0.2160632312297821,
+      "LINE_NUM": 0.14224773645401,
+      "ORG_NPI_NUM": 0.11536101251840591,
+      "PRNCPAL_DGNS_CD": 0.10174153000116348,
+      "PRVDR_NUM": 0.10005172342061996,
+      "TAX_NUM": 0.07489179074764252,
+      "CARR_CLM_BLG_NPI_NUM": 0.07009202241897583,
+      "CARR_LINE_CLIA_LAB_NUM": 0.054589297622442245,
+      "LINE_PRMRY_ALOWD_CHRG_AMT": 0.02833371050655842
+    }
+  },
+  "provider_id_question": {
+    "CARR_CLM_BLG_NPI_NUM": {
+      "mean_abs_shap_overall": 0.11819776892662048,
+      "n_categories_in_sample": 3152,
+      "corr_log_train_count_vs_mean_abs_shap": 0.06546795717593766,
+      "mean_abs_shap_low_train_count_half": 0.16075509786605835,
+      "mean_abs_shap_high_train_count_half": 0.15874537825584412
+    },
+    "PRF_PHYSN_UPIN": {
+      "mean_abs_shap_overall": 0.009418494068086147,
+      "n_categories_in_sample": 145,
+      "corr_log_train_count_vs_mean_abs_shap": -0.15045032495300104,
+      "mean_abs_shap_low_train_count_half": 0.04220092296600342,
+      "mean_abs_shap_high_train_count_half": 0.03243650496006012
+    },
+    "ORG_NPI_NUM": {
+      "mean_abs_shap_overall": 0.0703575387597084,
+      "n_categories_in_sample": 4683,
+      "corr_log_train_count_vs_mean_abs_shap": 0.016664254593091756,
+      "mean_abs_shap_low_train_count_half": 0.08181490004062653,
+      "mean_abs_shap_high_train_count_half": 0.08184956759214401
+    },
+    "TAX_NUM": {
+      "mean_abs_shap_overall": 0.06794721633195877,
+      "n_categories_in_sample": 1314,
+      "corr_log_train_count_vs_mean_abs_shap": -0.18644853249437426,
+      "mean_abs_shap_low_train_count_half": 0.13884200155735016,
+      "mean_abs_shap_high_train_count_half": 0.0900995209813118
+    },
+    "PRVDR_NUM": {
+      "mean_abs_shap_overall": 0.08653111010789871,
+      "n_categories_in_sample": 2440,
+      "corr_log_train_count_vs_mean_abs_shap": 0.23404125304898832,
+      "mean_abs_shap_low_train_count_half": 0.10236477851867676,
+      "mean_abs_shap_high_train_count_half": 0.27407875657081604
+    },
+    "PRVDR_NUM_placeholder_unused": null
+  }
+}

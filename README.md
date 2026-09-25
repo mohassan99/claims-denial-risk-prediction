@@ -151,4 +151,40 @@ important feature by a wide margin is `HCPCS_CD`; several raw provider-identifie
 "this provider is denied more often" signal in the same spirit as the baseline's `prvdr_num_freq`
 — flagged for a closer look with SHAP rather than assumed, since raw high-cardinality ID splits
 can also memorize individual providers' small-sample noise. Full results in
-`reports/xgboost_results.txt`. Next: SHAP on the XGBoost model, then Phase 3 (Azure ML deploy).
+`reports/xgboost_results.txt`.
+
+*Progress, 2026-09-25: SHAP (Phase 2 complete).* Explained the XGBoost model with
+`shap.TreeExplainer` (`src/fit_shap.py`) on a 20,000-row label-stratified sample of val, loading
+the already-fitted model rather than refitting and re-verifying it reproduced the reported val
+metrics to 1e-6 first. Two findings:
+
+1. **Gain-based importance and SHAP importance disagree for one feature.** `LINE_PRMRY_ALOWD_CHRG_AMT`
+   is XGBoost's #2 feature by gain (0.199) but doesn't crack SHAP's overall top 20 at all (only
+   reaching #10 within DME, 0.028). This isn't new leakage — it was already checked and confirmed
+   to be an exact DME-only duplicate of a feature the baseline model already used — but it is a
+   real methodological finding: gain can overweight a feature that wins a few very effective
+   splits without moving most individual predictions much, while SHAP reflects actual average
+   per-prediction impact. `HCPCS_CD` dominates even more clearly under SHAP than under gain (mean
+   |SHAP| 0.781, next closest 0.166).
+
+2. **The provider-ID question has a mixed answer, not a single verdict.** For each of the 5
+   flagged raw provider-identifier columns, correlated each category's mean |SHAP| with
+   log(its training claim count) — positive means higher-volume providers get at least as much
+   weight (a real, volume-supported signal); negative means low-volume categories carry more
+   weight (the signature of memorizing small-sample noise):
+
+   | Column | corr(log count, \|SHAP\|) | Read |
+   |---|---|---|
+   | `PRVDR_NUM` | +0.234 | Genuine signal — high-volume providers get *more* weight (0.274 vs 0.102), corroborating the baseline's large `prvdr_num_freq` coefficient |
+   | `CARR_CLM_BLG_NPI_NUM` | +0.065 | Flat — no evidence either way |
+   | `ORG_NPI_NUM` | +0.017 | Flat — no evidence either way |
+   | `PRF_PHYSN_UPIN` | −0.150 | Minor memorization signature (small overall contributor, mean \|SHAP\| 0.009) |
+   | `TAX_NUM` | −0.186 | Minor memorization signature (mean \|SHAP\| 0.068) |
+
+   Net: not every raw provider-ID feature is doing the same thing. `PRVDR_NUM` looks safe and
+   informative; `TAX_NUM` and `PRF_PHYSN_UPIN` show a real but small-magnitude memorization
+   signature that's worth naming rather than acting on, since neither is a major contributor to
+   the reported metrics.
+
+Full tables in `reports/shap_results.txt` / `reports/shap_fit.json`. This closes out Phase 2. Next:
+Phase 3 (Azure ML deploy).

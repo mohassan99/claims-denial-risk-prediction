@@ -2,8 +2,8 @@
 
 Portfolio project: predict claim-denial risk on CMS Synthetic Medicare Claims (carrier,
 outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since the 2026-09-24 carrier fix; was 12.1%). Phases: 0 setup,
-1 data/EDA (done), **2 baseline logistic + Chow test (in progress)** then XGBoost + SHAP,
-3 Azure ML deploy, 4 GenAI layer, 5 report/video, 6 README/portfolio.
+1 data/EDA (done), **2 baseline logistic + Chow test + XGBoost + SHAP (done 2026-09-25)**,
+**3 Azure ML deploy (next)**, 4 GenAI layer, 5 report/video, 6 README/portfolio.
 
 ## How the user wants to work (read first)
 
@@ -48,6 +48,9 @@ outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since th
   `git fetch origin main && git merge --ff-only origin/main` to bring the session's own local repo
   back in sync (pushing via the API does not update git's local tracking refs). The old
   `git bundle` handoff is a fallback only if the GitHub MCP connector isn't available in session.
+  A file too large to comfortably read into a tool call (tens of MB) should not be pushed this way
+  at all -- gitignore it if it's regenerable (see `fit_xgboost.py`'s model artifacts, 2026-09-25),
+  or ask if it truly needs to be in git.
 - Commit incrementally, one verified change per commit, with messages that explain *why*.
 - After each phase step, append to README's Progress section (append only, never rewrite it).
 - Never commit secrets; `.env` stays gitignored. No coursework references anywhere in the repo.
@@ -92,7 +95,7 @@ outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since th
 - `data/TARGET_DEFINITION.md` covers the label; `data/data_dictionary.md` is a column reference.
 - Read the relevant doc section before re-deriving anything.
 
-## Current state (as of 2026-09-25, end of session)
+## Current state (as of 2026-09-25, end of session — Phase 2 complete)
 
 **Label:** fixed 2026-09-24. `provider_outlier` / `duplicate_claim` now key on the billing NPI for
 carrier claims (`denial_rules.build_provider_key`). Rate 14.9% overall (carrier 10.0%, outpatient
@@ -125,7 +128,22 @@ Key scripts in `src/`:
   pandas `category` dtype + `enable_categorical=True`; NaN is passed through natively. Gains the
   ~130 `fit_chow_test._PENDING_*` columns the baseline couldn't use (no cardinality decision needed
   for a tree). Train's category list per column is fit once and reused on val, same
-  train-governs-val discipline as the baseline's encoders.
+  train-governs-val discipline as the baseline's encoders. Also saves the fitted booster
+  (`reports/xgboost_model.json`, ~21.8 MB) and its column/category metadata
+  (`reports/xgboost_model_meta.json`, ~605 KB) so downstream scripts can load-and-verify instead of
+  refitting. Both are gitignored (too large for this session's read-then-push-via-API discipline)
+  but fully deterministic (`random_state=42`) from `train_model.parquet` — rerun this script to
+  regenerate them if missing.
+- `fit_shap.py` (2026-09-25) — loads the saved XGBoost model + metadata (never refits), re-verifies
+  its predictions reproduce `reports/xgboost_fit.json`'s reported val metrics to 1e-6 before doing
+  anything else, then runs `shap.TreeExplainer(model, feature_perturbation="tree_path_dependent")`
+  on a 20,000-row label-stratified sample of val. Validated the explainer against XGBoost's native
+  categorical splits/missing values on synthetic data first (reconstruction error ~1.67e-6) before
+  running on real data. Reports mean |SHAP| importance overall and per claim type, and answers the
+  provider-ID question quantitatively: for each of the 5 flagged ID columns, correlates each
+  category's mean |SHAP| with log(its train claim count) — positive/flat says bigger claim history
+  gets at least as much weight (consistent with a real signal); negative says low-count categories
+  carry more weight (consistent with memorizing small-sample noise). See results below.
 - statsmodels' lbfgs is NOT used for fitting anymore: it never left beta = 0 on these matrices.
 
 **Chow test results on the corrected label (full train set):** Firth LR 2,642.1 on 158 df, H0
@@ -155,15 +173,46 @@ DME-only duplicate of `LINE_ALOWD_CHRG_AMT` (already in the baseline's pooled fe
 `build_chow_design_matrix.py`'s fix B), so it adds no information beyond what the baseline already
 used, just weighted more heavily by the tree. Full table in `reports/xgboost_results.txt`.
 
+**SHAP results (2026-09-25, 20,000-row label-stratified sample of val):** loaded model reproduced
+the reported val metrics to 1e-6 before explaining; SHAP reconstruction error ~5.2e-6. By mean
+|SHAP| the ranking differs from gain-based importance in one notable way: `HCPCS_CD` dominates
+even more clearly (0.781, next is `LINE_PLACE_OF_SRVC_CD` at 0.166), and **`LINE_PRMRY_ALOWD_CHRG_AMT`
+— gain-based importance's #2 feature (0.199) — does not even make SHAP's overall top 20**, only
+showing up at #10 within DME specifically (0.028). Read together with the leakage check already
+done, this is not a leakage retraction — it confirms gain can overweight a feature that wins a few
+very effective splits without moving most individual predictions much, while SHAP reflects average
+per-prediction impact; the two metrics are answering different questions and this project's
+top-line "important features" claim should cite SHAP, not gain, going forward.
+
+The provider-ID question (task queue item 4) has a mixed, not a single, answer — reported per
+column rather than resolved overall, per this project's per-claim-type auditing standard extended
+here to per-feature:
+- `PRVDR_NUM` (corr +0.234): high-claim-count providers get *more* SHAP weight than low-claim-count
+  ones (0.274 vs 0.102 mean |SHAP|) — the clearest case of a genuine, volume-supported signal, and
+  it corroborates the baseline model's large `prvdr_num_freq` coefficient (same underlying signal,
+  pre-aggregated there).
+- `CARR_CLM_BLG_NPI_NUM` (corr +0.065) and `ORG_NPI_NUM` (corr +0.017): essentially flat — no
+  evidence either way of memorization, no strong evidence of a volume-driven signal either.
+- `TAX_NUM` (corr −0.186) and `PRF_PHYSN_UPIN` (corr −0.150): negative — low-claim-count categories
+  carry more SHAP weight, the signature the memorization concern predicted. Both are minor overall
+  contributors (mean |SHAP| 0.068 and 0.009 respectively), so this is a real but small-magnitude
+  finding, not a reason to distrust the model's headline numbers.
+Net: the flagged provider-ID features are not uniformly one thing or the other; `PRVDR_NUM` looks
+safe and informative, `TAX_NUM`/`PRF_PHYSN_UPIN` show a real but minor memorization signature worth
+naming in the writeup rather than acting on (no evidence it's driving the reported metrics — it's a
+small fraction of total importance). Full tables in `reports/shap_results.txt` /
+`reports/shap_fit.json`.
+
 ## Task queue (do in order; log each in SESSION_LOG.md)
 
 1. ~~Build the Phase 2 baseline mixed model~~ — done 2026-09-25 (`fit_baseline_model.py`).
 2. ~~Baseline metrics on val~~ — done 2026-09-25, see above.
 3. ~~XGBoost~~ — done 2026-09-25 (`fit_xgboost.py`), see above.
-4. **SHAP** on the XGBoost model — in particular, look at whether the raw provider-ID features
-   (ORG_NPI_NUM/TAX_NUM/CARR_CLM_BLG_NPI_NUM/PRF_PHYSN_UPIN/PRVDR_NUM) are contributing a real,
-   generalizable "provider denial history" signal or overfitting to individual providers' noise —
-   then Phase 3.
+4. ~~SHAP~~ — done 2026-09-25 (`fit_shap.py`), see above. Provider-ID question answered per
+   column, not with a single verdict: `PRVDR_NUM` looks like a real signal, `TAX_NUM`/
+   `PRF_PHYSN_UPIN` show a minor memorization signature, `CARR_CLM_BLG_NPI_NUM`/`ORG_NPI_NUM` are
+   ambiguous.
+5. **Phase 3: Azure ML deploy.**
 
 ## Open decisions for the user (don't act on these alone)
 

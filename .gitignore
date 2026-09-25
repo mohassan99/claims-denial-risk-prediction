@@ -7,3 +7,10 @@ data/raw/*
 !data/raw/.gitkeep
 data/processed/*
 !data/processed/.gitkeep
+
+# Regenerable model artifacts too large to push through the cloud session's
+# GitHub-API path (read-exact-content-then-push has a practical size limit
+# well under these). Deterministic (random_state=42) from
+# train_model.parquet -- rerun `python src/fit_xgboost.py` to reproduce.
+reports/xgboost_model.json
+reports/xgboost_model_meta.json
