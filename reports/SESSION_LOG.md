@@ -132,3 +132,82 @@ test statistic to disagree with. See "Why" below.
   - `python src/fit_chow_test.py --method firth --restricted-only`
   - then `python src/fit_chow_test.py --method firth --skip-restricted`
   - then `python src/fit_chow_stage2.py --method firth`
+
+---
+
+## 2026-09-24 (continued): label fixed (your decision: option A), everything downstream rebuilt
+
+### Results
+
+**The carrier label bug is fixed.** `provider_outlier` and `duplicate_claim` now identify carrier
+providers by their billing NPI instead of the facility provider number, which is empty on
+every carrier claim.
+
+| | Before | After |
+|---|---|---|
+| Overall denial rate | 12.1% | **14.9%** (inside the 10–15% target) |
+| Carrier denial rate | 5.6% | **10.0%** |
+| Outpatient / DME denial rate | 24.1% / 16.2% | **unchanged, claim for claim** |
+| Big claim-type × code cells with zero denials | 9 | **0** |
+
+Before touching anything, I re-ran the old pipeline from scratch and confirmed it reproduces your
+existing files exactly. So every change in the table comes from the fix.
+
+**The Chow test still rejects pooling, and now every method agrees.** Firth gives LR = 2,642 on
+158 df, down from 4,732: a large share of the old statistic was the bug. Standard MLE gives 2,644,
+within 0.1%. Standard MLE is technically non-convergent because of a single claim (diagnosis N186
+on one carrier claim, not denied), and that claim barely moves the number. The separation
+problem is gone, so the "exclude separating codes" workaround is no longer needed.
+
+**Stage 2: 5 of 11 shared variables need claim-type-specific effects:** state, HCPCS, principal
+diagnosis, provider frequency, and carrier cash deductible. The other 6 can be pooled.
+- HCPCS's statistic fell 79%, because it had mostly been measuring the bug.
+- Line service count flipped from "interact" to "pool" for the same reason.
+
+### How this happened and what now prevents it
+
+- **Cause.** The two rules were written against the facility claim layout. pandas silently drops
+  empty group keys, and the label was only ever validated overall. The 5.6% vs 24% gap between
+  claim types was visible in Phase 1, but nothing required it to be explained.
+- **Guardrails now built in; each one fails the build rather than printing a warning nobody
+  reads:**
+  1. **Key-coverage check.** Before any rule groups on ID columns, the check confirms those
+     columns are filled in for every claim type.
+  2. **Per-claim-type firing table.** For every risk factor and claim type, the code must declare
+     either "fires" or "zero, because …", and every build checks it. The old label fails this
+     check on exactly the two cells the bug zeroed out.
+  3. **`reports/label_audit.txt`.** Written on every build, it lists any large claim-type × code
+     group with zero denials. The old label had 9; the new one has 0.
+  4. **Label fingerprint on cached fits.** A model fit on an old label can't be silently reused.
+- **Standing rule added to CLAUDE.md:** audit everything per claim type, never only overall.
+
+### Rebuilt downstream
+
+`train/val/test.parquet`, the `*_model.parquet` files, `labeled_claims_for_eda.parquet`, both Chow
+stages, and the Phase 1 EDA figures (`run_eda.py`) were all rebuilt. The figures aren't tracked in
+git, so I copied the regenerated ones straight into your `reports/` folder.
+
+**Your local data files are still the old label.** The data folder is gitignored, so a pull won't
+update it. To rebuild locally (about 5 minutes; Chow reruns are optional):
+
+```
+python src/build_target_and_split.py
+python src/build_features.py
+python src/run_eda.py
+```
+
+### Small decisions for you (nothing is blocked)
+
+- **CALIBRATION_SCALE.** I kept it at 1.4, which gives 14.9%. That way only carrier labels
+  changed, and the before/after is clean. Retuning to about 1.0 would bring the rate back near
+  12.4%, but it would also change outpatient and DME labels. **My recommendation: keep 1.4.**
+- **Minimum support for interaction terms.** One interaction term (N186 × carrier) rests on a
+  single claim. A rule like "skip interaction terms with fewer than N claims" would make standard
+  MLE converge cleanly, but it changes the Chow test's tested set and df. **My recommendation:
+  leave it.** Firth handles it and the conclusion doesn't change.
+- **The 3 fixed-constant fields and the ~130 unencoded columns:** unchanged from before.
+
+### Next
+
+Build the baseline mixed model: interact the 5 variables above and pool the other 6. Then
+PR-AUC on validation, broken out by claim type, then XGBoost and SHAP.
