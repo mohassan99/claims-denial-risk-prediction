@@ -105,6 +105,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import hashlib
 import json
 import warnings
 from collections import Counter, defaultdict
@@ -812,6 +813,11 @@ def main() -> None:
 
     y_arr = y.to_numpy(dtype=np.float64)
     n_obs = len(y_arr)
+    # Fingerprint of the exact label vector (added 2026-09-24 with the label
+    # rebuild): a cached restricted fit from a different label must never be
+    # paired with a new unrestricted fit -- row count and column names alone
+    # would match.
+    label_fingerprint = hashlib.sha1(y_arr.tobytes()).hexdigest()
     del y
     model = ChunkedLogit(A, y_arr, penalty_weight=penalty_weight)  # scales A in place
     method_desc = (
@@ -838,6 +844,7 @@ def main() -> None:
             "max_abs_score": res_r.max_abs_score,
             "newton_decrement": res_r.newton_decrement,
             "nobs": n_obs,
+            "label_fingerprint": label_fingerprint,
             "ncols": restricted_ncols,
             "rank": restricted_rank,
             "colnames": sorted(restricted_colnames),
@@ -857,8 +864,12 @@ def main() -> None:
             return
     else:
         summary = cached
-        if summary["nobs"] != n_obs or set(summary["colnames"]) != restricted_colnames:
-            raise ValueError("Cached restricted fit does not match this run's rows/columns -- rerun --restricted-only.")
+        if (
+            summary["nobs"] != n_obs
+            or set(summary["colnames"]) != restricted_colnames
+            or summary.get("label_fingerprint") != label_fingerprint
+        ):
+            raise ValueError("Cached restricted fit does not match this run's rows, columns or label -- rerun --restricted-only.")
         if not summary["converged"]:
             raise RuntimeError("Cached restricted fit did not converge -- nothing to test against.")
 

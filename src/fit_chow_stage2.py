@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import hashlib
 import json
 from collections import defaultdict
 from pathlib import Path
@@ -128,13 +129,22 @@ def main() -> None:
         groups[variable_of(colnames[j])].append(int(j))
     print(f"\n{len(groups)} variable(s) to test, covering all {len(z_idx)} tested coefficients")
 
-    model = ChunkedLogit(A, y.to_numpy(dtype=np.float64), penalty_weight=0.5 if args.method == "firth" else 0.0)
+    y_arr = y.to_numpy(dtype=np.float64)
+    # Fingerprint of the exact label vector the design was built on. The
+    # cached full fit is reused only if this matches -- added 2026-09-24,
+    # when the label was rebuilt (carrier provider-key fix): column names
+    # alone would have matched and silently reused a fit of the OLD label.
+    label_fingerprint = hashlib.sha1(y_arr.tobytes()).hexdigest()
+    model = ChunkedLogit(A, y_arr, penalty_weight=0.5 if args.method == "firth" else 0.0)
     del y
 
     if full_json.exists():
         cached = json.loads(full_json.read_text())
-        if cached["colnames"] != colnames:
-            raise ValueError(f"{full_json} was fit on different columns -- delete it and rerun.")
+        if cached["colnames"] != colnames or cached.get("label_fingerprint") != label_fingerprint:
+            raise ValueError(
+                f"{full_json} was fit on different columns or a different label vector "
+                "-- delete it (and the matching results CSV) and rerun."
+            )
         full_llf = cached["llf"]
         beta_full = np.asarray(cached["beta"])
         print(f"Loaded cached full fit (llf {full_llf:.4f}) from {full_json}")
@@ -144,8 +154,13 @@ def main() -> None:
         if not full.converged:
             raise RuntimeError("Full model did not converge -- cannot run Stage 2.")
         full_llf, beta_full = full.llf, full.beta
-        full_json.write_text(json.dumps({"llf": full_llf, "n_iter": full.n_iter, "colnames": colnames, "beta": beta_full.tolist()}))
+        full_json.write_text(json.dumps({
+            "llf": full_llf, "n_iter": full.n_iter, "label_fingerprint": label_fingerprint,
+            "colnames": colnames, "beta": beta_full.tolist(),
+        }))
 
+    if out_csv.exists() and not full_json.exists():
+        raise ValueError(f"{out_csv} exists without its full-fit cache -- stale results; delete it and rerun.")
     done = pd.read_csv(out_csv) if out_csv.exists() else pd.DataFrame(columns=["variable"])
     done_vars = set(done["variable"])
     for var in sorted(groups, key=lambda v: (-len(groups[v]), v)):
