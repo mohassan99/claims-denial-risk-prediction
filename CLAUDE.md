@@ -50,7 +50,14 @@ outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since th
   `git bundle` handoff is a fallback only if the GitHub MCP connector isn't available in session.
   A file too large to comfortably read into a tool call (tens of MB) should not be pushed this way
   at all -- gitignore it if it's regenerable (see `fit_xgboost.py`'s model artifacts, 2026-09-25),
-  or ask if it truly needs to be in git.
+  or ask if it truly needs to be in git. **The "don't retype" rule bit again the same session it
+  was written down**: a large JSON file's content was reproduced from what had been read earlier
+  rather than passed through as an exact string, and it picked up a stray extra key. Caught within
+  the same turn by immediately re-reading the pushed commit and diffing against the local file, and
+  fixed with a follow-up commit. Lesson reinforced: after any push whose content wasn't a
+  mechanical file-content pass-through (i.e. anything typed or reconstructed by hand, even
+  large/structured text), re-fetch and diff the pushed version against the local source before
+  moving on, not just after ones that felt risky.
 - Commit incrementally, one verified change per commit, with messages that explain *why*.
 - After each phase step, append to README's Progress section (append only, never rewrite it).
 - Never commit secrets; `.env` stays gitignored. No coursework references anywhere in the repo.
