@@ -803,3 +803,77 @@ question, `calibration_report()`'s raw per-factor activation rates (or, more rig
 factor's SHAP contribution once the Phase 2 model exists) are the right thing to look at —
 `denial_reason_carc_1`'s distribution is Phase 4/5 narrative material, not a diagnostic for label
 quality, exactly as Addendum #3 already scoped it to be.
+## Addendum: carrier claims were exempt from two risk factors, fixed (2026-09-24)
+
+**What was wrong.** `provider_outlier` and `duplicate_claim` both identified "the provider" with
+`PRVDR_NUM`, the institutional provider number. `PRVDR_NUM` is populated on outpatient and DME
+claims, but it is **null on every carrier (professional) claim**: 1,121,004 of 1,121,004 in the
+combined file. Carrier claims carry their provider in `CARR_CLM_BLG_NPI_NUM` (the billing NPI)
+instead. pandas' `groupby` drops rows with a null key without raising, so neither rule could ever
+fire for 62% of all claims. Nothing errored, and the overall rate still calibrated to 12.1%.
+
+**Why nothing caught it.** Every label check so far looked at the whole population: the overall
+rate, each factor's overall activation rate, and the overall reason mix. A rule that is silent for
+one claim type and active for the others still produces a plausible overall number. The symptoms
+were in plain sight, but nothing required them to be explained:
+- carrier's denial rate was 5.6%, vs. 24.1% outpatient and 16.3% DME (Phase 1 EDA);
+- 9 claim-type × HCPCS cells with ≥ 1,000 claims each had exactly zero denials.
+
+The issue surfaced in Phase 2 as "separation" in the Chow test (FEATURE_ENGINEERING.md Section 6).
+Its root cause is here.
+
+**The fix** (`denial_rules.py`, "Provider identity across claim types"):
+- **An explicit per-claim-type provider key.** Carrier uses `CARR_CLM_BLG_NPI_NUM`; outpatient and
+  DME use `PRVDR_NUM`, as before. Both were verified before use:
+  - `CARR_CLM_BLG_NPI_NUM` is 0% null on carrier, with 5,358 distinct billing NPIs, and equals
+    `ORG_NPI_NUM` on every carrier row.
+  - `PRVDR_NUM` is 0% null on DME and 0.03% null on outpatient.
+- **Namespaced keys.** Values are prefixed `NPI:` / `PRV:`, so the two ID systems can't collide.
+- **A separate ranking pool for carrier.** `provider_outlier`'s top-5% cut ranks carrier billing
+  NPIs among themselves. Outpatient and DME stay pooled together exactly as before.
+
+**Effect, verified on the full combined file (1,799,924 lines):**
+
+| | Before | After |
+|---|---|---|
+| Overall `is_denied` rate | 12.11% | **14.87%** (target 10–15%, `CALIBRATION_SCALE` unchanged at 1.4) |
+| Carrier denial rate | 5.60% | **10.03%** |
+| Outpatient / DME denial rate | 24.07% / 16.20% | **identical, claim for claim** |
+| `provider_outlier` firing on carrier | 0% | 41.75% |
+| Claim-type × HCPCS cells (≥ 1,000 claims) with zero denials | 9 | **0** |
+
+- **Outpatient and DME are untouched, bit for bit.** Their risk flags and their `is_denied` values
+  are identical to before.
+- **Carrier only gained denials** (62,803 → 112,381), and none were lost. That follows from the
+  design: noisy-OR is monotone and the random draws are seeded, so adding an active factor can only
+  raise a claim's probability.
+- **The old pipeline was reproduced first, as a baseline.** Before changing anything, it was re-run
+  here and reproduced the existing train/val/test files exactly. So every difference above comes
+  from this fix.
+
+**Why `CALIBRATION_SCALE` was left at 1.4.** 14.87% is inside the documented 10–15% range. Keeping
+the scale fixed means the fix changes carrier claims *only*, which makes the before/after cleanly
+attributable. Retuning (≈1.0 gives ~12.4%) would also move every outpatient and DME label. That is
+possible, but it is a separate decision.
+
+**`duplicate_claim` still never fires on carrier, and now that is the data, not the bug.** No
+carrier (beneficiary, HCPCS, service date) combination appears on two different `CLM_ID`s, even
+with the provider removed from the key entirely. The rule can fire on carrier now; there is just
+nothing in this synthetic release for it to find.
+
+**Guardrails added so this class of mistake stops the build instead of hiding:**
+1. **`require_key_coverage()`.** Before a rule groups on key columns, every key must be populated
+   (≤ 1% null) in every claim type, unless the gap is explicitly declared with a reason. It raises
+   on the old `PRVDR_NUM` configuration (tested).
+2. **`RISK_FACTOR_EXPECTATION` + `audit_risk_factors_by_claim_type()`.** Every
+   (risk factor × claim type) cell must be declared either `"fires"` or `"zero: <verified reason>"`,
+   and every label build checks it. The old label fails on exactly the two cells the bug zeroed out.
+3. **`reports/label_audit.txt`, written on every build.** It holds the rates by claim type, the
+   firing matrix, and every claim-type × HCPCS cell with ≥ 1,000 claims and zero denials. Each such
+   cell has to be explained in this document.
+4. **The Phase 2 fit caches now fingerprint the label vector.** A model fit on an old label can't
+   be silently reused after a rebuild.
+
+**Downstream.** Everything built on `is_denied` was rebuilt: `build_features.py`, and the Chow test
+Stages 1–2. See FEATURE_ENGINEERING.md Section 6. The Phase 1 EDA figures in `reports/figures/`
+still show the old label until `run_eda.py` is rerun.
