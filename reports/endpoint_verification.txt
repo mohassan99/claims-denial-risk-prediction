@@ -1,0 +1,13 @@
+Phase 3 -- live endpoint vs. local model, val sample
+========================================================
+endpoint: claims-denial-xgb (claims-denial-xgb.canadacentral.inference.ml.azure.com)
+rows scored: 3,000 (label-stratified sample of val, 14.87% positive)
+max |endpoint - local|: 5.00e-07   mean: 2.50e-07   (tolerance 1e-06)
+
+                  n   PR-AUC local   PR-AUC endpoint
+all           3,000         0.5550            0.5550
+carrier       1,857         0.2042            0.2042
+outpatient      954         0.7813            0.7813
+dme             189         0.2644            0.2644
+
+RESULT: PASS

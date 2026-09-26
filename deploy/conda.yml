@@ -1,0 +1,21 @@
+# Inference environment for the claims-denial XGBoost endpoint.
+# Versions pinned to the ones the registered model was fit and verified with
+# (Phase 3 session, 2026-09-25). xgboost in particular must match: the model
+# is saved in xgboost's JSON format, and native categorical splits are only
+# guaranteed to load identically on the version that wrote them.
+name: claims-denial-inference
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - xgboost==3.2.0
+      - pandas==3.0.6
+      - numpy==2.4.6
+      - pyarrow==25.0.1
+      # XGBClassifier (the sklearn wrapper score.py loads the model with) imports
+      # scikit-learn at construction time. Missing on the first deploy attempt:
+      # the container crashed in init() with "sklearn needs to be installed".
+      - scikit-learn==1.9.1
+      - azureml-inference-server-http

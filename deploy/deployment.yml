@@ -1,0 +1,18 @@
+$schema: https://azuremlschemas.azureedge.net/latest/managedOnlineDeployment.schema.json
+name: blue
+endpoint_name: claims-denial-xgb
+model: azureml:claims-denial-xgboost@latest
+code_configuration:
+  code: .
+  scoring_script: score.py
+environment:
+  name: claims-denial-inference
+  image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu22.04:latest
+  conda_file: conda.yml
+# Standard_DS2_v2 = 2 vCPU / 7 GB. The Azure for Students subscription allows
+# 4 vCPUs per VM family and 6 per region; managed endpoints also reserve 20%
+# extra quota for rolling upgrades, so 1 x 2-vCPU instance is what fits.
+instance_type: Standard_DS2_v2
+instance_count: 1
+request_settings:
+  request_timeout_ms: 30000

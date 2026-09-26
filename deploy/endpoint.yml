@@ -1,0 +1,6 @@
+$schema: https://azuremlschemas.azureedge.net/latest/managedOnlineEndpoint.schema.json
+name: claims-denial-xgb
+description: Claims denial risk (Phase 2 XGBoost) -- returns P(is_denied) per claim row.
+auth_mode: key
+tags:
+  project: claims-denial-risk-prediction
