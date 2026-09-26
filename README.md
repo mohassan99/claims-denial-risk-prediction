@@ -2,7 +2,7 @@
 
 **Predicting which Medicare claims are likely to be denied — and why — built on the real CMS
 Synthetic Medicare Claims PUF, an engineered denial-risk label grounded in documented adjudication
-logic, and (in progress) XGBoost + SHAP explainability with an Azure ML deployment.**
+logic, XGBoost + SHAP explainability, and a live Azure ML deployment.**
 
 Public CMS claims data has no real claim-level denial-outcome field anywhere in its release —
 that's proprietary payer adjudication data CMS doesn't publish. This project uses the PUF's real
@@ -18,9 +18,10 @@ Built to bring the same "own the metric" analytical discipline behind 10+ years 
 work (HEDIS/STARS gap closure, risk adjustment) to a full ML build: data engineering → target
 construction → modeling → deployment.
 
-**Status: Phase 1 of 6 complete.** Phase 2 (baseline logistic regression — including a formal Chow
-test to decide, per shared feature, whether claim-type effects should be pooled or interacted —
-then XGBoost + SHAP) is in progress.
+**Status: Phases 1–3 complete.** Data + engineered label (Phase 1), a Chow-tested baseline logistic
+model and an XGBoost model with SHAP explainability (Phase 2), and the XGBoost model deployed as a
+live, key-authenticated Azure ML managed online endpoint whose predictions are verified to match
+the local model (Phase 3). Next: a GenAI layer on top of the endpoint (Phase 4).
 
 ## Setup
 
@@ -29,6 +30,35 @@ python -m venv venv
 source venv/Scripts/activate
 pip install -r requirements.txt
 ```
+
+### Azure ML deployment (Phase 3)
+
+Everything Azure-side is scripted in `deploy/` and is idempotent: re-running it skips whatever
+already exists, so it's safe from a fresh clone, a new machine, or a new session.
+
+One-time, per machine: install the [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli),
+then
+
+```bash
+az extension add -n ml
+cp .env.example .env          # fill in AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID
+az login --tenant <AZURE_TENANT_ID>
+```
+
+Then, from the repo root:
+
+```bash
+bash deploy/deploy.sh status           # what's deployed right now
+bash deploy/deploy.sh test             # score deploy/sample_request.json against the live endpoint
+bash deploy/deploy.sh download-model   # pull the registered model into reports/ (no refit needed)
+python deploy/verify_endpoint.py  # live endpoint vs. local model on 3,000 val rows
+bash deploy/deploy.sh                  # (re)create anything missing: RG, workspace, model, endpoint, deployment
+bash deploy/deploy.sh stop             # delete the deployment -> stops VM billing (endpoint + model kept)
+```
+
+The registered model in the Azure ML workspace is the durable copy of the fitted model; the local
+`reports/xgboost_model*.json` files are gitignored and can always be re-pulled with
+`download-model` (or regenerated with `python src/fit_xgboost.py`).
 
 ## Progress
 
@@ -188,3 +218,30 @@ metrics to 1e-6 first. Two findings:
 
 Full tables in `reports/shap_results.txt` / `reports/shap_fit.json`. This closes out Phase 2. Next:
 Phase 3 (Azure ML deploy).
+
+### Phase 3 — Azure ML Deployment (complete)
+
+The Phase 2 XGBoost model is live as an Azure ML **managed online endpoint** (`claims-denial-xgb`,
+Canada Central): an HTTPS REST API, key-authenticated, that takes raw claim rows as JSON and
+returns P(denied) per row.
+
+- **Verified, not assumed.** `deploy/verify_endpoint.py` sends 3,000 validation rows to the live
+  endpoint and compares each prediction with the local model's: max difference 5×10⁻⁷ (the
+  endpoint rounds to 6 decimals), identical PR-AUC overall and per claim type
+  (`reports/endpoint_verification.txt`). Before deploying, the model artifacts were regenerated
+  from scratch and reproduced Phase 2's reported metrics byte-for-byte.
+- **Same preprocessing as training.** The scoring script applies exactly the transform the model
+  was evaluated with: each categorical column is cast using the training set's category list, so a
+  code never seen in training is treated as missing rather than silently mapped to the wrong
+  category. Each response also reports how many of a row's categorical values were unseen, so a
+  caller can tell a confident low-risk score from one made on unfamiliar inputs.
+- **Model registry as the source of truth.** The model is registered in the Azure ML workspace with
+  a content hash tag; the deploy script only registers a new version when the model files change.
+- **Real constraints, documented.** The Azure for Students subscription only allows five regions
+  (not the usual `eastus`), and its 4-vCPU-per-family quota — with Azure's 20% reserve for rolling
+  upgrades — caps the deployment at a single 2-vCPU `Standard_DS2_v2` instance. Three deploy-time
+  failures (a first-build permission check, a stale managed identity from a too-fast
+  delete/recreate, and a missing `scikit-learn` in the inference image) are written up in
+  `reports/SESSION_LOG.md` along with what now prevents each.
+
+Infrastructure is fully scripted and idempotent (`deploy/deploy.sh`); see Setup above.

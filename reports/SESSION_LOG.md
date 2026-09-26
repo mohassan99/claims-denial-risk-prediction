@@ -498,3 +498,115 @@ deliverable (Phase 5) rather than treating XGBoost's feature list as self-eviden
 ### Next
 
 Phase 3: Azure ML deploy. No open decision blocking it as of this entry.
+
+## 2026-09-25 (Phase 3 session): XGBoost model deployed to Azure ML and verified live
+
+### Results
+
+**The Phase 2 XGBoost model is live** as an Azure ML managed online endpoint:
+`claims-denial-xgb` in workspace `mlw-claims-denial` (resource group `rg-claims-denial`,
+Canada Central), deployment `blue`, 1 x `Standard_DS2_v2`, key auth. It takes raw claim rows as
+JSON (same column names as `*_model.parquet`) and returns P(denied) per row.
+
+**It returns the same predictions as the local model.** `deploy/verify_endpoint.py` scored 3,000
+label-stratified val rows over HTTPS and compared each one against the local model:
+
+| | n | PR-AUC local | PR-AUC endpoint |
+|---|---|---|---|
+| all | 3,000 | 0.5550 | 0.5550 |
+| carrier | 1,857 | 0.2042 | 0.2042 |
+| outpatient | 954 | 0.7813 | 0.7813 |
+| dme | 189 | 0.2644 | 0.2644 |
+
+Max per-row difference 5e-7, which is just the endpoint rounding to 6 decimals. (The sample PR-AUCs
+differ from the full-val 0.583 only because it's a 3,000-row sample; the local scoring code
+reproduces the full-val 0.5832 / 0.8161 exactly.) Output: `reports/endpoint_verification.txt`.
+
+**The model was rebuilt from scratch first and reproduced Phase 2 byte-for-byte.** The fitted
+model files are gitignored and this cloud session started without them. I copied
+`combined_claims_raw.parquet` from your machine and re-ran `build_target_and_split.py` →
+`build_features.py` → `fit_xgboost.py`. `label_audit.txt`, `xgboost_results.txt` and
+`xgboost_fit.json` all came out identical to the committed versions (`git diff` empty): same
+14.87% label, same 89 trees, same metrics. The model was deployed from that rebuild.
+
+### Decisions made (and why)
+
+- **Region is `canadacentral`, not the planned `eastus`.** The Azure for Students subscription has
+  an "Allowed resource deployment regions" policy: swedencentral, mexicocentral, francecentral,
+  denmarkeast, canadacentral. Azure ML isn't offered in mexicocentral, so Canada Central was the
+  closest supported region. You confirmed it, along with the `rg-claims-denial` /
+  `mlw-claims-denial` names.
+- **Instance size `Standard_DS2_v2` x 1** (2 vCPU / 7 GB). The subscription allows 4 vCPUs per VM
+  family and 6 per region, and managed endpoints reserve an extra 20% for rolling upgrades. A 2-vCPU
+  instance is the largest that fits. Azure warns that DS3_v2 is its recommended minimum, but the
+  model is 22 MB and scores 500 rows per request without trouble.
+- **Scoring applies exactly the val-time transform.** `deploy/score.py` casts each categorical
+  column using train's category list from `xgboost_model_meta.json`. A value never seen in training
+  becomes NaN (xgboost's missing branch), never a wrong integer code, which is the same rule as
+  `fit_xgboost._apply_categories`. Missing columns → NaN (same as a structurally-absent claim-type
+  field). Label, IDs and raw dates are ignored if sent. Each response carries
+  `unseen_category_counts`, so a caller can tell when a prediction rests on inputs the model never
+  saw. In the 5,000-row val check, 73 values across all rows were val-only categories, as expected.
+- **The Azure ML model registry is now the durable copy of the model.** It's registered as
+  `claims-denial-xgboost` v1, tagged with a content hash plus val PR-AUC/ROC-AUC.
+  `deploy/deploy.sh download-model` pulls it back into `reports/`, so no future session has to
+  refit it (refitting needs ~7 GB RAM plus swap). `deploy.sh` only registers a new version when the
+  local files' hash changes.
+- **Everything Azure-side is one idempotent script** (`deploy/deploy.sh`). Each step checks what
+  exists first, so re-running it from a new session or from your laptop never duplicates anything.
+  Sub-commands: `status`, `test`, `download-model`, `stop`, `teardown`.
+
+### What went wrong on the way, and what now prevents it
+
+1. **Label rebuild OOM-killed twice.** This sandbox has the same ~8 GB as your laptop, and loading
+   `combined_claims_raw.parquet` alone peaks at 5.7 GB. Fixed by adding a 12 GB swap file in the
+   sandbox. Nothing in the pipeline changed. Noted in CLAUDE.md for future cloud sessions.
+2. **`ImageBuildFailure: Identity(object id: ) does not have permissions for .../environments/read`**
+   on every *first* build of a new environment version. The same deployment succeeded when re-run a
+   few minutes later with no permission change. My working explanation (a hypothesis, not
+   confirmed): the image build itself succeeds in the background, and the deployment's own
+   status check fails. That check seems to run under the caller's identity, and a personal Microsoft
+   account has no directory object ID here (`az role assignment list --assignee <your email>`
+   can't resolve you in the graph, which fits). Workaround: re-run `deploy/deploy.sh`, which is safe
+   because it's idempotent. If this becomes a nuisance, the proper fix is to run deployments as a
+   service principal.
+3. **Stale managed identity.** I deleted and recreated the endpoint without waiting for the delete
+   to finish. The new deployment's VM then tried to pull its image with the *old* identity's client
+   ID (`UserAssignedIdentityNotFound` / MSI token 404). Fixed by fully deleting and waiting until
+   `show` returned not-found before recreating. `deploy.sh` now also waits 120 s after creating an
+   endpoint so its AcrPull/Storage role assignments propagate before the deployment starts. (On a
+   brand-new workspace the container registry only exists after the first image build, so the very
+   first endpoint couldn't get AcrPull at all. That's another reason the first attempt failed.)
+4. **Container crashed on start: `sklearn needs to be installed`.** `XGBClassifier` imports
+   scikit-learn, which my local venv had and the inference image didn't. It was caught from the
+   deployment logs and fixed in `deploy/conda.yml`. To stop this class of bug recurring, `score.py`
+   was then re-tested in a **clean venv containing only `conda.yml`'s packages**, and through the
+   real Azure ML inference server (`azmlinfsrv`) locally, before redeploying. Lesson: test the
+   scoring script in an environment built from the deployment's own dependency list, not the dev
+   venv.
+5. `az ml online-deployment update` doesn't route traffic, so the deployment that succeeded via
+   `update` got 0% traffic ("No valid deployments to route to"). `deploy.sh` now always sets
+   `blue=100` after create/update.
+
+### Files
+
+New: `deploy/score.py`, `deploy/conda.yml`, `deploy/endpoint.yml`, `deploy/deployment.yml`,
+`deploy/deploy.sh`, `deploy/verify_endpoint.py`, `deploy/sample_request.json` (6 val rows, 2 per
+claim type, non-null fields only), `reports/endpoint_verification.txt`. Modified: `.env.example`
+(adds `AZURE_TENANT_ID`, `AZURE_LOCATION`, and the chosen names), README (Setup → Azure section,
+status line, Phase 3 Progress entry), CLAUDE.md. Your local `.env` isn't in git. This session's
+`.env` has the tenant/subscription IDs plus RG, workspace and location.
+
+### Decision for you
+
+- **The endpoint bills while it's up, whether or not anyone calls it.** A DS2_v2 costs roughly
+  $0.15/hour (about $100+/month), which is about the size of the Azure for Students credit.
+  Recommendation: keep it up while you record the Phase 5 demo or show it to someone, then run
+  `deploy/deploy.sh stop`. That deletes only the VM-backed deployment. The endpoint, the registered
+  model and the workspace all stay, and `deploy/deploy.sh` brings the deployment back in about
+  15 minutes. The workspace itself costs pennies at idle (storage, key vault, registry).
+
+### Next
+
+Phase 4: the GenAI layer, which calls this endpoint and explains a score with SHAP plus the denial
+reason codes (`labeled_claims_for_eda.parquet` has `denial_reason_carc_1/2`).

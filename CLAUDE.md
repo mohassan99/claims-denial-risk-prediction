@@ -2,8 +2,8 @@
 
 Portfolio project: predict claim-denial risk on CMS Synthetic Medicare Claims (carrier,
 outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since the 2026-09-24 carrier fix; was 12.1%). Phases: 0 setup,
-1 data/EDA (done), **2 baseline logistic + Chow test + XGBoost + SHAP (done 2026-09-25)**,
-**3 Azure ML deploy (next)**, 4 GenAI layer, 5 report/video, 6 README/portfolio.
+1 data/EDA (done), 2 baseline logistic + Chow test + XGBoost + SHAP (done 2026-09-25),
+**3 Azure ML deploy (done 2026-09-25)**, **4 GenAI layer (next)**, 5 report/video, 6 README/portfolio.
 
 ## How the user wants to work (read first)
 
@@ -33,6 +33,35 @@ outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since th
   - Never hold both design matrices in memory at once; `del` + `gc.collect()` between.
 - Dependencies are pinned in `requirements.txt` (includes `statsmodels==0.15.0`,
   `firthmodels>=0.8.2`). `firthlogist` is dead (pulled from PyPI) — do not use it.
+
+## Azure (Phase 3, set up 2026-09-25)
+
+- Subscription "Azure for Students"; tenant/subscription IDs, RG, workspace and location live in
+  `.env` (gitignored; `.env.example` has the keys). RG `rg-claims-denial`, workspace
+  `mlw-claims-denial`, region **`canadacentral`** — the subscription's policy allows only
+  swedencentral/mexicocentral/francecentral/denmarkeast/canadacentral, and Azure ML isn't in
+  mexicocentral. Quota: 4 vCPU per VM family, 6 per region.
+- Endpoint `claims-denial-xgb`, deployment `blue` (1 x Standard_DS2_v2), model
+  `claims-denial-xgboost` in the workspace registry (tag `content_sha256_16`).
+- **All Azure operations go through `deploy/deploy.sh`** (idempotent: `status`, `test`,
+  `download-model`, `stop`, `teardown`, or no arg = create whatever is missing). Don't run ad hoc
+  `az ml` create/delete commands; if something new is needed, add it to the script.
+- **The registry is the durable copy of the model.** In a fresh session run
+  `deploy/deploy.sh download-model` rather than refitting.
+- New cloud session setup (the sandbox resets between tasks):
+  `python3 -m venv ~/azure-cli-venv && ~/azure-cli-venv/bin/pip install azure-cli`,
+  `az extension add -n ml`, `az login --use-device-code --tenant <AZURE_TENANT_ID>` (the user
+  approves the code), recreate `.env` from the IDs in CLAUDE memory / the user, and export
+  `AZ=~/azure-cli-venv/bin/az` for `deploy.sh`. If any full-data step is needed, add swap first
+  (`fallocate -l 12G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`):
+  the sandbox has ~8 GB, and loading `combined_claims_raw.parquet` alone peaks at 5.7 GB.
+- **The deployment bills (~$0.15/h) while it exists, called or not.** `deploy/deploy.sh stop`
+  removes only the deployment; `deploy/deploy.sh` restores it in ~15 min.
+- Known quirk: the first build of a new environment version fails with
+  `Identity(object id: ) does not have permissions for .../environments/read`; re-running
+  `deploy.sh` succeeds (image finished building in the background). See SESSION_LOG 2026-09-25
+  Phase 3 entry. Test `score.py` in a clean venv built only from `deploy/conda.yml`'s packages
+  before any redeploy — the dev venv hid a missing scikit-learn once.
 
 ## Git
 
@@ -102,7 +131,16 @@ outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since th
 - `data/TARGET_DEFINITION.md` covers the label; `data/data_dictionary.md` is a column reference.
 - Read the relevant doc section before re-deriving anything.
 
-## Current state (as of 2026-09-25, end of session — Phase 2 complete)
+## Current state (as of 2026-09-25, end of Phase 3 session)
+
+**Phase 3 (Azure ML deploy): done.** Model rebuilt from scratch in the cloud sandbox first and
+reproduced Phase 2 byte-for-byte (label audit, 89 trees, val metrics). Live endpoint verified
+against the local model on 3,000 val rows: max |diff| 5e-7, identical PR-AUC per claim type
+(`reports/endpoint_verification.txt`). Scoring (`deploy/score.py`) = `fit_xgboost._apply_categories`
+exactly (train's category lists; unseen → NaN; per-row `unseen_category_counts` in the response).
+Details, failures and fixes: SESSION_LOG.md's Phase 3 entry.
+
+### Phase 2 state (unchanged)
 
 **Label:** fixed 2026-09-24. `provider_outlier` / `duplicate_claim` now key on the billing NPI for
 carrier claims (`denial_rules.build_provider_key`). Rate 14.9% overall (carrier 10.0%, outpatient
@@ -219,9 +257,13 @@ small fraction of total importance). Full tables in `reports/shap_results.txt` /
    column, not with a single verdict: `PRVDR_NUM` looks like a real signal, `TAX_NUM`/
    `PRF_PHYSN_UPIN` show a minor memorization signature, `CARR_CLM_BLG_NPI_NUM`/`ORG_NPI_NUM` are
    ambiguous.
-5. **Phase 3: Azure ML deploy.**
+5. ~~Phase 3: Azure ML deploy~~ — done 2026-09-25 (`deploy/`), see Azure section above.
+6. **Phase 4: GenAI layer** on top of the endpoint (explain a score via SHAP + CARC denial reasons).
 
 ## Open decisions for the user (don't act on these alone)
+
+- **Keep the endpoint deployment running?** It costs ~$0.15/h (~the whole student credit per
+  month). Recommended: keep until the demo/video is recorded, then `deploy/deploy.sh stop`.
 
 - **CALIBRATION_SCALE**: kept at 1.4 (rate 14.9%, inside the 10–15% target) so the fix changed
   carrier labels only. Retuning to ~1.0 (~12.4%) would also move every outpatient/DME label.
