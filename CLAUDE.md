@@ -3,7 +3,8 @@
 Portfolio project: predict claim-denial risk on CMS Synthetic Medicare Claims (carrier,
 outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since the 2026-09-24 carrier fix; was 12.1%). Phases: 0 setup,
 1 data/EDA (done), 2 baseline logistic + Chow test + XGBoost + SHAP (done 2026-09-25),
-**3 Azure ML deploy (done 2026-09-25)**, **4 GenAI layer (next)**, 5 report/video, 6 README/portfolio.
+**3 Azure ML deploy (done 2026-09-25)**, **3b Databricks port (2026-09-26, in progress)**, **4 GenAI layer (next)**,
+5 report/video, 6 README/portfolio.
 
 ## How the user wants to work (read first)
 
@@ -62,6 +63,29 @@ outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since th
   `deploy.sh` succeeds (image finished building in the background). See SESSION_LOG 2026-09-25
   Phase 3 entry. Test `score.py` in a clean venv built only from `deploy/conda.yml`'s packages
   before any redeploy — the dev venv hid a missing scikit-learn once.
+
+## Databricks (Phase 3b, 2026-09-26)
+
+- **Databricks Free Edition**, not Azure Databricks: the Azure for Students subscription refuses trial
+  workspaces for its offer type, has no usable VM size + quota for Databricks in any allowed region,
+  and can't request quota increases (all tested 2026-09-26; see SESSION_LOG). Workspace
+  `https://dbc-f8758ffb-8443.cloud.databricks.com` (us-east-2, serverless only). `.env` holds
+  `DATABRICKS_HOST` / `DATABRICKS_TOKEN` (a personal access token the user created; gitignored).
+- Unity Catalog: catalog `workspace`, schema `claims_denial`; volumes `raw` (the 3 CMS CSVs),
+  `reference` (pandas outputs used only by the parity check), `reports`.
+- Code in `databricks/`: `pipeline/` (bronze_silver_claims, silver_label, gold, parity_check,
+  pyfunc_model, common), `run_pipeline.py` (entry point, local or Job), `train_mlflow.py`,
+  `deploy_job.py` (publishes code to `/Workspace/Users/<me>/claims-denial-pipeline`, creates/resets
+  Job `claims-denial-medallion-pipeline`). Client venv: Python 3.12 + `databricks/requirements.txt`
+  (Connect must match serverless's Python minor version).
+- **Rules:** business logic stays in `src/` (imported, never re-typed). The label's randomness is
+  numpy PCG64 keyed by `_row_id` -- reproduce the draws, never re-draw with a Spark RNG (that would
+  change `is_denied`). Any change to `src/` must keep `run_pipeline.py --steps parity` passing
+  (re-upload the pandas outputs with `--upload-reference` first).
+- Databricks serverless python tasks exec() the entry file without `__file__`: the Job passes
+  `--repo-root`.
+- MLflow experiment `/Users/<me>/claims-denial-risk-prediction`; UC model
+  `workspace.claims_denial.claims_denial_xgboost` (v2 = pyfunc wrapper over `deploy/score.py`, takes raw rows).
 
 ## Git
 
@@ -131,7 +155,22 @@ outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since th
 - `data/TARGET_DEFINITION.md` covers the label; `data/data_dictionary.md` is a column reference.
 - Read the relevant doc section before re-deriving anything.
 
-## Current state (as of 2026-09-25, end of Phase 3 session)
+## Current state (as of 2026-09-26, Databricks session)
+
+**Phase 3b (Databricks port):** label + gold layers match pandas exactly (all rows/cells/order;
+`label_audit` byte-identical; negative control passed). Model fit from gold is byte-identical to
+Phase 2; logged to MLflow, registered in UC. Job created; its parity task passed as a real run.
+Bronze→silver from raw CSV verified for DME only -- the full run waits on the user uploading
+`carrier.csv` (465 MB, over the device-bridge 400 MB cap) to the `raw` volume via the UI.
+**Found:** the "time-based" split sorts `CLM_FROM_DT` as text (`dd-Mon-yyyy`), so it is really a
+day-of-month split (train days 1-20, val 20-25, test 25-31, every year in every split). No leakage,
+but the docs' "time-based" claim is false. Fix = parse before sorting; changes train_model.parquet
+and every Phase 2 number -> user decision (open decisions below). Also: the user's local
+`combined_claims_raw.parquet` predates `_row_id` (added to load_data.py 2026-09-16); harmless for
+modeling, but regenerate from `load_data.py` when convenient.
+
+### Phase 3 state
+
 
 **Phase 3 (Azure ML deploy): done.** Model rebuilt from scratch in the cloud sandbox first and
 reproduced Phase 2 byte-for-byte (label audit, 89 trees, val metrics). Live endpoint verified
@@ -258,9 +297,14 @@ small fraction of total importance). Full tables in `reports/shap_results.txt` /
    `PRF_PHYSN_UPIN` show a minor memorization signature, `CARR_CLM_BLG_NPI_NUM`/`ORG_NPI_NUM` are
    ambiguous.
 5. ~~Phase 3: Azure ML deploy~~ — done 2026-09-25 (`deploy/`), see Azure section above.
-6. **Phase 4: GenAI layer** on top of the endpoint (explain a score via SHAP + CARC denial reasons).
+6. **Phase 3b: Databricks port** -- finish: full job run once carrier.csv is in the `raw` volume.
+7. **Phase 4: GenAI layer** on top of the endpoint (explain a score via SHAP + CARC denial reasons).
 
 ## Open decisions for the user (don't act on these alone)
+
+- **Fix the split to be truly time-based?** (see Current state). Recommended: yes -- change both
+  `build_target_and_split.py` and `databricks/pipeline/gold.py` together, rerun everything downstream
+  (features, baseline, XGBoost, SHAP, redeploy endpoint, re-register UC model), expect lower metrics.
 
 - **Keep the endpoint deployment running?** It costs ~$0.15/h (~the whole student credit per
   month). Recommended: keep until the demo/video is recorded, then `deploy/deploy.sh stop`.
