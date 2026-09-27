@@ -1,0 +1,46 @@
+{
+  "run_id": "7c030c2efade4d9991116d1e57ce8042",
+  "experiment": "/Users/mohassan99@gmail.com/claims-denial-risk-prediction",
+  "checks": {
+    "identical_to_reports_xgboost_model.json": true,
+    "identical_to_reports_xgboost_model_meta.json": true,
+    "best_iteration_matches": true,
+    "val_metrics_match_1e-9": true
+  },
+  "val_metrics_overall": {
+    "n": 287988,
+    "positive_rate": 0.14882564551300748,
+    "pr_auc": 0.5832263878683532,
+    "roc_auc": 0.8160540289516746,
+    "brier": 0.08575526624917984,
+    "mean_predicted": 0.14805296063423157
+  },
+  "val_metrics_by_claim_type": {
+    "carrier": {
+      "n": 179028,
+      "positive_rate": 0.10068257479276985,
+      "pr_auc": 0.18810076201835702,
+      "roc_auc": 0.7060804426909009,
+      "brier": 0.08618909865617752,
+      "mean_predicted": 0.1002517119050026
+    },
+    "outpatient": {
+      "n": 92321,
+      "positive_rate": 0.24009705267490603,
+      "pr_auc": 0.820011250062586,
+      "roc_auc": 0.9024920585965108,
+      "brier": 0.07806550711393356,
+      "mean_predicted": 0.23853875696659088
+    },
+    "dme": {
+      "n": 16639,
+      "positive_rate": 0.1604062744155298,
+      "pr_auc": 0.2603208808800837,
+      "roc_auc": 0.714918791082856,
+      "brier": 0.12375395745038986,
+      "mean_predicted": 0.16031475365161896
+    }
+  },
+  "registered_model": "workspace.claims_denial.claims_denial_xgboost",
+  "registered_version": "2"
+}

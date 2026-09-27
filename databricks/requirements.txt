@@ -1,0 +1,13 @@
+# Client-side dependencies for running the Databricks pipeline from a laptop
+# or cloud sandbox via Databricks Connect (serverless). Python 3.12 -- the
+# Connect client must match the serverless environment's Python minor version.
+#   python3.12 -m venv dbc-venv && dbc-venv/bin/pip install -r databricks/requirements.txt
+databricks-connect==17.3.*
+databricks-sdk
+mlflow>=3
+xgboost==3.2.0          # must match the version the Phase 2 model was fit with
+scikit-learn
+statsmodels==0.15.0     # imported transitively via src/fit_xgboost.py
+pandas
+numpy
+pyarrow
