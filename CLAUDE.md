@@ -3,7 +3,7 @@
 Portfolio project: predict claim-denial risk on CMS Synthetic Medicare Claims (carrier,
 outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since the 2026-09-24 carrier fix; was 12.1%). Phases: 0 setup,
 1 data/EDA (done), 2 baseline logistic + Chow test + XGBoost + SHAP (done 2026-09-25),
-**3 Azure ML deploy (done 2026-09-25)**, **3b Databricks port (2026-09-26, in progress)**, **4 GenAI layer (next)**,
+**3 Azure ML deploy (done 2026-09-25)**, **3b Databricks port (done 2026-09-27)**, **4 GenAI layer (next)**,
 5 report/video, 6 README/portfolio.
 
 ## How the user wants to work (read first)
@@ -56,6 +56,11 @@ outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since th
   `AZ=~/azure-cli-venv/bin/az` for `deploy.sh`. If any full-data step is needed, add swap first
   (`fallocate -l 12G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`):
   the sandbox has ~8 GB, and loading `combined_claims_raw.parquet` alone peaks at 5.7 GB.
+- **Auth (2026-09-27):** device-code login from the cloud sandbox is now blocked by Entra security
+  defaults (AADSTS530035, "deemed unsafe"). Use the service principal `claims-denial-deployer`
+  (Contributor on `rg-claims-denial` ONLY; `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` in `.env`,
+  secret expires ~90 days from 2026-09-27). `deploy.sh` logs in with it automatically when the
+  current login is expired, and fails fast instead of trying to create the resource group.
 - **The deployment bills (~$0.15/h) while it exists, called or not.** `deploy/deploy.sh stop`
   removes only the deployment; `deploy/deploy.sh` restores it in ~15 min.
 - Known quirk: the first build of a new environment version fails with
@@ -85,7 +90,8 @@ outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since th
 - Databricks serverless python tasks exec() the entry file without `__file__`: the Job passes
   `--repo-root`.
 - MLflow experiment `/Users/<me>/claims-denial-risk-prediction`; UC model
-  `workspace.claims_denial.claims_denial_xgboost` (v2 = pyfunc wrapper over `deploy/score.py`, takes raw rows).
+  `workspace.claims_denial.claims_denial_xgboost` (pyfunc wrapper over `deploy/score.py`, takes raw rows;
+  v3 = time-based-split model).
 
 ## Git
 
@@ -111,6 +117,12 @@ outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since th
   mechanical file-content pass-through (i.e. anything typed or reconstructed by hand, even
   large/structured text), re-fetch and diff the pushed version against the local source before
   moving on, not just after ones that felt risky.
+- **Preferred cloud handoff (user's choice, 2026-09-27):** pushing through `push_files` re-sends
+  every changed file's full text (the 2026-09-27 session pushed ~250 KB that way), which is slow and
+  costly. Instead, commit locally in the sandbox, export with `git format-patch origin/main --stdout
+  > /mnt/user-data/outputs/<name>.patch`, send it to the user, and let them run `git pull origin
+  main`, `git am <name>.patch`, `git push origin main` on their machine. Use `push_files` only for
+  a small change or when the user can't reach their machine.
 - Commit incrementally, one verified change per commit, with messages that explain *why*.
 - After each phase step, append to README's Progress section (append only, never rewrite it).
 - Never commit secrets; `.env` stays gitignored. No coursework references anywhere in the repo.
@@ -155,19 +167,31 @@ outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since th
 - `data/TARGET_DEFINITION.md` covers the label; `data/data_dictionary.md` is a column reference.
 - Read the relevant doc section before re-deriving anything.
 
-## Current state (as of 2026-09-26, Databricks session)
+## Current state (as of 2026-09-27)
 
-**Phase 3b (Databricks port):** label + gold layers match pandas exactly (all rows/cells/order;
-`label_audit` byte-identical; negative control passed). Model fit from gold is byte-identical to
-Phase 2; logged to MLflow, registered in UC. Job created; its parity task passed as a real run.
-Bronze→silver from raw CSV verified for DME only -- the full run waits on the user uploading
-`carrier.csv` (465 MB, over the device-bridge 400 MB cap) to the `raw` volume via the UI.
-**Found:** the "time-based" split sorts `CLM_FROM_DT` as text (`dd-Mon-yyyy`), so it is really a
-day-of-month split (train days 1-20, val 20-25, test 25-31, every year in every split). No leakage,
-but the docs' "time-based" claim is false. Fix = parse before sorting; changes train_model.parquet
-and every Phase 2 number -> user decision (open decisions below). Also: the user's local
-`combined_claims_raw.parquet` predates `_row_id` (added to load_data.py 2026-09-16); harmless for
-modeling, but regenerate from `load_data.py` when convenient.
+**Split fixed (user's decision, 2026-09-27):** `build_target_and_split.py` and
+`databricks/pipeline/gold.py` sort by the PARSED `CLM_FROM_DT` (stable). Train 2015-01-08 to
+2020-10-29 (14.4% denied), val to 2021-11-23 (17.8%), test to 2023-03-02 (14.2%). Label unchanged.
+Everything refit on it. NEW val numbers (supersede the Phase 2 numbers further down, which were on
+the old day-of-month split):
+- Chow Stage 1: Firth LR 2,527.4 on 158 df, rejected. Stage 2: same 5 interact / 6 pool.
+- Baseline (Firth): overall PR-AUC 0.671 / ROC 0.817; carrier 0.141/0.616; outpatient 0.877/0.920;
+  DME 0.264/0.708.
+- XGBoost (73 trees): overall 0.691/0.849; carrier 0.191/0.710; outpatient 0.878/0.923; DME
+  0.266/0.716.
+- Overall metrics rose because val's period has more outpatient lines (35.5% vs 30.6%) and more
+  deprecated consult codes (24.9% vs 15.1% of outpatient lines): a claim-mix shift over time, not a
+  better model. Carrier/DME flat.
+- SHAP provider-ID check: PRVDR_NUM +0.198, CARR_CLM_BLG_NPI_NUM +0.154, ORG_NPI_NUM +0.022,
+  PRF_PHYSN_UPIN +0.196 (was -0.150; memorization signature gone), TAX_NUM -0.149 (still negative,
+  still minor). HCPCS_CD still dominates (mean |SHAP| 0.870).
+- Azure: model v2 registered, deployment `blue` updated, `verify_endpoint.py` PASS (max diff 5e-7).
+- Databricks: full Job run from the raw CSVs SUCCESS, parity PASS on every table
+  (`reports/databricks_parity.json`); UC model v3 registered, byte-identical to the pandas fit.
+- The user's local `combined_claims_raw.parquet` predates `_row_id`; regenerate with `load_data.py`.
+
+**Phase 3b (Databricks port): done.** Study guide `docs/DATABRICKS.md`. Serverless Jobs forbid JVM
+access: `reduce(DataFrame.unionByName, ...)` failed there (use `lambda a, b: a.unionByName(b)`).
 
 ### Phase 3 state
 
@@ -297,14 +321,10 @@ small fraction of total importance). Full tables in `reports/shap_results.txt` /
    `PRF_PHYSN_UPIN` show a minor memorization signature, `CARR_CLM_BLG_NPI_NUM`/`ORG_NPI_NUM` are
    ambiguous.
 5. ~~Phase 3: Azure ML deploy~~ — done 2026-09-25 (`deploy/`), see Azure section above.
-6. **Phase 3b: Databricks port** -- finish: full job run once carrier.csv is in the `raw` volume.
+6. ~~Phase 3b: Databricks port~~ -- done 2026-09-27; split fixed and everything refit.
 7. **Phase 4: GenAI layer** on top of the endpoint (explain a score via SHAP + CARC denial reasons).
 
 ## Open decisions for the user (don't act on these alone)
-
-- **Fix the split to be truly time-based?** (see Current state). Recommended: yes -- change both
-  `build_target_and_split.py` and `databricks/pipeline/gold.py` together, rerun everything downstream
-  (features, baseline, XGBoost, SHAP, redeploy endpoint, re-register UC model), expect lower metrics.
 
 - **Keep the endpoint deployment running?** It costs ~$0.15/h (~the whole student credit per
   month). Recommended: keep until the demo/video is recorded, then `deploy/deploy.sh stop`.
