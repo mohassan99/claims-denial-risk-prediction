@@ -877,3 +877,38 @@ nothing in this synthetic release for it to find.
 **Downstream.** Everything built on `is_denied` was rebuilt: `build_features.py`, and the Chow test
 Stages 1–2. See FEATURE_ENGINEERING.md Section 6. The Phase 1 EDA figures in `reports/figures/`
 still show the old label until `run_eda.py` is rerun.
+
+## Addendum: the "time-based" split was a day-of-month split -- corrected (2026-09-27)
+
+**Correction to the note above** (kept as written, per this project's append-only rule). That note
+says the real run "took the time-based branch, confirming dates were usable." The branch was taken,
+but the split it produced was not time-based. `build_target_and_split.py` sorted on the raw
+`CLM_FROM_DT` **string**, and CMS RIF dates are text like `28-Sep-2015`, so the sort ordered by
+**day of month first**. Checked on the actual files: train was days 1-20 of every month, val days
+20-25, test days 25-31, and all three spanned 2015-2023.
+
+**How it was found:** porting the pipeline to Databricks (2026-09-26). Reproducing the split in
+Spark meant stating exactly what the pandas sort did, and "sort by a date string" gave it away.
+
+**Impact of the old split:** no leakage (every line of a claim shares one date, so no claim
+straddled two splits); the Phase 2 metrics were valid for what was effectively a random-like
+split. But "time-based" in the code comment and here was false.
+
+**Fix (the user's decision):** sort by the **parsed** date (`format="%d-%b-%Y"`), with an explicit
+stable sort so lines sharing a date keep their original (`_row_id`) order and the cut points are
+fully deterministic. Same change in `databricks/pipeline/gold.py`; the Databricks parity check
+confirms both pipelines produce identical splits.
+
+| split | rows | dates | is_denied |
+|---|---|---|---|
+| train | 1,151,951 | 2015-01-08 to 2020-10-29 | 14.4% |
+| val | 287,988 | 2020-10-29 to 2021-11-23 | 17.8% |
+| test | 359,985 | 2021-11-23 to 2023-03-02 | 14.2% |
+
+**The label itself did not change** (the split happens after labeling; `label_audit.txt` is
+byte-identical). What changed is which claims land in which split, and one real temporal effect
+shows up: val's period has more outpatient claims (35.5% of lines vs 30.6% in train), and far more
+of them carry a Medicare-non-payable consultation code (`deprecated_code`: 24.9% of outpatient
+lines in val vs 15.1% in train and 14.5% in test). That is why val's denial rate is higher. It's a
+genuine distribution shift across time in this synthetic data -- exactly the kind of thing a random
+split hides and a temporal holdout surfaces.
