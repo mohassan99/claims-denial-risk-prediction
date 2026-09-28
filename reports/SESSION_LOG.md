@@ -701,3 +701,92 @@ setup + Phase 3b entry), CLAUDE.md (Databricks section, finding, open decision),
    Upload). Then I run the full Job and the bronze → silver parity check.
 2. You: decide on the split fix.
 3. Phase 4 (GenAI layer).
+
+## 2026-09-27: true time-based split (your decision), everything refit; Databricks port complete
+
+### Results
+
+**The split is now time-based.** `build_target_and_split.py` sorts by the parsed claim date (stable
+sort, so lines sharing a date keep their order), and `databricks/pipeline/gold.py` does the same.
+
+| split | dates | rows | denial rate |
+|---|---|---|---|
+| train | 2015-01-08 to 2020-10-29 | 1,151,951 | 14.4% |
+| val | 2020-10-29 to 2021-11-23 | 287,988 | 17.8% |
+| test | 2021-11-23 to 2023-03-02 | 359,985 | 14.2% |
+
+The label did not change (`label_audit.txt` is byte-identical); only which claims land in which split.
+
+**Everything downstream was refit, val set:**
+
+| | Before (day-of-month split) | After (time-based) |
+|---|---|---|
+| Chow Stage 1 (Firth LR, 158 df) | 2,642 | 2,527, still rejects pooling |
+| Chow Stage 2 selection | 5 interact / 6 pool | same 5 / same 6 |
+| Baseline PR-AUC overall / carrier / outpatient / DME | 0.557 / 0.141 / 0.815 / 0.262 | 0.671 / 0.141 / 0.877 / 0.264 |
+| XGBoost PR-AUC overall / carrier / outpatient / DME | 0.583 / 0.188 / 0.820 / 0.260 | 0.691 / 0.191 / 0.878 / 0.266 |
+| XGBoost ROC-AUC overall | 0.816 | 0.849 |
+| XGBoost trees (early stopping) | 89 | 73 |
+
+**I predicted the metrics would drop, and they went up. The prediction was wrong, and here's why.**
+The val period (Oct 2020 to Nov 2021) has a different claim mix: outpatient is 35.5% of lines (30.6%
+in train), and 24.9% of outpatient lines carry a Medicare-non-payable consultation code (15.1% in
+train, 14.5% in test). Those claims are near-deterministic denials, so the easy positives are more
+common, which raises overall PR-AUC. Within each claim type, carrier and DME barely moved. The model
+isn't better; the val period is easier. That shift is also why val's denial rate is 17.8%. A random
+split would have hidden it. Test's mix is back near train's, which matters for the final one-time
+test evaluation.
+
+**SHAP, provider-ID question re-checked:** `PRF_PHYSN_UPIN`'s memorization signature is gone
+(correlation now +0.196, was -0.150). `TAX_NUM` is still slightly negative (-0.149) and still a minor
+contributor. `PRVDR_NUM` stays positive (+0.198). `HCPCS_CD` still dominates (mean |SHAP| 0.870).
+
+**Azure endpoint redeployed:** model v2 registered, deployment `blue` updated, and
+`verify_endpoint.py` passed again on 3,000 val rows (max difference 5e-7, identical PR-AUC by claim type).
+
+**Databricks port complete:** with `carrier.csv` in the `raw` volume, the Job ran all five tasks from the
+raw CSVs, and every table matched pandas cell for cell, including `silver_claims` (1,799,924 rows)
+built straight from the files. UC model v3 (trained from the Delta tables) is byte-identical to the
+pandas fit.
+
+### What went wrong on the way, and what now prevents it
+
+1. **Chow Stage 2 refused to reuse its cache**: "fit on different columns or a different label
+   vector". That's the label-fingerprint guardrail working as designed, since train's rows changed.
+   I deleted the stale cache and refit.
+2. **Job task `silver` failed on serverless**: `reduce(DataFrame.unionByName, parts)` reaches for the
+   JVM (`_jdf`), which serverless forbids. It had worked through Databricks Connect. Fixed with
+   `reduce(lambda a, b: a.unionByName(b), parts)`.
+3. **Azure login expired, and the device-code login is now blocked** by Entra security defaults
+   (AADSTS530035: sign-in "deemed unsafe", because the code was approved on your computer but used
+   from the cloud sandbox). Worse, `deploy.sh` didn't notice: `az group exists` failed inside a
+   command substitution (which `set -e` ignores) and the script tried to *create* the resource group.
+   The create failed too, so nothing happened. Fixes:
+   - `deploy.sh` now checks the login first and stops if it's expired.
+   - You created a **service principal** `claims-denial-deployer` with Contributor on `rg-claims-denial`
+     only (verified from here: that one role at that one scope, nothing at the subscription level).
+     Its client ID and secret are in the gitignored `.env`; `deploy.sh` logs in with it automatically.
+     The secret expires about 90 days from today.
+4. The sandbox restarted once mid-run (swap disappeared, the MLflow job died). I re-enabled swap and
+   reran it; nothing was lost.
+
+### Docs
+
+- `docs/DATABRICKS.md` (new): study guide covering the vocabulary, architecture, design decisions,
+  results, how to run it, gotchas, and interview talking points.
+- README: em dashes removed; Databricks status and a UI pointer added; appended a 2026-09-27 Progress
+  entry.
+- `data/data_dictionary.md`: em dashes removed; new section mapping every Delta table to its pandas
+  file.
+- `data/TARGET_DEFINITION.md`: appended the split-correction addendum; the earlier "confirmed
+  correct" note is kept as written, per the append-only rule.
+- The Project's handoff doc was updated for Databricks.
+
+### Decision for you
+
+- **Test set.** It has never been touched. The standard practice is one final evaluation on it, once
+  modeling is frozen (before the Phase 5 report). Recommend doing it at the start of Phase 5.
+
+### Next
+
+Phase 4: the GenAI layer.
