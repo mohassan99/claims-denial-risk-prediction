@@ -116,7 +116,10 @@ def build_silver(spark, bronze_tables: dict[str, str]) -> DataFrame:
         normalize(frames[f]).withColumn("_row_id", F.col("_file_row") + F.lit(offsets[f]))
         for f in CLAIM_FILES
     ]
-    unioned = reduce(DataFrame.unionByName, parts)
+    # a.unionByName(b), not reduce(DataFrame.unionByName, ...): inside a Databricks
+    # serverless Job the frames are Spark Connect DataFrames, and the classic
+    # class's unbound method reaches for the JVM (_jdf), which serverless forbids.
+    unioned = reduce(lambda a, b: a.unionByName(b), parts)
 
     # Infer numeric columns exactly once, over the whole union.
     candidates = [c for c in ordered if not _forced_str(c) and c != "_source_file"]

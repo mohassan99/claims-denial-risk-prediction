@@ -1,5 +1,5 @@
 {
-  "run_id": "7c030c2efade4d9991116d1e57ce8042",
+  "run_id": "6564d883ce5c4f38b87bc32f5329ee88",
   "experiment": "/Users/mohassan99@gmail.com/claims-denial-risk-prediction",
   "checks": {
     "identical_to_reports_xgboost_model.json": true,
@@ -9,38 +9,38 @@
   },
   "val_metrics_overall": {
     "n": 287988,
-    "positive_rate": 0.14882564551300748,
-    "pr_auc": 0.5832263878683532,
-    "roc_auc": 0.8160540289516746,
-    "brier": 0.08575526624917984,
-    "mean_predicted": 0.14805296063423157
+    "positive_rate": 0.17790324596858204,
+    "pr_auc": 0.6910082319484838,
+    "roc_auc": 0.8493185065704114,
+    "brier": 0.08377423137426376,
+    "mean_predicted": 0.18050572276115417
   },
   "val_metrics_by_claim_type": {
     "carrier": {
-      "n": 179028,
-      "positive_rate": 0.10068257479276985,
-      "pr_auc": 0.18810076201835702,
-      "roc_auc": 0.7060804426909009,
-      "brier": 0.08618909865617752,
-      "mean_predicted": 0.1002517119050026
+      "n": 170242,
+      "positive_rate": 0.10042175256399713,
+      "pr_auc": 0.19056126440632146,
+      "roc_auc": 0.7102059433701775,
+      "brier": 0.08580103516578674,
+      "mean_predicted": 0.10061720013618469
     },
     "outpatient": {
-      "n": 92321,
-      "positive_rate": 0.24009705267490603,
-      "pr_auc": 0.820011250062586,
-      "roc_auc": 0.9024920585965108,
-      "brier": 0.07806550711393356,
-      "mean_predicted": 0.23853875696659088
+      "n": 102180,
+      "positive_rate": 0.30989430416911334,
+      "pr_auc": 0.8775170078075897,
+      "roc_auc": 0.9234022225265408,
+      "brier": 0.07447502017021179,
+      "mean_predicted": 0.31679749488830566
     },
     "dme": {
-      "n": 16639,
-      "positive_rate": 0.1604062744155298,
-      "pr_auc": 0.2603208808800837,
-      "roc_auc": 0.714918791082856,
-      "brier": 0.12375395745038986,
-      "mean_predicted": 0.16031475365161896
+      "n": 15566,
+      "positive_rate": 0.15887190029551587,
+      "pr_auc": 0.2659911266519156,
+      "roc_auc": 0.715907667778015,
+      "brier": 0.12265040725469589,
+      "mean_predicted": 0.1595679223537445
     }
   },
   "registered_model": "workspace.claims_denial.claims_denial_xgboost",
-  "registered_version": "2"
+  "registered_version": "3"
 }

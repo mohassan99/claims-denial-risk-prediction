@@ -1,0 +1,70 @@
+[
+  {
+    "table": "silver_claims",
+    "columns_match": true,
+    "type_mismatches": {},
+    "rows": {
+      "spark": 1799924,
+      "pandas": 1799924
+    },
+    "missing_in_spark": 0,
+    "missing_in_pandas": 0,
+    "cell_mismatches": {},
+    "PASS": true
+  },
+  {
+    "table": "gold_labeled_claims_for_eda",
+    "columns_match": true,
+    "type_mismatches": {},
+    "rows": {
+      "spark": 1799924,
+      "pandas": 1799924
+    },
+    "missing_in_spark": 0,
+    "missing_in_pandas": 0,
+    "cell_mismatches": {},
+    "PASS": true
+  },
+  {
+    "table": "gold_train_model",
+    "columns_match": true,
+    "type_mismatches": {},
+    "rows": {
+      "spark": 1151951,
+      "pandas": 1151951
+    },
+    "missing_in_spark": 0,
+    "missing_in_pandas": 0,
+    "row_order_diffs": 0,
+    "cell_mismatches": {},
+    "PASS": true
+  },
+  {
+    "table": "gold_val_model",
+    "columns_match": true,
+    "type_mismatches": {},
+    "rows": {
+      "spark": 287988,
+      "pandas": 287988
+    },
+    "missing_in_spark": 0,
+    "missing_in_pandas": 0,
+    "row_order_diffs": 0,
+    "cell_mismatches": {},
+    "PASS": true
+  },
+  {
+    "table": "gold_test_model",
+    "columns_match": true,
+    "type_mismatches": {},
+    "rows": {
+      "spark": 359985,
+      "pandas": 359985
+    },
+    "missing_in_spark": 0,
+    "missing_in_pandas": 0,
+    "row_order_diffs": 0,
+    "cell_mismatches": {},
+    "PASS": true
+  }
+]

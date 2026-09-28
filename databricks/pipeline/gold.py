@@ -34,18 +34,20 @@ def build_eda_table(labeled: DataFrame) -> None:
 
 
 def assign_splits(labeled: DataFrame) -> DataFrame:
-    """Reproduces build_target_and_split.py: sort by CLM_FROM_DT and cut at
-    64% / 80%. NOTE: that sort is on the raw date STRING ("28-Sep-2015"), so
-    it orders by day-of-month first -- the documented "time-based" split is
-    really a day-of-month split. Reproduced here as-is for parity; see
-    SESSION_LOG.md (2026-09-26) for the finding and the pending decision.
-    pandas' string sort is stable (Arrow-backed str), so ties keep _row_id
-    order; Spark orders by (date string, _row_id) to match."""
+    """Reproduces build_target_and_split.py: a true time-based split -- sort by
+    the PARSED claim date (stable, so lines sharing a date keep _row_id order;
+    unparseable dates last) and cut at 64% / 80%.
+
+    History: until 2026-09-27 both pipelines sorted the raw date STRING
+    ("28-Sep-2015"), which orders by day of month first -- a day-of-month
+    split mislabeled as time-based. Found during this port; fixed in both
+    places together (see TARGET_DEFINITION.md's 2026-09-27 addendum)."""
     n = labeled.count()
-    parsed_share = labeled.agg(F.avg(F.to_date(DATE_COL, "dd-MMM-yyyy").isNotNull().cast("double"))).collect()[0][0]
+    parsed = F.to_date(DATE_COL, "dd-MMM-yyyy")
+    parsed_share = labeled.agg(F.avg(parsed.isNotNull().cast("double"))).collect()[0][0]
     if parsed_share <= 0.9:
         raise NotImplementedError("pandas falls back to a stratified random split here; not ported")
-    w = Window.orderBy(F.col(DATE_COL).asc_nulls_last(), F.col("_row_id"))
+    w = Window.orderBy(parsed.asc_nulls_last(), F.col("_row_id"))
     pos = labeled.withColumn("_pos", F.row_number().over(w) - 1)
     cut_train, cut_val = int(n * 0.64), int(n * 0.8)
     return (pos.withColumn("_split", F.when(F.col("_pos") < cut_train, "train")

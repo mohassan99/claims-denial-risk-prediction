@@ -35,7 +35,23 @@ ENDPOINT_NAME="claims-denial-xgb"
 DEPLOYMENT_NAME="blue"
 WS=(--resource-group "$AZURE_RESOURCE_GROUP" --workspace-name "$AZURE_ML_WORKSPACE")
 
-"$AZ" account set --subscription "$AZURE_SUBSCRIPTION_ID"
+"$AZ" account set --subscription "$AZURE_SUBSCRIPTION_ID" 2>/dev/null || true
+# Fail fast on an expired login: otherwise `group exists` fails inside a
+# command substitution (which set -e ignores) and ensure_infra would try to
+# CREATE the resource group (seen 2026-09-27: token expired, MFA required).
+if ! "$AZ" account get-access-token --scope "https://management.core.windows.net//.default" -o none 2>/dev/null; then
+  # A service principal (AZURE_CLIENT_ID / AZURE_CLIENT_SECRET in .env, scoped
+  # to the resource group) logs in without MFA or device codes -- needed from a
+  # cloud sandbox, where security defaults can reject a device-code login as
+  # "unsafe" (AADSTS530035, 2026-09-27).
+  if [[ -n "${AZURE_CLIENT_ID:-}" && -n "${AZURE_CLIENT_SECRET:-}" ]]; then
+    echo "== logging in as service principal $AZURE_CLIENT_ID"
+    "$AZ" login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" -o none
+    "$AZ" account set --subscription "$AZURE_SUBSCRIPTION_ID"
+  else
+    echo "Azure login expired -- run: az login --tenant \"$AZURE_TENANT_ID\", or set AZURE_CLIENT_ID/AZURE_CLIENT_SECRET in .env"; exit 1
+  fi
+fi
 
 model_hash() {  # content fingerprint of the local model files
   cat reports/xgboost_model.json reports/xgboost_model_meta.json | sha256sum | cut -c1-16
