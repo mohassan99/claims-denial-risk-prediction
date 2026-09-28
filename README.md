@@ -1,16 +1,16 @@
 # Claims Denial Risk Prediction
 
-**Predicting which Medicare claims are likely to be denied — and why — built on the real CMS
+**Predicting which Medicare claims are likely to be denied, and why, built on the real CMS
 Synthetic Medicare Claims PUF, an engineered denial-risk label grounded in documented adjudication
 logic, XGBoost + SHAP explainability, and a live Azure ML deployment.**
 
-Public CMS claims data has no real claim-level denial-outcome field anywhere in its release —
+Public CMS claims data has no real claim-level denial-outcome field anywhere in its release:
 that's proprietary payer adjudication data CMS doesn't publish. This project uses the PUF's real
 claim structure, procedure/diagnosis codes, and billing amounts for realism, then engineers a
 defensible, probabilistically-calibrated denial-risk label from documented adjudication rules
 (CMS payment-policy transmittals, CARC/RARC codes, published payer denial-rate benchmarks) rather
-than assuming a shortcut exists. Every non-obvious design decision — including the wrong turns and
-corrections along the way — is kept in full in `data/TARGET_DEFINITION.md` and
+than assuming a shortcut exists. Every non-obvious design decision, including the wrong turns and
+corrections along the way, is kept in full in `data/TARGET_DEFINITION.md` and
 `data/FEATURE_ENGINEERING.md`, not cleaned up to look like the right answer was obvious from the
 start.
 
@@ -22,8 +22,9 @@ construction → modeling → deployment.
 model and an XGBoost model with SHAP explainability (Phase 2), and the XGBoost model deployed as a
 live, key-authenticated Azure ML managed online endpoint whose predictions are verified to match
 the local model (Phase 3). The data pipeline also runs on Databricks (PySpark, Delta Lake, MLflow,
-Unity Catalog), verified cell-for-cell against the pandas version. Next: a GenAI layer on top of the
-endpoint (Phase 4).
+Unity Catalog, a Databricks Job), verified cell-for-cell against the pandas version from raw CSV to
+model tables (Phase 3b; study guide in `docs/DATABRICKS.md`). All models use a true time-based
+train/val/test split. Next: a GenAI layer on top of the endpoint (Phase 4).
 
 ## Setup
 
@@ -82,15 +83,18 @@ dbc-venv/bin/python databricks/train_mlflow.py              # fit from gold, ver
 dbc-venv/bin/python databricks/deploy_job.py --run          # publish code + (re)create the Databricks Job, run it
 ```
 
+In the Databricks UI the same run is **Workflows > claims-denial-medallion-pipeline > Run now**; the tables
+are under **Catalog > workspace > claims_denial**. `docs/DATABRICKS.md` explains every piece.
+
 ## Progress
 
-### Phase 1 — Data Sourcing, Wrangling & EDA (complete)
+### Phase 1: Data Sourcing, Wrangling & EDA (complete)
 
-Downloaded the CMS Synthetic Medicare Claims PUF (carrier, outpatient, DME — ~89% of claim volume
+Downloaded the CMS Synthetic Medicare Claims PUF (carrier, outpatient, DME: ~89% of claim volume
 per the CMS user guide) and built the full pipeline from raw claims to a modeling-ready feature
 set:
 
-- **Target (`is_denied`):** no public CMS claims PUF contains a real denial outcome field —
+- **Target (`is_denied`):** no public CMS claims PUF contains a real denial outcome field,
   verified directly against the CMS user guide before writing any code. Engineered a probabilistic
   (noisy-OR) label from 5 documented risk factors instead of a hard rule, so the label carries
   graded risk rather than being a deterministic function of the same fields used to model it. One
@@ -113,17 +117,17 @@ Deliverables: `src/load_data.py`, `src/denial_rules.py`, `src/denial_reasons.py`
 `src/build_target_and_split.py`, `src/run_eda.py`, `src/build_features.py`.
 
 *Note, 2026-09-22: a 6th risk factor (`missing_hcpcs`) was discovered during Phase 2 feature-audit
-work and folded back into the label — the earlier 9.4% denial rate cited here at Phase 1's close
+work and folded back into the label; the earlier 9.4% denial rate cited here at Phase 1's close
 recalibrated to 12.1% as a result. Kept as a visible correction rather than silently editing the
-number above — see `data/TARGET_DEFINITION.md`'s addenda for the full trail.*
+number above. See `data/TARGET_DEFINITION.md`'s addenda for the full trail.*
 
-### Phase 2 — Baseline Logistic Regression (Chow Test) + XGBoost/SHAP (in progress)
+### Phase 2: Baseline Logistic Regression (Chow Test) + XGBoost/SHAP (in progress)
 
-Building the design matrix for a formal Chow test — deciding, per shared covariate, whether its
+Building the design matrix for a formal Chow test: deciding, per shared covariate, whether its
 effect on denial risk should be pooled across claim types (carrier/outpatient/DME) or given a
 separate coefficient per claim type, rather than assuming either answer. A complete claim-type
 presence audit (`data/full_claim_type_presence_audit.csv`) replaced an earlier, incomplete
-column-by-column classification once cross-checks caught it missing real cases — including several
+column-by-column classification once cross-checks caught it missing real cases, including several
 covariates that looked shared but turned out to be empirically claim-type-specific once actual
 per-category variance was checked, not just null rates. Full reasoning in
 `data/FEATURE_ENGINEERING.md` Section 6. Fitting code and results not yet built.
@@ -185,7 +189,7 @@ confirming (not assuming) what a tree-based model actually needs: none of the ba
 frequency encoding, rank-deficiency fixes, or claim-type interaction terms, since those all exist
 to work around linear-model limitations trees don't share. Categorical features go in at full
 cardinality (pandas `category` dtype, xgboost's native categorical splits) and missing values are
-passed through natively rather than zero-filled — and the model gets to use roughly 130 columns
+passed through natively rather than zero-filled, and the model gets to use roughly 130 columns
 the baseline couldn't (secondary diagnosis/procedure codes, legacy provider IDs, other CMS
 categorical codes) because a tree needs no cardinality-reduction decision for them first.
 
@@ -196,12 +200,12 @@ categorical codes) because a tree needs no cardinality-reduction decision for th
 | Outpatient | 0.820 | 0.903 | 24.0% |
 | DME | 0.260 | 0.715 | 16.0% |
 
-Beats the baseline logistic model in every claim type, most on carrier — still the hardest claim
+Beats the baseline logistic model in every claim type, most on carrier. Carrier is still the hardest claim
 type for either model, but XGBoost closes a meaningful share of the gap. The single most
 important feature by a wide margin is `HCPCS_CD`; several raw provider-identifier columns
 (billing/organization NPI, tax number, referring-physician UPIN) also rank highly, a plausible
-"this provider is denied more often" signal in the same spirit as the baseline's `prvdr_num_freq`
-— flagged for a closer look with SHAP rather than assumed, since raw high-cardinality ID splits
+"this provider is denied more often" signal in the same spirit as the baseline's `prvdr_num_freq`,
+flagged for a closer look with SHAP rather than assumed, since raw high-cardinality ID splits
 can also memorize individual providers' small-sample noise. Full results in
 `reports/xgboost_results.txt`.
 
@@ -212,8 +216,8 @@ metrics to 1e-6 first. Two findings:
 
 1. **Gain-based importance and SHAP importance disagree for one feature.** `LINE_PRMRY_ALOWD_CHRG_AMT`
    is XGBoost's #2 feature by gain (0.199) but doesn't crack SHAP's overall top 20 at all (only
-   reaching #10 within DME, 0.028). This isn't new leakage — it was already checked and confirmed
-   to be an exact DME-only duplicate of a feature the baseline model already used — but it is a
+   reaching #10 within DME, 0.028). This isn't new leakage: it was already checked and confirmed
+   to be an exact DME-only duplicate of a feature the baseline model already used. But it is a
    real methodological finding: gain can overweight a feature that wins a few very effective
    splits without moving most individual predictions much, while SHAP reflects actual average
    per-prediction impact. `HCPCS_CD` dominates even more clearly under SHAP than under gain (mean
@@ -221,15 +225,15 @@ metrics to 1e-6 first. Two findings:
 
 2. **The provider-ID question has a mixed answer, not a single verdict.** For each of the 5
    flagged raw provider-identifier columns, correlated each category's mean |SHAP| with
-   log(its training claim count) — positive means higher-volume providers get at least as much
+   log(its training claim count). Positive means higher-volume providers get at least as much
    weight (a real, volume-supported signal); negative means low-volume categories carry more
    weight (the signature of memorizing small-sample noise):
 
    | Column | corr(log count, \|SHAP\|) | Read |
    |---|---|---|
-   | `PRVDR_NUM` | +0.234 | Genuine signal — high-volume providers get *more* weight (0.274 vs 0.102), corroborating the baseline's large `prvdr_num_freq` coefficient |
-   | `CARR_CLM_BLG_NPI_NUM` | +0.065 | Flat — no evidence either way |
-   | `ORG_NPI_NUM` | +0.017 | Flat — no evidence either way |
+   | `PRVDR_NUM` | +0.234 | Genuine signal: high-volume providers get *more* weight (0.274 vs 0.102), corroborating the baseline's large `prvdr_num_freq` coefficient |
+   | `CARR_CLM_BLG_NPI_NUM` | +0.065 | Flat, no evidence either way |
+   | `ORG_NPI_NUM` | +0.017 | Flat, no evidence either way |
    | `PRF_PHYSN_UPIN` | −0.150 | Minor memorization signature (small overall contributor, mean \|SHAP\| 0.009) |
    | `TAX_NUM` | −0.186 | Minor memorization signature (mean \|SHAP\| 0.068) |
 
@@ -241,7 +245,7 @@ metrics to 1e-6 first. Two findings:
 Full tables in `reports/shap_results.txt` / `reports/shap_fit.json`. This closes out Phase 2. Next:
 Phase 3 (Azure ML deploy).
 
-### Phase 3 — Azure ML Deployment (complete)
+### Phase 3: Azure ML Deployment (complete)
 
 The Phase 2 XGBoost model is live as an Azure ML **managed online endpoint** (`claims-denial-xgb`,
 Canada Central): an HTTPS REST API, key-authenticated, that takes raw claim rows as JSON and
@@ -260,15 +264,15 @@ returns P(denied) per row.
 - **Model registry as the source of truth.** The model is registered in the Azure ML workspace with
   a content hash tag; the deploy script only registers a new version when the model files change.
 - **Real constraints, documented.** The Azure for Students subscription only allows five regions
-  (not the usual `eastus`), and its 4-vCPU-per-family quota — with Azure's 20% reserve for rolling
-  upgrades — caps the deployment at a single 2-vCPU `Standard_DS2_v2` instance. Three deploy-time
+  (not the usual `eastus`), and its 4-vCPU-per-family quota (with Azure's 20% reserve for rolling
+  upgrades) caps the deployment at a single 2-vCPU `Standard_DS2_v2` instance. Three deploy-time
   failures (a first-build permission check, a stale managed identity from a too-fast
   delete/recreate, and a missing `scikit-learn` in the inference image) are written up in
   `reports/SESSION_LOG.md` along with what now prevents each.
 
 Infrastructure is fully scripted and idempotent (`deploy/deploy.sh`); see Setup above.
 
-### Phase 3b — Databricks: PySpark medallion pipeline, MLflow, Unity Catalog (in progress)
+### Phase 3b: Databricks, PySpark medallion pipeline, MLflow, Unity Catalog (in progress)
 
 The pandas pipeline needs ~6 GB of RAM just to load the 1.8M claim lines, which has repeatedly hit
 the ceiling of an 8 GB machine. The same pipeline now also runs on Databricks as a
@@ -301,3 +305,42 @@ the ceiling of an 8 GB machine. The same pipeline now also runs on Databricks as
 - **A real finding from the port:** the "time-based" train/val/test split has actually been a
   day-of-month split all along (the date was sorted as text, `28-Sep-2015`). Reproduced as-is for
   parity; the fix is pending a decision because it changes every Phase 2 number.
+
+*Progress, 2026-09-27: Databricks port complete, and the split is now truly time-based.*
+
+- **Full Databricks run from the raw files.** The Databricks Job ran all five tasks (bronze, silver,
+  silver_label, gold, parity) on serverless compute, starting from the three raw CMS CSVs. Every
+  table matches its pandas counterpart cell for cell, including `silver_claims` built straight from
+  the CSVs (1,799,924 rows). Results: `reports/databricks_parity.json`. Study guide:
+  `docs/DATABRICKS.md`.
+- **The split bug, fixed in both pipelines.** The old "time-based" split sorted the date as text
+  (`28-Sep-2015`), which ordered by day of month. It now sorts by the parsed date:
+
+  | split | dates | denial rate |
+  |---|---|---|
+  | train | 2015-01-08 to 2020-10-29 | 14.4% |
+  | val | 2020-10-29 to 2021-11-23 | 17.8% |
+  | test | 2021-11-23 to 2023-03-02 | 14.2% |
+
+- **Everything downstream was refit** on the new split: Chow test (still rejects pooling, LR 2,527 on
+  158 df; Stage 2 selects the same 5 interacted / 6 pooled variables), baseline, XGBoost, SHAP. Val
+  results:
+
+  | | Baseline PR-AUC | XGBoost PR-AUC | XGBoost ROC-AUC |
+  |---|---|---|---|
+  | Overall | 0.671 | 0.691 | 0.849 |
+  | Carrier | 0.141 | 0.191 | 0.710 |
+  | Outpatient | 0.877 | 0.878 | 0.923 |
+  | DME | 0.264 | 0.266 | 0.716 |
+
+  XGBoost still beats the baseline in every claim type. **Why the overall numbers went up rather than
+  down:** the val period has more outpatient claims (35.5% vs 30.6% of lines) and far more
+  Medicare-non-payable consultation codes (24.9% of outpatient lines vs 15.1% in train), which are
+  easy, near-deterministic denials. Per claim type, carrier and DME barely moved. So the higher
+  overall PR-AUC reflects a shift in the claim mix over time, not a better model. That shift is
+  something a random split would have hidden.
+- **Redeployed and re-registered.** The retrained model is live on the Azure ML endpoint (verified
+  again on 3,000 val rows: max difference 5e-7, identical PR-AUC by claim type) and registered in
+  Unity Catalog (v3; the model trained from the Delta tables is byte-identical to the pandas-trained
+  one).
+
