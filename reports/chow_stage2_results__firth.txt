@@ -1,20 +1,20 @@
 Chow test STAGE 2 -- per-variable claim-type homogeneity tests
 ================================================================
 Method: firth (penalized LR, full-model penalty); --sample-frac full; separating-code exclusion OFF
-Full-model log-likelihood: -354978.4201
+Full-model log-likelihood: -359521.4417
 Variables tested: 11 (non-converged: 0)
 Heterogeneous by claim type (Holm-adjusted p < 0.05): 5
 Pooling adequate (Holm-adjusted p >= 0.05): 6
 
 variable                                     df           LR           p      p_holm  verdict
-provider_state                              100     1068.411  8.182e-162      9e-161  INTERACT
-HCPCS_CD                                     10      695.300  6.412e-143  6.412e-142  INTERACT
-PRNCPAL_DGNS_CD                              40      593.323   1.197e-99   1.077e-98  INTERACT
-prvdr_num_freq                                1      158.745   2.128e-36   1.702e-35  INTERACT
-CARR_CLM_CASH_DDCTBL_APLD_AMT                 1        8.839    0.002949     0.02064  INTERACT
-NCH_CARR_CLM_SBMTD_CHRG_AMT                   1        6.129      0.0133      0.0798  pool
-LINE_BENE_PTB_DDCTBL_AMT                      1        4.157     0.04146      0.2073  pool
-LINE_SRVC_CNT                                 1        1.749      0.1861      0.7442  pool
-LINE_ALOWD_CHRG_AMT                           1        0.282      0.5956           1  pool
-NCH_CARR_CLM_ALOWD_AMT                        1        0.269      0.6038           1  pool
-LINE_NCH_PMT_AMT                              1        0.168      0.6819           1  pool
+provider_state                              100      999.869  2.446e-148  2.691e-147  INTERACT
+PRNCPAL_DGNS_CD                              40      774.621  7.999e-137  7.999e-136  INTERACT
+HCPCS_CD                                     10      626.611  3.487e-128  3.138e-127  INTERACT
+prvdr_num_freq                                1       32.419   1.242e-08   9.939e-08  INTERACT
+CARR_CLM_CASH_DDCTBL_APLD_AMT                 1        7.626    0.005753     0.04027  INTERACT
+LINE_ALOWD_CHRG_AMT                           1        4.251     0.03923      0.2354  pool
+LINE_BENE_PTB_DDCTBL_AMT                      1        4.076     0.04349      0.2354  pool
+LINE_NCH_PMT_AMT                              1        2.784      0.0952      0.3808  pool
+NCH_CARR_CLM_SBMTD_CHRG_AMT                   1        1.556      0.2123       0.637  pool
+LINE_SRVC_CNT                                 1        1.500      0.2207       0.637  pool
+NCH_CARR_CLM_ALOWD_AMT                        1        0.492       0.483       0.637  pool

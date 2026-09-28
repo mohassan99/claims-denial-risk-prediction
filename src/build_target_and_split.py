@@ -136,9 +136,21 @@ def main() -> None:
 
     # Time-based split if CLM_FROM_DT is usable, else fall back to stratified
     # random split (Phase 1 Step 3).
+    #
+    # CORRECTED 2026-09-27. This used to be `df.sort_values(date_col)` on the
+    # raw string column. CMS RIF dates are text like "28-Sep-2015", so that
+    # sorted by DAY OF MONTH first: train was days 1-20 of every month, val
+    # days 20-25, test days 25-31, each spanning 2015-2023 -- a day-of-month
+    # split, not a time-based one (found while porting the pipeline to
+    # Databricks; see TARGET_DEFINITION.md's 2026-09-27 addendum). The sort
+    # is now on the PARSED date, with an explicit stable sort so claim lines
+    # sharing a date keep their original (_row_id) order -- the cut points
+    # are then fully deterministic, not dependent on sort-algorithm ties.
     date_col = "CLM_FROM_DT"
-    if date_col in df.columns and pd.to_datetime(df[date_col], errors="coerce").notna().mean() > 0.9:
-        df = df.sort_values(date_col)
+    DATE_FORMAT = "%d-%b-%Y"
+    parsed = pd.to_datetime(df[date_col], format=DATE_FORMAT, errors="coerce") if date_col in df.columns else None
+    if parsed is not None and parsed.notna().mean() > 0.9:
+        df = df.assign(_split_date=parsed).sort_values("_split_date", kind="stable").drop(columns="_split_date")
         n = len(df)
         train_end = int(n * 0.64)  # 0.8 * 0.8 to match the two-stage 80/20 split's proportions
         val_end = int(n * 0.8)
