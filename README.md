@@ -59,6 +59,10 @@ bash deploy/deploy.sh                  # (re)create anything missing: RG, worksp
 bash deploy/deploy.sh stop             # delete the deployment -> stops VM billing (endpoint + model kept)
 ```
 
+**The deployment is currently stopped to save credit** (it bills about $0.15/hour while it exists).
+`docs/DEMO.md` is the step-by-step runbook: start the endpoint before a demo, what to show in Azure
+and Databricks, and how to stop it afterwards.
+
 The registered model in the Azure ML workspace is the durable copy of the fitted model; the local
 `reports/xgboost_model*.json` files are gitignored and can always be re-pulled with
 `download-model` (or regenerated with `python src/fit_xgboost.py`).

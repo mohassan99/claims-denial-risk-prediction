@@ -86,8 +86,8 @@ ensure_model() {
   mkdir -p "$stage/$MODEL_NAME"
   cp reports/xgboost_model.json reports/xgboost_model_meta.json "$stage/$MODEL_NAME/"
   "$AZ" ml model create --name "$MODEL_NAME" --type custom_model --path "$stage/$MODEL_NAME" "${WS[@]}" \
-    --description "Phase 2 XGBoost (early-stopped, 89 trees). val PR-AUC 0.583 / ROC-AUC 0.816. Regenerable: python src/fit_xgboost.py" \
-    --tags content_sha256_16="$h" val_pr_auc=0.5832 val_roc_auc=0.8161 git_repo=mohassan99/claims-denial-risk-prediction \
+    --description "Phase 2 XGBoost. Val metrics: reports/xgboost_fit.json at the matching commit. Regenerable: python src/fit_xgboost.py" \
+    --tags content_sha256_16="$h" git_repo=mohassan99/claims-denial-risk-prediction \
     -o none
   rm -rf "$stage"
 }
@@ -136,7 +136,12 @@ case "${1:-all}" in
   status)
     "$AZ" ml online-endpoint show -n "$ENDPOINT_NAME" "${WS[@]}" --query "{state:provisioning_state,uri:scoring_uri,traffic:traffic}" -o json
     "$AZ" ml online-deployment list -e "$ENDPOINT_NAME" "${WS[@]}" --query "[].{name:name,state:provisioning_state,sku:instance_type,count:instance_count}" -o table ;;
-  stop)           "$AZ" ml online-deployment delete -n "$DEPLOYMENT_NAME" -e "$ENDPOINT_NAME" "${WS[@]}" --yes ;;
+  stop)
+    # Azure refuses to delete a deployment that still has traffic (found 2026-09-27),
+    # so route 0% to it first. `deploy.sh` (no arg) restores blue=100 on the way back up.
+    "$AZ" ml online-endpoint update -n "$ENDPOINT_NAME" "${WS[@]}" --traffic "$DEPLOYMENT_NAME=0" -o none
+    "$AZ" ml online-deployment delete -n "$DEPLOYMENT_NAME" -e "$ENDPOINT_NAME" "${WS[@]}" --yes
+    echo "deployment $DEPLOYMENT_NAME deleted; VM billing stopped (endpoint, model, workspace kept)" ;;
   teardown)       "$AZ" ml online-endpoint delete -n "$ENDPOINT_NAME" "${WS[@]}" --yes ;;
   *) echo "unknown command: $1"; exit 1 ;;
 esac

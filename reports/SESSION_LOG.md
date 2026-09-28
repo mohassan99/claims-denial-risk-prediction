@@ -790,3 +790,22 @@ pandas fit.
 ### Next
 
 Phase 4: the GenAI layer.
+
+## 2026-09-27 (later): GitHub sync, Azure deployment stopped, demo runbook
+
+- **Pushed** all of today's work to GitHub (split fix + refit, Databricks fixes, docs). The
+  `push_files` route re-sends every file's full text, so from now on the cloud session hands you a
+  `.patch` file instead (your choice): `git pull origin main`, `git am <file>.patch`,
+  `git push origin main`. Written into CLAUDE.md's Git section.
+- **Azure deployment stopped** (your decision) to save credit. The first `deploy.sh stop` failed:
+  Azure refuses to delete a deployment that still has 100% traffic. Fixed: `stop` now sets traffic
+  to 0 first. Status after: no deployments, traffic `{}`; endpoint, model v2 and workspace kept.
+- **`deploy.sh` no longer tags new model versions with hardcoded (stale) metrics.** v2 had been
+  registered with the old "89 trees, PR-AUC 0.583" description; the metrics now live only in
+  `reports/xgboost_fit.json`.
+- **New `docs/DEMO.md`:** start the endpoint, what to show in Azure and Databricks, stop it, and
+  what costs money. Includes a warning found while writing it: old local
+  `reports/xgboost_model*.json` files (pre-2026-09-27) would be registered and deployed by
+  `deploy.sh`, silently restoring the old model. Run `deploy.sh download-model` first (expect hash
+  `11f409f72fc4c45e`).
+- Databricks Free Edition costs nothing; no action needed there.
