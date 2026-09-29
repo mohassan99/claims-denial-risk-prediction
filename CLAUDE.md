@@ -3,7 +3,7 @@
 Portfolio project: predict claim-denial risk on CMS Synthetic Medicare Claims (carrier,
 outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since the 2026-09-24 carrier fix; was 12.1%). Phases: 0 setup,
 1 data/EDA (done), 2 baseline logistic + Chow test + XGBoost + SHAP (done 2026-09-25),
-**3 Azure ML deploy (done 2026-09-25)**, **3b Databricks port (done 2026-09-27)**, **4 GenAI layer (next)**,
+**3 Azure ML deploy (done 2026-09-25)**, **3b Databricks port (done 2026-09-27)**, **4 agentic claim explainer (next)**,
 5 report/video, 6 README/portfolio.
 
 ## How the user wants to work (read first)
@@ -322,7 +322,34 @@ small fraction of total importance). Full tables in `reports/shap_results.txt` /
    ambiguous.
 5. ~~Phase 3: Azure ML deploy~~ — done 2026-09-25 (`deploy/`), see Azure section above.
 6. ~~Phase 3b: Databricks port~~ -- done 2026-09-27; split fixed and everything refit.
-7. **Phase 4: GenAI layer** on top of the endpoint (explain a score via SHAP + CARC denial reasons).
+7. **Phase 4: agentic claim explainer** (scope revised 2026-09-28, user's decision). Replaces the
+   earlier "SHAP narrative + RAG chunking comparison" plan, which duplicated the user's separate RAG
+   project. Claim explanation is structured lookup (SHAP values, feature meanings, CARC codes are
+   fetched by exact key), so RAG is used only where it fits: policy questions.
+   - **Build:** an agent on the Anthropic API using tool use (the model decides which tool to call;
+     key is `ANTHROPIC_API_KEY` in `.env`). Four tools:
+     1. `score_claim`: run the LOCAL XGBoost model on a claim row (the Azure endpoint stays stopped;
+        do not restart it unless the user asks).
+     2. `explain_shap`: top SHAP contributions for that claim, joined to feature meanings from
+        `data/data_dictionary.md`.
+     3. `lookup_carc`: CARC (Claim Adjustment Reason Code) to short description for the codes this
+        project uses. X12 copyrights the official list, so use paraphrases and link to
+        https://x12.org/codes/claim-adjustment-reason-codes. 11: diagnosis doesn't support the
+        procedure billed. 16: missing information or billing error. 18: duplicate of a claim or
+        service already submitted. 181: procedure code wasn't valid on the date of service. 197:
+        required prior authorization wasn't obtained.
+     4. `search_policy`: small RAG (retrieval-augmented generation: fetch relevant text chunks, hand
+        them to the model) over the policy documents behind the six risk rules (CMS consultation-code
+        rule, Claims Processing Manual Ch. 12 Sec. 30.6.10; LCD L33718 + article A52467 for CPAP; CMS
+        DMEPOS prior-authorization program documents; others cited in `data/TARGET_DEFINITION.md`).
+        Basic chunking only; no chunking comparison study.
+   - **Evaluate grounding:** on about 30 val claims, the share of numbers and codes in each
+     explanation that trace back to tool outputs. Document at least one real failure and its fix.
+   - **Cut rule:** if time runs short, drop `search_policy` and keep tools 1 to 3.
+   - **Model:** get it with `bash deploy/deploy.sh download-model` (expect content hash
+     `11f409f72fc4c45e`). Never refit.
+   - Everything gitignored is rebuildable locally: see `docs/LOCAL_SETUP.md`. `bash
+     scripts/make_env.sh` creates `.env` with hidden prompts for secrets.
 
 ## Open decisions for the user (don't act on these alone)
 
