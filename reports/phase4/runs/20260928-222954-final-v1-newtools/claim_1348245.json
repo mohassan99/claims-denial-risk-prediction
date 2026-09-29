@@ -1,0 +1,162 @@
+{
+  "claim_id": 1348245,
+  "question": "Claim 1348245: why is its denial risk what it is, and what could a billing team check before submitting?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v1",
+  "turns": 4,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1348245
+      },
+      "output": {
+        "claim_id": 1348245,
+        "claim_type": "outpatient",
+        "probability_denied": 0.1148,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 0.64,
+        "points_versus_validation_average": -6.6,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "90935",
+        "principal_diagnosis": "N184"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1348245
+      },
+      "output": {
+        "claim_id": 1348245,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -2.043,
+        "final_probability": 0.1148,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "90935",
+            "shap_log_odds": -0.324,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.72,
+            "odds_change_percent": -28,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.06,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.94,
+            "odds_change_percent": -6,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "PRVDR_NUM",
+            "value": "240020",
+            "shap_log_odds": 0.038,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.04,
+            "odds_change_percent": 4,
+            "meaning": "Billing provider identifier",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "LINE_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.036,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.04,
+            "odds_change_percent": 4,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "TAX_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.036,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.96,
+            "odds_change_percent": -4,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "N184",
+            "shap_log_odds": 0.029,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.03,
+            "odds_change_percent": 3,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true
+          }
+        ],
+        "all_other_features_log_odds": 0.086,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "hemodialysis 90935 end-stage renal disease claim requirements",
+        "k": 3
+      },
+      "output": {
+        "query": "hemodialysis 90935 end-stage renal disease claim requirements",
+        "results": [
+          {
+            "doc_id": "lcd_l33718_pap_devices",
+            "title": "CMS LCD L33718 - Positive Airway Pressure (PAP) devices for obstructive sleep apnea",
+            "url": "https://www.cms.gov/medicare-coverage-database/view/lcd.aspx?lcdid=33718",
+            "chunk_id": "lcd_l33718_pap_devices#2",
+            "text": "cognition, mood disorders, insomnia, hypertension, ischemic heart disease, or history of stroke. Third, the beneficiary is given instruction by the supplier in the proper use and care of the device. ## E0470 requirements\n\nA beneficiary qualifies for E0470 only after meeting all E0601 criteria plus an additional one: an E0601 has been tried and proven ineffective based on a therapeutic trial. Ineffective means documented failure to meet therapeutic goals despite optimal therapy, including proper mask selection and appropriate pressure adjustment. If E0601 proves ineffective during the initial facility-based titration or home trial, moving to E0470 needs no new clinical evaluation or sleep test.\n\n## Continued coverage beyond three months",
+            "similarity": 0.066
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#2",
+            "text": "mobility devices, pressure reducing support surfaces, lower limb prosthetics and pneumatic compression devices. Selected items usually start in some geographic regions and then expand nationwide. ## Claims without prior authorization For items on the Required Prior Authorization List, prior authorization is a condition of payment. A claim submitted without an affirmative prior authorization decision, or without a provisional affirmation that meets the 90% compliance threshold, is not eligible for payment.\n\nStandard requests are decided within 7 calendar days (effective January 1, 2025). Expedited requests are decided within 2 business days. Suppliers furnishing items under urgent circumstances can use specific modifiers, such as ST, to indicate an emergency, which may bypass the standard timelines.\n\n## Submitting requests",
+            "similarity": 0.062
+          },
+          {
+            "doc_id": "lcd_l33718_pap_devices",
+            "title": "CMS LCD L33718 - Positive Airway Pressure (PAP) devices for obstructive sleep apnea",
+            "url": "https://www.cms.gov/medicare-coverage-database/view/lcd.aspx?lcdid=33718",
+            "chunk_id": "lcd_l33718_pap_devices#1",
+            "text": "E0601 (single-level continuous positive airway pressure, CPAP) from E0470 (bi-level respiratory assist device without backup rate). Both treat obstructive sleep apnea when specific conditions are documented. ## E0601 coverage criteria Three conditions must all be met. First, the beneficiary has an in-person clinical evaluation by the treating practitioner before sleep testing, to assess for obstructive sleep apnea. Second, the beneficiary completes a sleep test that meets one of two thresholds: an apnea-hypopnea index (AHI) or respiratory disturbance index (RDI) of at least 15 events per hour with a minimum of 30 events, or an AHI or RDI of 5 to 14 events per hour with a minimum of 10 events together with documented excessive daytime sleepiness, impaired cognition, mood disorders, insomnia, hypertension, ischemic heart disease, or history of stroke. Third, the beneficiary is given instruction by the supplier in the proper use and care of the device.",
+            "similarity": 0.042
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    }
+  ],
+  "final_text": "**Claim 1348245 is low risk.** The model gives it an 11.5% chance of denial. The validation-set average is 18.0%, so this claim sits about 6.6 percentage points below average. The model's baseline is 14.0%. The label is synthetic. It was built from risk rules, so this is the probability of a constructed label and not of a real payer decision.\n\n**What drove the score**\n- **Procedure code 90935 (outpatient claim):** This was the biggest factor. It cut the odds of denial by about 28%.\n- **Other features:** Billing NPI, tax number and line number were all \"NOT_APPLICABLE\" and had tiny effects. The billing provider (PRVDR_NUM 240020) and the principal diagnosis (N184) each nudged risk up by only 3\u20134%. The project's data dictionary doesn't define the NPI, tax number or line number fields.\n\n**What to check before submitting**\nThe policy corpus has nothing on 90935 or dialysis. It covers only consultation codes, CPAP and DMEPOS prior authorization. These checks are general billing practice and not taken from that policy set:\n- The diagnosis supports the service.\n- Documentation is complete.\n- Provider identifiers are populated correctly.\n- There are no duplicate or inconsistent lines.",
+  "usage": {
+    "input": 5224,
+    "output": 789,
+    "cache_write": 0,
+    "cache_read": 3736
+  },
+  "cost_usd": 0.01909,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-29T05:32:28+00:00"
+}

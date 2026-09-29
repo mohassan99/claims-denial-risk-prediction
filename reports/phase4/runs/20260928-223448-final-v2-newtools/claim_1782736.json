@@ -1,0 +1,170 @@
+{
+  "claim_id": 1782736,
+  "question": "Claim 1782736: why is its denial risk what it is, and what could a billing team check before submitting?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 4,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1782736
+      },
+      "output": {
+        "claim_id": 1782736,
+        "claim_type": "dme",
+        "probability_denied": 0.1975,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 1.09,
+        "points_versus_validation_average": 1.7,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "A7030",
+        "principal_diagnosis": "Z733"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1782736
+      },
+      "output": {
+        "claim_id": 1782736,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -1.402,
+        "final_probability": 0.1975,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "A7030",
+            "shap_log_odds": 0.519,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.68,
+            "odds_change_percent": 68,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "LINE_NUM",
+            "value": "1",
+            "shap_log_odds": -0.289,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.75,
+            "odds_change_percent": -25,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "ORG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.19,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.21,
+            "odds_change_percent": 21,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z733",
+            "shap_log_odds": -0.131,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.88,
+            "odds_change_percent": -12,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "11",
+            "shap_log_odds": -0.101,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.9,
+            "odds_change_percent": -10,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "CARR_CLM_RFRNG_PIN_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.08,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.08,
+            "odds_change_percent": 8,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          }
+        ],
+        "all_other_features_log_odds": 0.142,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "A7030 DMEPOS coding, prior authorization, and documentation requirements",
+        "k": 4
+      },
+      "output": {
+        "query": "A7030 DMEPOS coding, prior authorization, and documentation requirements",
+        "results": [
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#0",
+            "text": "# DMEPOS prior authorization process overview\n\n## Purpose\n\nThe prior authorization program for durable medical equipment, prosthetics, orthotics and supplies (DMEPOS) helps protect the Medicare Trust Fund from improper payments while making sure beneficiaries can get the items they need in a timely way. Prior authorization checks that applicable Medicare coverage, payment and coding requirements are met before the item is delivered.\n\n## How items are selected",
+            "similarity": 0.284
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#3",
+            "text": "within 2 business days. Suppliers furnishing items under urgent circumstances can use specific modifiers, such as ST, to indicate an emergency, which may bypass the standard timelines. ## Submitting requests Suppliers can submit prior authorization requests before delivering the item. A request needs the clinical documentation that supports medical necessity under Medicare coverage rules. A supplier with a provisional affirmation rate of 90% or higher may qualify for an exemption from prior authorization, established in December 2025, with the first exemption cycle starting June 1, 2026 and repeating annually. For power mobility device bases, suppliers may voluntarily request authorization for qualifying accessories using a separate voluntary list. Suppliers should contact their DME MAC or its website for jurisdiction-specific submission procedures, timeframes and documentation requirements.",
+            "similarity": 0.25
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#1",
+            "text": "items they need in a timely way. Prior authorization checks that applicable Medicare coverage, payment and coding requirements are met before the item is delivered. ## How items are selected CMS keeps a Master List of DMEPOS items that may require prior authorization or a face-to-face encounter with a written order before delivery. The list is updated at least once a year based on items with patterns of unnecessary utilization. Items on the Required Prior Authorization List are chosen by evaluating DMEPOS categories for problematic billing trends. Recent additions include orthoses, power mobility devices, pressure reducing support surfaces, lower limb prosthetics and pneumatic compression devices. Selected items usually start in some geographic regions and then expand nationwide.\n\n## Claims without prior authorization",
+            "similarity": 0.228
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#2",
+            "text": "mobility devices, pressure reducing support surfaces, lower limb prosthetics and pneumatic compression devices. Selected items usually start in some geographic regions and then expand nationwide. ## Claims without prior authorization For items on the Required Prior Authorization List, prior authorization is a condition of payment. A claim submitted without an affirmative prior authorization decision, or without a provisional affirmation that meets the 90% compliance threshold, is not eligible for payment.\n\nStandard requests are decided within 7 calendar days (effective January 1, 2025). Expedited requests are decided within 2 business days. Suppliers furnishing items under urgent circumstances can use specific modifiers, such as ST, to indicate an emergency, which may bypass the standard timelines.\n\n## Submitting requests",
+            "similarity": 0.187
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    }
+  ],
+  "final_text": "**Claim 1782736 (DME, HCPCS A7030, principal diagnosis Z733)**\n\nThe denial label in this project is synthetic. It is built from risk rules, so the score is not a real payer decision.\n\n**Score:** The model gives a denial probability of 0.1975. The validation-set average is 0.1805, so this claim is 1.09 times the average and 1.7 percentage points above it. The baseline probability is 0.1404.\n\n**What the model weighs:**\n- **HCPCS_CD = A7030** is the largest push up. It is the procedure/service code billed. It multiplies the odds by 1.68, a 68% increase.\n- **ORG_NPI_NUM = NOT_APPLICABLE** raises the odds by 21%. The project data dictionary has no entry for this field.\n- **CARR_CLM_RFRNG_PIN_NUM = NOT_APPLICABLE** raises the odds by 8%. This field is also undocumented in the dictionary.\n- **LINE_NUM = 1** lowers the odds by 25%. It is undocumented in the dictionary too.\n- **PRNCPAL_DGNS_CD = Z733** lowers the odds by 12%. It is the principal diagnosis (ICD-10-CM).\n- **LINE_PLACE_OF_SRVC_CD = 11** lowers the odds by 10%. It is undocumented in the dictionary.\n\n153 of the 159 features are not shown.\n\nThese values show what the model weighs. They don't show what causes a denial.\n\n**What a billing team could check:**\n- **Prior authorization:** The CMS document on the DMEPOS prior authorization process says that for items on the Required Prior Authorization List, prior authorization is a condition of payment. A claim without an affirmative decision is not eligible for payment. The results don't say whether A7030 is on that list, so check the current CMS Master List and Required Prior Authorization List.\n- **Documentation:** The same document says a request needs clinical documentation supporting medical necessity. Confirm it is on file.\n- **Other policy points:** The policy documents I retrieved don't cover A7030 coding or diagnosis pairing. I can't say whether Z733 is appropriate for A7030.\n- **Blank identifier fields:** The two NOT_APPLICABLE fields nudge the model's score up. Their meaning isn't documented in this project, so check the CMS/ResDAC variable documentation before acting on them.",
+  "usage": {
+    "input": 5615,
+    "output": 1075,
+    "cache_write": 0,
+    "cache_read": 5056
+  },
+  "cost_usd": 0.02299,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-29T05:38:25+00:00"
+}

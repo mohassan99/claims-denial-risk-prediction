@@ -1,0 +1,491 @@
+{
+  "run": "20260928-222954-final-v1-newtools",
+  "pooled": {
+    "explanations": 30,
+    "tokens": 409,
+    "grounded_tokens": 406,
+    "share": 0.9926650366748166,
+    "explanations_fully_grounded": 27,
+    "by_kind": {
+      "code": {
+        "tokens": 86,
+        "grounded": 86,
+        "share": 1.0
+      },
+      "number": {
+        "tokens": 281,
+        "grounded": 281,
+        "share": 1.0
+      },
+      "carc": {
+        "tokens": 26,
+        "grounded": 26,
+        "share": 1.0
+      },
+      "desc": {
+        "tokens": 16,
+        "grounded": 13,
+        "share": 0.8125
+      }
+    },
+    "empty_explanations": 0
+  },
+  "per_claim": [
+    {
+      "claim_id": 1073137,
+      "question": "Explain why claim 1073137 got its denial-risk score.",
+      "tools": [
+        "score_claim",
+        "explain_shap"
+      ],
+      "tokens": 14,
+      "grounded": 14,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.01129
+    },
+    {
+      "claim_id": 1119407,
+      "question": "Explain why claim 1119407 got its denial-risk score.",
+      "tools": [
+        "score_claim",
+        "explain_shap"
+      ],
+      "tokens": 11,
+      "grounded": 11,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.00969
+    },
+    {
+      "claim_id": 1210977,
+      "question": "Explain why claim 1210977 got its denial-risk score.",
+      "tools": [
+        "score_claim",
+        "explain_shap"
+      ],
+      "tokens": 13,
+      "grounded": 13,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.01006
+    },
+    {
+      "claim_id": 1219093,
+      "question": "Claim 1219093: why is its denial risk what it is, and what could a billing team check before submitting?",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "search_policy"
+      ],
+      "tokens": 14,
+      "grounded": 14,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.01586
+    },
+    {
+      "claim_id": 1241554,
+      "question": "For claim 1241554, which denial reason code is most plausible, and how does the model's score relate to it?",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "search_policy",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc"
+      ],
+      "tokens": 12,
+      "grounded": 12,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.02393
+    },
+    {
+      "claim_id": 1248137,
+      "question": "For claim 1248137, which denial reason code is most plausible, and how does the model's score relate to it?",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc",
+        "search_policy"
+      ],
+      "tokens": 14,
+      "grounded": 14,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.0268
+    },
+    {
+      "claim_id": 1348245,
+      "question": "Claim 1348245: why is its denial risk what it is, and what could a billing team check before submitting?",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "search_policy"
+      ],
+      "tokens": 11,
+      "grounded": 11,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.01909
+    },
+    {
+      "claim_id": 1359486,
+      "question": "Claim 1359486: why is its denial risk what it is, and what could a billing team check before submitting?",
+      "tools": [
+        "score_claim",
+        "explain_shap"
+      ],
+      "tokens": 11,
+      "grounded": 10,
+      "share": 0.9090909090909091,
+      "ungrounded": [
+        "99397 (a preventive visit)"
+      ],
+      "cost_usd": 0.01321
+    },
+    {
+      "claim_id": 1371377,
+      "question": "Explain why claim 1371377 got its denial-risk score.",
+      "tools": [
+        "score_claim",
+        "explain_shap"
+      ],
+      "tokens": 13,
+      "grounded": 13,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.00876
+    },
+    {
+      "claim_id": 1469305,
+      "question": "For claim 1469305, which denial reason code is most plausible, and how does the model's score relate to it?",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "search_policy",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc"
+      ],
+      "tokens": 22,
+      "grounded": 22,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.02227
+    },
+    {
+      "claim_id": 1478014,
+      "question": "Claim 1478014: why is its denial risk what it is, and what could a billing team check before submitting?",
+      "tools": [
+        "score_claim",
+        "explain_shap"
+      ],
+      "tokens": 10,
+      "grounded": 10,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.01092
+    },
+    {
+      "claim_id": 1549965,
+      "question": "Explain why claim 1549965 got its denial-risk score.",
+      "tools": [
+        "score_claim",
+        "explain_shap"
+      ],
+      "tokens": 12,
+      "grounded": 11,
+      "share": 0.9166666666666666,
+      "ungrounded": [
+        "90935 (a hemodialysis procedure)"
+      ],
+      "cost_usd": 0.00928
+    },
+    {
+      "claim_id": 1698983,
+      "question": "Claim 1698983: why is its denial risk what it is, and what could a billing team check before submitting?",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "search_policy"
+      ],
+      "tokens": 8,
+      "grounded": 8,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.01704
+    },
+    {
+      "claim_id": 1699347,
+      "question": "Claim 1699347: why is its denial risk what it is, and what could a billing team check before submitting?",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "search_policy",
+        "search_policy"
+      ],
+      "tokens": 14,
+      "grounded": 14,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.02353
+    },
+    {
+      "claim_id": 1701936,
+      "question": "Explain why claim 1701936 got its denial-risk score.",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "search_policy"
+      ],
+      "tokens": 16,
+      "grounded": 16,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.01875
+    },
+    {
+      "claim_id": 1709828,
+      "question": "For claim 1709828, which denial reason code is most plausible, and how does the model's score relate to it?",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "search_policy",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc"
+      ],
+      "tokens": 24,
+      "grounded": 24,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.02589
+    },
+    {
+      "claim_id": 1721550,
+      "question": "For claim 1721550, which denial reason code is most plausible, and how does the model's score relate to it?",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "search_policy",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc"
+      ],
+      "tokens": 13,
+      "grounded": 13,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.02193
+    },
+    {
+      "claim_id": 1728104,
+      "question": "For claim 1728104, which denial reason code is most plausible, and how does the model's score relate to it?",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "search_policy",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc"
+      ],
+      "tokens": 15,
+      "grounded": 15,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.02396
+    },
+    {
+      "claim_id": 1734643,
+      "question": "Explain why claim 1734643 got its denial-risk score.",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "search_policy"
+      ],
+      "tokens": 18,
+      "grounded": 18,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.01911
+    },
+    {
+      "claim_id": 1746933,
+      "question": "Explain why claim 1746933 got its denial-risk score.",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "search_policy"
+      ],
+      "tokens": 16,
+      "grounded": 16,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.01811
+    },
+    {
+      "claim_id": 1782736,
+      "question": "Claim 1782736: why is its denial risk what it is, and what could a billing team check before submitting?",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "search_policy",
+        "search_policy"
+      ],
+      "tokens": 15,
+      "grounded": 15,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.02313
+    },
+    {
+      "claim_id": 1786301,
+      "question": "For claim 1786301, which denial reason code is most plausible, and how does the model's score relate to it?",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "search_policy",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc"
+      ],
+      "tokens": 11,
+      "grounded": 11,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.02528
+    },
+    {
+      "claim_id": 386213,
+      "question": "Claim 386213: why is its denial risk what it is, and what could a billing team check before submitting?",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "lookup_carc"
+      ],
+      "tokens": 12,
+      "grounded": 12,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.01579
+    },
+    {
+      "claim_id": 38928,
+      "question": "Claim 38928: why is its denial risk what it is, and what could a billing team check before submitting?",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "search_policy"
+      ],
+      "tokens": 8,
+      "grounded": 8,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.01819
+    },
+    {
+      "claim_id": 420689,
+      "question": "Explain why claim 420689 got its denial-risk score.",
+      "tools": [
+        "score_claim",
+        "explain_shap"
+      ],
+      "tokens": 14,
+      "grounded": 14,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.01037
+    },
+    {
+      "claim_id": 511492,
+      "question": "For claim 511492, which denial reason code is most plausible, and how does the model's score relate to it?",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "search_policy",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc"
+      ],
+      "tokens": 13,
+      "grounded": 13,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.02247
+    },
+    {
+      "claim_id": 522224,
+      "question": "For claim 522224, which denial reason code is most plausible, and how does the model's score relate to it?",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "lookup_carc",
+        "lookup_carc"
+      ],
+      "tokens": 12,
+      "grounded": 12,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.01995
+    },
+    {
+      "claim_id": 686696,
+      "question": "Explain why claim 686696 got its denial-risk score.",
+      "tools": [
+        "score_claim",
+        "explain_shap"
+      ],
+      "tokens": 16,
+      "grounded": 16,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.01083
+    },
+    {
+      "claim_id": 845589,
+      "question": "Claim 845589: why is its denial risk what it is, and what could a billing team check before submitting?",
+      "tools": [
+        "score_claim",
+        "explain_shap"
+      ],
+      "tokens": 14,
+      "grounded": 13,
+      "share": 0.9285714285714286,
+      "ungrounded": [
+        "I25.9 (chronic ischemic heart disease)"
+      ],
+      "cost_usd": 0.01253
+    },
+    {
+      "claim_id": 857291,
+      "question": "For claim 857291, which denial reason code is most plausible, and how does the model's score relate to it?",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "lookup_carc",
+        "lookup_carc"
+      ],
+      "tokens": 13,
+      "grounded": 13,
+      "share": 1.0,
+      "ungrounded": [],
+      "cost_usd": 0.02111
+    }
+  ],
+  "cost_usd": 0.5291
+}

@@ -1,0 +1,123 @@
+{
+  "claim_id": 1549965,
+  "question": "Explain why claim 1549965 got its denial-risk score.",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v1",
+  "turns": 2,
+  "stop_reasons": [
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1549965
+      },
+      "output": {
+        "claim_id": 1549965,
+        "claim_type": "outpatient",
+        "probability_denied": 0.0438,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 0.24,
+        "points_versus_validation_average": -13.7,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "90935",
+        "principal_diagnosis": "N184"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1549965
+      },
+      "output": {
+        "claim_id": 1549965,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -3.084,
+        "final_probability": 0.0438,
+        "top_features": [
+          {
+            "feature": "PRVDR_NUM",
+            "value": "444004",
+            "shap_log_odds": -0.499,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.61,
+            "odds_change_percent": -39,
+            "meaning": "Billing provider identifier",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "ORG_NPI_NUM",
+            "value": "1083687651",
+            "shap_log_odds": -0.462,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.63,
+            "odds_change_percent": -37,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "HCPCS_CD",
+            "value": "90935",
+            "shap_log_odds": -0.264,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.77,
+            "odds_change_percent": -23,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.062,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.94,
+            "odds_change_percent": -6,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "LINE_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.037,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.04,
+            "odds_change_percent": 4,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "TAX_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.035,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.97,
+            "odds_change_percent": -3,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          }
+        ],
+        "all_other_features_log_odds": 0.013,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    }
+  ],
+  "final_text": "**Claim 1549965 has a low denial-risk score: 4.4%.** That is about 13.7 percentage points below the validation-set average of 18.0%. It's an outpatient claim for HCPCS 90935 (a hemodialysis procedure) with principal diagnosis N184 (chronic kidney disease, stage 4).\n\n**What pushed the score down** (SHAP values, in log-odds):\n- **Billing provider ID (PRVDR_NUM 444004):** lowers the odds of denial by about 39%.\n- **ORG_NPI_NUM:** lowers the odds by about 37%. The project data dictionary has no entry for this field. It is a native CMS claim field, and I can't say from the project documentation what it means.\n- **HCPCS code 90935:** lowers the odds by about 23%.\n\nThe other top features had tiny effects (6% or less). Several of those are also undocumented in the dictionary.\n\n**Caveats:**\n- The provider identifiers drive most of the score. That means the model is mostly recognizing providers and patterns in its training data. It didn't find a specific reason this claim is clean.\n- I didn't look up any denial reason codes or policy documents. Nothing in the score pointed to a specific rule.\n- **The denial label in this project is synthetic.** It was built from risk rules, so this is the probability of that constructed label, not of a real payer decision.",
+  "usage": {
+    "input": 1668,
+    "output": 557,
+    "cache_write": 0,
+    "cache_read": 1868
+  },
+  "cost_usd": 0.00928,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-29T05:32:19+00:00"
+}

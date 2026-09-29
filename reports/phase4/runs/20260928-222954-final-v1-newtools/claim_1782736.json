@@ -1,0 +1,189 @@
+{
+  "claim_id": 1782736,
+  "question": "Claim 1782736: why is its denial risk what it is, and what could a billing team check before submitting?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v1",
+  "turns": 3,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1782736
+      },
+      "output": {
+        "claim_id": 1782736,
+        "claim_type": "dme",
+        "probability_denied": 0.1975,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 1.09,
+        "points_versus_validation_average": 1.7,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "A7030",
+        "principal_diagnosis": "Z733"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1782736
+      },
+      "output": {
+        "claim_id": 1782736,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -1.402,
+        "final_probability": 0.1975,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "A7030",
+            "shap_log_odds": 0.519,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.68,
+            "odds_change_percent": 68,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "LINE_NUM",
+            "value": "1",
+            "shap_log_odds": -0.289,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.75,
+            "odds_change_percent": -25,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "ORG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.19,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.21,
+            "odds_change_percent": 21,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z733",
+            "shap_log_odds": -0.131,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.88,
+            "odds_change_percent": -12,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "11",
+            "shap_log_odds": -0.101,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.9,
+            "odds_change_percent": -10,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "CARR_CLM_RFRNG_PIN_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.08,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.08,
+            "odds_change_percent": 8,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          }
+        ],
+        "all_other_features_log_odds": 0.142,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "CPAP mask A7030 coverage and coding requirements"
+      },
+      "output": {
+        "query": "CPAP mask A7030 coverage and coding requirements",
+        "results": [
+          {
+            "doc_id": "article_a52467_pap_coding",
+            "title": "CMS Policy Article A52467 - PAP devices, coding guidelines (companion to LCD L33718)",
+            "url": "https://www.cms.gov/medicare-coverage-database/view/article.aspx?articleid=52467",
+            "chunk_id": "article_a52467_pap_coding#0",
+            "text": "# CPAP/PAP device coding guidelines and diagnosis requirements\n\n## Overview\n\nPositive airway pressure devices fall under the Durable Medical Equipment benefit category. For Medicare payment the equipment must meet the reasonable and necessary standard in the related Local Coverage Determination (L33718) and the specific statutory payment requirements.\n\n## Diagnosis code requirements\n\nThe only diagnosis code that supports medical necessity for PAP therapy is G47.33 (obstructive sleep apnea). Having the code does not by itself guarantee coverage: the supplier must verify that all applicable coverage criteria in the LCD are met. ICD-10 codes other than G47.33 are treated as not supporting medical necessity for PAP devices, so other diagnoses cannot justify PAP claims.\n\n## Device coding",
+            "similarity": 0.131
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#0",
+            "text": "# DMEPOS prior authorization process overview\n\n## Purpose\n\nThe prior authorization program for durable medical equipment, prosthetics, orthotics and supplies (DMEPOS) helps protect the Medicare Trust Fund from improper payments while making sure beneficiaries can get the items they need in a timely way. Prior authorization checks that applicable Medicare coverage, payment and coding requirements are met before the item is delivered.\n\n## How items are selected",
+            "similarity": 0.118
+          },
+          {
+            "doc_id": "lcd_l33718_pap_devices",
+            "title": "CMS LCD L33718 - Positive Airway Pressure (PAP) devices for obstructive sleep apnea",
+            "url": "https://www.cms.gov/medicare-coverage-database/view/lcd.aspx?lcdid=33718",
+            "chunk_id": "lcd_l33718_pap_devices#0",
+            "text": "# Coverage indications for PAP devices in obstructive sleep apnea\n\n## Initial Medicare coverage requirements\n\nThree foundational criteria must be met. The item must fall within a defined Medicare benefit category. It must be reasonable and necessary for diagnosing or treating illness or injury or improving the function of a malformed body member. All other applicable statutory and regulatory requirements must be met.\n\nThe policy distinguishes E0601 (single-level continuous positive airway pressure, CPAP) from E0470 (bi-level respiratory assist device without backup rate). Both treat obstructive sleep apnea when specific conditions are documented.\n\n## E0601 coverage criteria",
+            "similarity": 0.095
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "DMEPOS prior authorization required items",
+        "k": 2
+      },
+      "output": {
+        "query": "DMEPOS prior authorization required items",
+        "results": [
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#0",
+            "text": "# DMEPOS prior authorization process overview\n\n## Purpose\n\nThe prior authorization program for durable medical equipment, prosthetics, orthotics and supplies (DMEPOS) helps protect the Medicare Trust Fund from improper payments while making sure beneficiaries can get the items they need in a timely way. Prior authorization checks that applicable Medicare coverage, payment and coding requirements are met before the item is delivered.\n\n## How items are selected",
+            "similarity": 0.364
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#1",
+            "text": "items they need in a timely way. Prior authorization checks that applicable Medicare coverage, payment and coding requirements are met before the item is delivered. ## How items are selected CMS keeps a Master List of DMEPOS items that may require prior authorization or a face-to-face encounter with a written order before delivery. The list is updated at least once a year based on items with patterns of unnecessary utilization. Items on the Required Prior Authorization List are chosen by evaluating DMEPOS categories for problematic billing trends. Recent additions include orthoses, power mobility devices, pressure reducing support surfaces, lower limb prosthetics and pneumatic compression devices. Selected items usually start in some geographic regions and then expand nationwide.\n\n## Claims without prior authorization",
+            "similarity": 0.286
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    }
+  ],
+  "final_text": "**Claim 1782736 (DME, HCPCS A7030, principal diagnosis Z733) has a modeled denial probability of 19.8%.** That is only about 1.7 points above the validation average of 18.1%, so it is a mildly elevated score, not a strong flag. The denial label is synthetic, built from risk rules. This is the probability of that constructed label, not of a real payer decision.\n\n**What drives the score** (SHAP, in log-odds):\n- **HCPCS code A7030:** raises the odds of denial by about 68%. This is the largest single factor.\n- **Missing NPI and referring-PIN fields (\"NOT_APPLICABLE\"):** raise the odds by about 21% and 8%. The project data dictionary doesn't define these fields.\n- **Line number 1, place of service 11, and diagnosis Z733:** each lowers the risk somewhat.\n\n**What to check before submitting:**\n1. **Diagnosis.** The CMS policy article (A52467) says only G47.33 (obstructive sleep apnea) supports medical necessity for PAP devices. Z733 is not that code. From my own knowledge, not the tools, Z73.3 is a stress code and looks a lot like G47.33, so it could be a typo. The model doesn't penalize Z733, so the score may understate this problem.\n2. **LCD L33718 criteria.** Confirm the documentation meets them.\n3. **Prior authorization.** Check whether the item is on the DMEPOS prior-authorization list. I couldn't confirm that for A7030 from the retrieved text.\n4. **Provider and referral fields.** Make sure they are filled in where required.\n\nI also didn't confirm from the policy text that A7030 is a CPAP mask code.",
+  "usage": {
+    "input": 5718,
+    "output": 1113,
+    "cache_write": 0,
+    "cache_read": 2802
+  },
+  "cost_usd": 0.02313,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-29T05:33:27+00:00"
+}

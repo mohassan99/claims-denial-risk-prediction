@@ -1,0 +1,108 @@
+{
+  "claim_id": 1348245,
+  "question": "Claim 1348245: why is its denial risk what it is, and what could a billing team check before submitting?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v1",
+  "turns": 3,
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1348245
+      },
+      "output": {
+        "claim_id": 1348245,
+        "claim_type": "outpatient",
+        "probability_denied": 0.1148,
+        "average_probability_in_validation_set": 0.1805,
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "90935",
+        "principal_diagnosis": "N184"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1348245
+      },
+      "output": {
+        "claim_id": 1348245,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds): the factor this feature applies to the odds of denial.",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -2.043,
+        "final_probability": 0.1148,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "90935",
+            "shap_log_odds": -0.324,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.72,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.06,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.94,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "PRVDR_NUM",
+            "value": "240020",
+            "shap_log_odds": 0.038,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.04,
+            "meaning": "Billing provider identifier",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "LINE_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.036,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.04,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "TAX_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.036,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.96,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "N184",
+            "shap_log_odds": 0.029,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.03,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true
+          }
+        ],
+        "all_other_features_log_odds": 0.086,
+        "number_of_features": 159
+      }
+    }
+  ],
+  "final_text": "**Claim 1348245 has a low denial risk: 11.5%.** That is below the validation-set average of 18.1% and the model's baseline of 14.0%. It is an outpatient claim for HCPCS 90935 with principal diagnosis N18.4.\n\n**What drove the score (SHAP, in log-odds):**\n- **HCPCS 90935** is the main factor. It lowers the odds of denial by about 28% (multiplier 0.72).\n- **Billing NPI and tax number** were both \"NOT_APPLICABLE\". They nudged the score down slightly. These fields aren't in the project dictionary, so I wouldn't read anything into them.\n- **Provider number 240020, line number and diagnosis N18.4** each raised the score only slightly (up to about 4%).\n- The other 153 features together add a small net increase.\n\nNo single feature stands out, so the score reflects a generally low-risk pattern.\n\n**Caveat:** The denial label is synthetic. It was built from risk rules, so this is the probability of that constructed label. It is not a prediction of a real payer decision.\n\n**Pre-submission checks:** I didn't find a specific policy rule for this code in the project's policy documents, so these are general checks:\n- Confirm the 90935 code matches the documentation.\n- Confirm the diagnosis is coded to full specificity and supports the service.\n- Check that the provider and billing identifiers are complete and correct.",
+  "usage": {
+    "input": 1799,
+    "output": 699,
+    "cache_write": 0,
+    "cache_read": 2802
+  },
+  "cost_usd": 0.01115,
+  "finished": true,
+  "at": "2026-09-29T05:25:54+00:00"
+}

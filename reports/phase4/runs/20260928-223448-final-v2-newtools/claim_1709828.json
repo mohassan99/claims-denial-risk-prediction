@@ -1,0 +1,236 @@
+{
+  "claim_id": 1709828,
+  "question": "For claim 1709828, which denial reason code is most plausible, and how does the model's score relate to it?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 4,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1709828
+      },
+      "output": {
+        "claim_id": 1709828,
+        "claim_type": "dme",
+        "probability_denied": 0.2644,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 1.46,
+        "points_versus_validation_average": 8.4,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "A7034",
+        "principal_diagnosis": "Z733"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1709828
+      },
+      "output": {
+        "claim_id": 1709828,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -1.023,
+        "final_probability": 0.2644,
+        "top_features": [
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "20",
+            "shap_log_odds": 0.424,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.53,
+            "odds_change_percent": 53,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "HCPCS_CD",
+            "value": "A7034",
+            "shap_log_odds": 0.358,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.43,
+            "odds_change_percent": 43,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "LINE_NUM",
+            "value": "1",
+            "shap_log_odds": -0.229,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.79,
+            "odds_change_percent": -21,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "ORG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.157,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.17,
+            "odds_change_percent": 17,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z733",
+            "shap_log_odds": -0.115,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.89,
+            "odds_change_percent": -11,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "CARR_CLM_RFRNG_PIN_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.056,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.06,
+            "odds_change_percent": 6,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          }
+        ],
+        "all_other_features_log_odds": 0.139,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "A7034 DMEPOS denial coding coverage prior authorization"
+      },
+      "output": {
+        "query": "A7034 DMEPOS denial coding coverage prior authorization",
+        "results": [
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#0",
+            "text": "# DMEPOS prior authorization process overview\n\n## Purpose\n\nThe prior authorization program for durable medical equipment, prosthetics, orthotics and supplies (DMEPOS) helps protect the Medicare Trust Fund from improper payments while making sure beneficiaries can get the items they need in a timely way. Prior authorization checks that applicable Medicare coverage, payment and coding requirements are met before the item is delivered.\n\n## How items are selected",
+            "similarity": 0.368
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#1",
+            "text": "items they need in a timely way. Prior authorization checks that applicable Medicare coverage, payment and coding requirements are met before the item is delivered. ## How items are selected CMS keeps a Master List of DMEPOS items that may require prior authorization or a face-to-face encounter with a written order before delivery. The list is updated at least once a year based on items with patterns of unnecessary utilization. Items on the Required Prior Authorization List are chosen by evaluating DMEPOS categories for problematic billing trends. Recent additions include orthoses, power mobility devices, pressure reducing support surfaces, lower limb prosthetics and pneumatic compression devices. Selected items usually start in some geographic regions and then expand nationwide.\n\n## Claims without prior authorization",
+            "similarity": 0.295
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#2",
+            "text": "mobility devices, pressure reducing support surfaces, lower limb prosthetics and pneumatic compression devices. Selected items usually start in some geographic regions and then expand nationwide. ## Claims without prior authorization For items on the Required Prior Authorization List, prior authorization is a condition of payment. A claim submitted without an affirmative prior authorization decision, or without a provisional affirmation that meets the 90% compliance threshold, is not eligible for payment.\n\nStandard requests are decided within 7 calendar days (effective January 1, 2025). Expedited requests are decided within 2 business days. Suppliers furnishing items under urgent circumstances can use specific modifiers, such as ST, to indicate an emergency, which may bypass the standard timelines.\n\n## Submitting requests",
+            "similarity": 0.242
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "16"
+      },
+      "output": {
+        "code": "16",
+        "found": true,
+        "description": "The claim is missing information or has a billing error.",
+        "project_rule": "provider_outlier and missing_hcpcs",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "11"
+      },
+      "output": {
+        "code": "11",
+        "found": true,
+        "description": "The diagnosis doesn't support the procedure billed.",
+        "project_rule": "dx_procedure_mismatch",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "18"
+      },
+      "output": {
+        "code": "18",
+        "found": true,
+        "description": "Duplicate of a claim or service already submitted.",
+        "project_rule": "duplicate_claim",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "181"
+      },
+      "output": {
+        "code": "181",
+        "found": true,
+        "description": "The procedure code wasn't valid on the date of service.",
+        "project_rule": "deprecated_code",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "197"
+      },
+      "output": {
+        "code": "197",
+        "found": true,
+        "description": "Required prior authorization wasn't obtained.",
+        "project_rule": "missing_prior_auth",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    }
+  ],
+  "final_text": "**I can't identify a single most plausible denial reason code for claim 1709828 from this evidence.** The score doesn't point to a specific code.\n\n**Score:** The model gives a denial probability of 0.2644. The validation-set average is 0.1805. That is 1.46 times the average, or 8.4 percentage points higher. The denial label in this project is synthetic, so this is the probability of a constructed label and not of a real payer decision.\n\n**What the model weighs:**\n- LINE_PLACE_OF_SRVC_CD (value 20) raises the odds by 53%. It is undocumented in the project dictionary.\n- HCPCS_CD (A7034) raises the odds by 43%. The tool describes it only as the procedure or service code billed.\n- LINE_NUM lowers the odds by 21%. It is undocumented.\n- ORG_NPI_NUM (NOT_APPLICABLE) raises the odds by 17%. It is undocumented.\n- The principal diagnosis (Z733) lowers the odds by 11%.\n\n**Reason codes:** The claim type is DME, so CARC 197 (required prior authorization wasn't obtained) is the closest fit. The prior authorization overview from CMS says a claim for an item on the Required Prior Authorization List is not eligible for payment without an affirmative decision. The policy search did not show that A7034 is on that list. No feature maps directly to CARC 197. CARC 11 (diagnosis doesn't support the procedure) is also possible, but the diagnosis feature slightly lowers the score.\n\nI would treat CARC 197 as a hypothesis to check, not a finding.",
+  "usage": {
+    "input": 6669,
+    "output": 1192,
+    "cache_write": 0,
+    "cache_read": 5056
+  },
+  "cost_usd": 0.02627,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-29T05:39:07+00:00"
+}

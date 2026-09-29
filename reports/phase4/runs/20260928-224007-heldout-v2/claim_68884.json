@@ -1,0 +1,124 @@
+{
+  "claim_id": 68884,
+  "question": "Claim 68884: why is its denial risk what it is, and what could a billing team check before submitting?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 3,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 68884
+      },
+      "output": {
+        "claim_id": 68884,
+        "claim_type": "carrier",
+        "probability_denied": 0.1377,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 0.76,
+        "points_versus_validation_average": -4.3,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": null,
+        "principal_diagnosis": "Z3480"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 68884
+      },
+      "output": {
+        "claim_id": 68884,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -1.835,
+        "final_probability": 0.1377,
+        "top_features": [
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "1316233174",
+            "shap_log_odds": 0.278,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.32,
+            "odds_change_percent": 32,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "HCPCS_CD",
+            "value": null,
+            "shap_log_odds": -0.189,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.83,
+            "odds_change_percent": -17,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "11",
+            "shap_log_odds": -0.134,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.87,
+            "odds_change_percent": -13,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "ORG_NPI_NUM",
+            "value": "1316233174",
+            "shap_log_odds": 0.079,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.08,
+            "odds_change_percent": 8,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z3480",
+            "shap_log_odds": -0.051,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.95,
+            "odds_change_percent": -5,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "TAX_NUM",
+            "value": "999985341",
+            "shap_log_odds": -0.051,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.95,
+            "odds_change_percent": -5,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          }
+        ],
+        "all_other_features_log_odds": 0.046,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    }
+  ],
+  "final_text": "**Claim 68884 (carrier claim) has a denial probability of 0.1377.** The validation-set average is 0.1805, so this claim is 0.76 times the average, or -4.3 percentage points. The denial label in this project is synthetic, built from risk rules. This is the probability of that constructed label, not of a real payer decision.\n\n**What the model weighs**\n- **CARR_CLM_BLG_NPI_NUM (1316233174):** This is the largest upward push, at +0.278 log-odds (odds +32%). The project data dictionary has no entry for this field.\n- **ORG_NPI_NUM (1316233174):** This adds a small upward push (odds +8%). It is also undocumented.\n- **HCPCS_CD (null):** This lowers risk (odds -17%). The dictionary describes it as the procedure/service code billed.\n- **LINE_PLACE_OF_SRVC_CD (11):** This lowers risk (odds -13%). It is undocumented.\n- **PRNCPAL_DGNS_CD (Z3480):** This lowers risk slightly (odds -5%). The dictionary describes it as the principal diagnosis.\n- **TAX_NUM:** This lowers risk slightly (odds -5%). It is undocumented.\n\nThe model also uses 159 features, and 153 are not shown here.\n\n**What a team could check**\nThese are general data-quality checks. I didn't search the policy documents, so none of them is a policy requirement.\n- Confirm whether the blank HCPCS code is intended or a missing entry.\n- Verify the billing NPI, organization NPI and tax number against your records.\n- Confirm the place-of-service value and the diagnosis code are entered as intended.\n\nThe model weighs these features, but that doesn't mean they cause a denial.",
+  "usage": {
+    "input": 2037,
+    "output": 1064,
+    "cache_write": 0,
+    "cache_read": 3792
+  },
+  "cost_usd": 0.01547,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-29T05:40:25+00:00"
+}

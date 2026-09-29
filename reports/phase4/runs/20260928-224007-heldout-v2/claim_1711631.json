@@ -1,0 +1,161 @@
+{
+  "claim_id": 1711631,
+  "question": "Claim 1711631: why is its denial risk what it is, and what could a billing team check before submitting?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 4,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1711631
+      },
+      "output": {
+        "claim_id": 1711631,
+        "claim_type": "dme",
+        "probability_denied": 0.007,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 0.04,
+        "points_versus_validation_average": -17.3,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "A4253",
+        "principal_diagnosis": "Z733"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1711631
+      },
+      "output": {
+        "claim_id": 1711631,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -4.952,
+        "final_probability": 0.007,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "A4253",
+            "shap_log_odds": -2.073,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.13,
+            "odds_change_percent": -87,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "LINE_NUM",
+            "value": "1",
+            "shap_log_odds": -0.398,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.67,
+            "odds_change_percent": -33,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "11",
+            "shap_log_odds": -0.27,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.76,
+            "odds_change_percent": -24,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.143,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.87,
+            "odds_change_percent": -13,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "PRVDR_NUM",
+            "value": "101107",
+            "shap_log_odds": -0.141,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.87,
+            "odds_change_percent": -13,
+            "meaning": "Billing provider identifier",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "TAX_NUM",
+            "value": "999821563",
+            "shap_log_odds": -0.055,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.95,
+            "odds_change_percent": -5,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          }
+        ],
+        "all_other_features_log_odds": -0.059,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "DMEPOS prior authorization required items list A4253"
+      },
+      "output": {
+        "query": "DMEPOS prior authorization required items list A4253",
+        "results": [
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#0",
+            "text": "# DMEPOS prior authorization process overview\n\n## Purpose\n\nThe prior authorization program for durable medical equipment, prosthetics, orthotics and supplies (DMEPOS) helps protect the Medicare Trust Fund from improper payments while making sure beneficiaries can get the items they need in a timely way. Prior authorization checks that applicable Medicare coverage, payment and coding requirements are met before the item is delivered.\n\n## How items are selected",
+            "similarity": 0.339
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#1",
+            "text": "items they need in a timely way. Prior authorization checks that applicable Medicare coverage, payment and coding requirements are met before the item is delivered. ## How items are selected CMS keeps a Master List of DMEPOS items that may require prior authorization or a face-to-face encounter with a written order before delivery. The list is updated at least once a year based on items with patterns of unnecessary utilization. Items on the Required Prior Authorization List are chosen by evaluating DMEPOS categories for problematic billing trends. Recent additions include orthoses, power mobility devices, pressure reducing support surfaces, lower limb prosthetics and pneumatic compression devices. Selected items usually start in some geographic regions and then expand nationwide.\n\n## Claims without prior authorization",
+            "similarity": 0.318
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#2",
+            "text": "mobility devices, pressure reducing support surfaces, lower limb prosthetics and pneumatic compression devices. Selected items usually start in some geographic regions and then expand nationwide. ## Claims without prior authorization For items on the Required Prior Authorization List, prior authorization is a condition of payment. A claim submitted without an affirmative prior authorization decision, or without a provisional affirmation that meets the 90% compliance threshold, is not eligible for payment.\n\nStandard requests are decided within 7 calendar days (effective January 1, 2025). Expedited requests are decided within 2 business days. Suppliers furnishing items under urgent circumstances can use specific modifiers, such as ST, to indicate an emergency, which may bypass the standard timelines.\n\n## Submitting requests",
+            "similarity": 0.27
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    }
+  ],
+  "final_text": "**Claim 1711631 has a low denial risk.** The model gives it a probability of denial of 0.007. The validation-set average is 0.1805, so the claim is 0.04 times that average, which is -17.3 percentage points. The denial label in this project is synthetic. It was built from risk rules, so this is not a real payer decision.\n\n**What the model weighs.** The model starts from a baseline probability of 0.1404. It then lowers the odds of denial through these features:\n- **HCPCS_CD = A4253** (procedure/service code billed) is the largest factor. It changes the odds by -87%.\n- **LINE_NUM = 1** changes the odds by -33%.\n- **LINE_PLACE_OF_SRVC_CD = 11** changes the odds by -24%.\n- **CARR_CLM_BLG_NPI_NUM = NOT_APPLICABLE** changes the odds by -13%.\n- **PRVDR_NUM = 101107** (billing provider identifier) changes the odds by -13%.\n- **TAX_NUM** changes the odds by -5%.\n\nThe project data dictionary has no entry for LINE_NUM, LINE_PLACE_OF_SRVC_CD, CARR_CLM_BLG_NPI_NUM or TAX_NUM, so I can't say what they mean. 153 other features are not shown. The model weighs these features. That doesn't mean they cause or prevent a denial.\n\n**What to check before submitting.** The policy documents I searched don't say whether A4253 is on a prior-authorization list. The CMS DMEPOS prior authorization overview says that for items on the Required Prior Authorization List, a claim without an affirmative decision is not eligible for payment. The team could confirm against CMS's Master List and Required Prior Authorization List whether this item is on either one. They should also check the code and billing details against the claim record. The principal diagnosis is Z733. I can't say what it means, because no tool defined it.",
+  "usage": {
+    "input": 5070,
+    "output": 905,
+    "cache_write": 0,
+    "cache_read": 5056
+  },
+  "cost_usd": 0.0202,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-29T05:44:17+00:00"
+}

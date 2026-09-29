@@ -1,0 +1,145 @@
+{
+  "claim_id": 1734643,
+  "question": "Explain why claim 1734643 got its denial-risk score.",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v1",
+  "turns": 3,
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1734643
+      },
+      "output": {
+        "claim_id": 1734643,
+        "claim_type": "dme",
+        "probability_denied": 0.1993,
+        "average_probability_in_validation_set": 0.1805,
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "A7035",
+        "principal_diagnosis": "Z604"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1734643
+      },
+      "output": {
+        "claim_id": 1734643,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds): the factor this feature applies to the odds of denial.",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -1.391,
+        "final_probability": 0.1993,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "A7035",
+            "shap_log_odds": 0.256,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.29,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "ORG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.189,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.21,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z604",
+            "shap_log_odds": -0.126,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.88,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "11",
+            "shap_log_odds": -0.124,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.88,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "LINE_PRMRY_ALOWD_CHRG_AMT",
+            "value": 0.0,
+            "shap_log_odds": 0.062,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.06,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.06,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.94,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          }
+        ],
+        "all_other_features_log_odds": 0.224,
+        "number_of_features": 159
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "CPAP supplies headgear A7035 coverage and coding",
+        "k": 3
+      },
+      "output": {
+        "query": "CPAP supplies headgear A7035 coverage and coding",
+        "results": [
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#0",
+            "text": "# DMEPOS prior authorization process overview\n\n## Purpose\n\nThe prior authorization program for durable medical equipment, prosthetics, orthotics and supplies (DMEPOS) helps protect the Medicare Trust Fund from improper payments while making sure beneficiaries can get the items they need in a timely way. Prior authorization checks that applicable Medicare coverage, payment and coding requirements are met before the item is delivered.\n\n## How items are selected",
+            "similarity": 0.128
+          },
+          {
+            "doc_id": "article_a52467_pap_coding",
+            "title": "CMS Policy Article A52467 - PAP devices, coding guidelines (companion to LCD L33718)",
+            "url": "https://www.cms.gov/medicare-coverage-database/view/article.aspx?articleid=52467",
+            "chunk_id": "article_a52467_pap_coding#0",
+            "text": "# CPAP/PAP device coding guidelines and diagnosis requirements\n\n## Overview\n\nPositive airway pressure devices fall under the Durable Medical Equipment benefit category. For Medicare payment the equipment must meet the reasonable and necessary standard in the related Local Coverage Determination (L33718) and the specific statutory payment requirements.\n\n## Diagnosis code requirements\n\nThe only diagnosis code that supports medical necessity for PAP therapy is G47.33 (obstructive sleep apnea). Having the code does not by itself guarantee coverage: the supplier must verify that all applicable coverage criteria in the LCD are met. ICD-10 codes other than G47.33 are treated as not supporting medical necessity for PAP devices, so other diagnoses cannot justify PAP claims.\n\n## Device coding",
+            "similarity": 0.111
+          },
+          {
+            "doc_id": "lcd_l33718_pap_devices",
+            "title": "CMS LCD L33718 - Positive Airway Pressure (PAP) devices for obstructive sleep apnea",
+            "url": "https://www.cms.gov/medicare-coverage-database/view/lcd.aspx?lcdid=33718",
+            "chunk_id": "lcd_l33718_pap_devices#0",
+            "text": "# Coverage indications for PAP devices in obstructive sleep apnea\n\n## Initial Medicare coverage requirements\n\nThree foundational criteria must be met. The item must fall within a defined Medicare benefit category. It must be reasonable and necessary for diagnosing or treating illness or injury or improving the function of a malformed body member. All other applicable statutory and regulatory requirements must be met.\n\nThe policy distinguishes E0601 (single-level continuous positive airway pressure, CPAP) from E0470 (bi-level respiratory assist device without backup rate). Both treat obstructive sleep apnea when specific conditions are documented.\n\n## E0601 coverage criteria",
+            "similarity": 0.075
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    }
+  ],
+  "final_text": "**Claim 1734643 has a denial-risk score of about 20%.** That is a little above the validation-set average of 18.1%. The denial label in this project is synthetic. It was built from risk rules, so the score is the probability of that constructed label and not of a real payer decision.\n\nThe model starts from a baseline of about 14%. These are the main factors that moved the score:\n\n- **Raised risk:**\n  - **HCPCS code A7035 (DME claim):** this is the biggest factor, raising the odds of denial by about 1.29\u00d7.\n  - **Organization NPI listed as \"NOT_APPLICABLE\":** raises the odds by about 1.21\u00d7. Our data dictionary doesn't define this field. It is a native CMS claim field.\n  - **Allowed charge amount of 0:** a small increase of about 1.06\u00d7. This field is also undocumented in our dictionary.\n- **Lowered risk:**\n  - **Principal diagnosis Z604:** lowers the odds by about 0.88\u00d7.\n  - **Place of service 11:** also about 0.88\u00d7. This field is undocumented in our dictionary too.\n  - **Billing NPI \"NOT_APPLICABLE\":** about 0.94\u00d7.\n\nThe many smaller features add a net push upward.\n\n**Policy context:** The policy search returned the CMS rules for CPAP/PAP devices (LCD L33718 and Article A52467). None of the text it returned mentions A7035 specifically. Article A52467 does say that G47.33 (obstructive sleep apnea) is the only diagnosis that supports PAP medical necessity. Z604 isn't that code, but the model still treated Z604 as slightly lowering risk. So the score doesn't clearly reflect that rule.\n\nI didn't look up any denial reason codes, because none apply to this explanation.",
+  "usage": {
+    "input": 4390,
+    "output": 968,
+    "cache_write": 0,
+    "cache_read": 2802
+  },
+  "cost_usd": 0.01902,
+  "finished": true,
+  "at": "2026-09-29T05:27:18+00:00"
+}

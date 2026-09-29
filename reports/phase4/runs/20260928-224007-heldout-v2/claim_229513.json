@@ -1,0 +1,124 @@
+{
+  "claim_id": 229513,
+  "question": "Explain why claim 229513 got its denial-risk score.",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 3,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 229513
+      },
+      "output": {
+        "claim_id": 229513,
+        "claim_type": "carrier",
+        "probability_denied": 0.0869,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 0.48,
+        "points_versus_validation_average": -9.4,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": null,
+        "principal_diagnosis": "Z733"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 229513
+      },
+      "output": {
+        "claim_id": 229513,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -2.352,
+        "final_probability": 0.0869,
+        "top_features": [
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "11",
+            "shap_log_odds": -0.144,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.87,
+            "odds_change_percent": -13,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "HCPCS_CD",
+            "value": null,
+            "shap_log_odds": -0.097,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.91,
+            "odds_change_percent": -9,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "CARR_LINE_PRCNG_LCLTY_CD",
+            "value": "23",
+            "shap_log_odds": -0.079,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.92,
+            "odds_change_percent": -8,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "1649520644",
+            "shap_log_odds": -0.077,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.93,
+            "odds_change_percent": -7,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z733",
+            "shap_log_odds": -0.075,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.93,
+            "odds_change_percent": -7,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "TAX_NUM",
+            "value": "999907445",
+            "shap_log_odds": -0.064,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.94,
+            "odds_change_percent": -6,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          }
+        ],
+        "all_other_features_log_odds": -0.005,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    }
+  ],
+  "final_text": "**Claim 229513 (carrier claim): the model scores it below average for denial risk.**\n\nThe model gives a denial probability of 0.0869. The validation-set average is 0.1805, so this claim is 0.48 times the average, or -9.4 percentage points versus the average. The denial label in this project is synthetic. It was built from risk rules, so this is not a real payer decision.\n\nThe SHAP explanation starts from a baseline probability of 0.1404. All six top features lower the risk:\n\n- **LINE_PLACE_OF_SRVC_CD (value 11):** -13% on the odds. The project data dictionary has no entry for this field.\n- **HCPCS_CD (null):** -9% on the odds. The dictionary describes it as the procedure or service code billed. No code was recorded on this claim.\n- **CARR_LINE_PRCNG_LCLTY_CD (23):** -8% on the odds. It is undocumented in the dictionary.\n- **CARR_CLM_BLG_NPI_NUM:** -7% on the odds. It is undocumented in the dictionary.\n- **PRNCPAL_DGNS_CD (Z733):** -7% on the odds. The dictionary describes it as the principal diagnosis (ICD-10-CM).\n- **TAX_NUM:** -6% on the odds. It is undocumented in the dictionary.\n\nThe 153 features not shown add a combined -0.005 log-odds.\n\nThe model weighs these features. That doesn't mean they cause or prevent a denial. Four of the six top features have no dictionary entry, so I can't say what they represent. I didn't search the policy documents, so I can't say whether any policy applies to this claim.",
+  "usage": {
+    "input": 2008,
+    "output": 658,
+    "cache_write": 0,
+    "cache_read": 3792
+  },
+  "cost_usd": 0.01135,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-29T05:41:44+00:00"
+}

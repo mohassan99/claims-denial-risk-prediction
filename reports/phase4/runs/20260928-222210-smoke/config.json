@@ -1,0 +1,11 @@
+{
+  "model": "claude-haiku-4-5",
+  "prompt": "v1",
+  "claims": [
+    420689,
+    1478014,
+    1721550
+  ],
+  "sample": "val_sample_v2.parquet",
+  "budget_usd": 2.5
+}

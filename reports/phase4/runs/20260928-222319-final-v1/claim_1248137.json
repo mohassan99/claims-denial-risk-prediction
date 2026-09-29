@@ -1,0 +1,158 @@
+{
+  "claim_id": 1248137,
+  "question": "For claim 1248137, which denial reason code is most plausible, and how does the model's score relate to it?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v1",
+  "turns": 3,
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1248137
+      },
+      "output": {
+        "claim_id": 1248137,
+        "claim_type": "outpatient",
+        "probability_denied": 0.1154,
+        "average_probability_in_validation_set": 0.1805,
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "90935",
+        "principal_diagnosis": "N184"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1248137
+      },
+      "output": {
+        "claim_id": 1248137,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds): the factor this feature applies to the odds of denial.",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -2.037,
+        "final_probability": 0.1154,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "90935",
+            "shap_log_odds": -0.326,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.72,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.059,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.94,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "PRVDR_NUM",
+            "value": "14S125",
+            "shap_log_odds": 0.041,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.04,
+            "meaning": "Billing provider identifier",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "LINE_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.037,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.04,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "TAX_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.034,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.97,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.026,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.03,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          }
+        ],
+        "all_other_features_log_odds": 0.091,
+        "number_of_features": 159
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "11"
+      },
+      "output": {
+        "code": "11",
+        "found": true,
+        "description": "The diagnosis doesn't support the procedure billed.",
+        "project_rule": "dx_procedure_mismatch",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "197"
+      },
+      "output": {
+        "code": "197",
+        "found": true,
+        "description": "Required prior authorization wasn't obtained.",
+        "project_rule": "missing_prior_auth",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "hemodialysis 90935 CKD stage 4 diagnosis denial"
+      },
+      "output": {
+        "query": "hemodialysis 90935 CKD stage 4 diagnosis denial",
+        "results": [
+          {
+            "doc_id": "article_a52467_pap_coding",
+            "title": "CMS Policy Article A52467 - PAP devices, coding guidelines (companion to LCD L33718)",
+            "url": "https://www.cms.gov/medicare-coverage-database/view/article.aspx?articleid=52467",
+            "chunk_id": "article_a52467_pap_coding#0",
+            "text": "# CPAP/PAP device coding guidelines and diagnosis requirements\n\n## Overview\n\nPositive airway pressure devices fall under the Durable Medical Equipment benefit category. For Medicare payment the equipment must meet the reasonable and necessary standard in the related Local Coverage Determination (L33718) and the specific statutory payment requirements.\n\n## Diagnosis code requirements\n\nThe only diagnosis code that supports medical necessity for PAP therapy is G47.33 (obstructive sleep apnea). Having the code does not by itself guarantee coverage: the supplier must verify that all applicable coverage criteria in the LCD are met. ICD-10 codes other than G47.33 are treated as not supporting medical necessity for PAP devices, so other diagnoses cannot justify PAP claims.\n\n## Device coding",
+            "similarity": 0.183
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    }
+  ],
+  "final_text": "**Short answer:** No denial reason code is clearly indicated for claim 1248137. The model scores it as low risk. If I had to name one code from the project's small reference, it would be CARC 11, but that is a weak guess.\n\n**Score:** The model gives a 11.5% probability of denial. That is below the validation-set average of 18.1% and the model's baseline of 14.0%. The claim is an outpatient claim for HCPCS 90935, a hemodialysis service, with principal diagnosis N18.4, chronic kidney disease stage 4.\n\n**Why the score is low:** The biggest driver is the procedure code. HCPCS 90935 lowers the odds of denial by about 28% (odds multiplier 0.72). The other features each move the score only slightly. Several of them are native CMS fields that this project's data dictionary doesn't describe.\n\n**Most plausible code:** CARC 11 means \"the diagnosis doesn't support the procedure billed.\" It is the only code in the reference that could relate to this claim, because dialysis is paired here with stage 4 CKD instead of end-stage disease. This is my inference. The model gave no sign of a diagnosis\u2013procedure mismatch, and no SHAP feature points to one. CARC 197 (missing prior authorization) has no support either. The policy search found nothing on dialysis. It returned only a CPAP article, which doesn't apply.\n\n**Caveat:** The denial label is synthetic. It was built from risk rules, not taken from real payer decisions. The score is therefore the probability of that constructed label, and any CARC attached to it is only illustrative.",
+  "usage": {
+    "input": 4468,
+    "output": 1006,
+    "cache_write": 0,
+    "cache_read": 2802
+  },
+  "cost_usd": 0.01956,
+  "finished": true,
+  "at": "2026-09-29T05:25:12+00:00"
+}

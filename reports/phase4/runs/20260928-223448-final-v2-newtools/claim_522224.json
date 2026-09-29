@@ -1,0 +1,200 @@
+{
+  "claim_id": 522224,
+  "question": "For claim 522224, which denial reason code is most plausible, and how does the model's score relate to it?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 4,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 522224
+      },
+      "output": {
+        "claim_id": 522224,
+        "claim_type": "carrier",
+        "probability_denied": 0.0769,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 0.43,
+        "points_versus_validation_average": -10.4,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": null,
+        "principal_diagnosis": "Z604"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 522224
+      },
+      "output": {
+        "claim_id": 522224,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -2.485,
+        "final_probability": 0.0769,
+        "top_features": [
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "1205951019",
+            "shap_log_odds": -0.223,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.8,
+            "odds_change_percent": -20,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "11",
+            "shap_log_odds": -0.146,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.86,
+            "odds_change_percent": -14,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "ORG_NPI_NUM",
+            "value": "1205951019",
+            "shap_log_odds": -0.119,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.89,
+            "odds_change_percent": -11,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "HCPCS_CD",
+            "value": null,
+            "shap_log_odds": -0.104,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.9,
+            "odds_change_percent": -10,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z604",
+            "shap_log_odds": -0.064,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.94,
+            "odds_change_percent": -6,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "TAX_NUM",
+            "value": "999147461",
+            "shap_log_odds": -0.055,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.95,
+            "odds_change_percent": -5,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          }
+        ],
+        "all_other_features_log_odds": 0.038,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "16"
+      },
+      "output": {
+        "code": "16",
+        "found": true,
+        "description": "The claim is missing information or has a billing error.",
+        "project_rule": "provider_outlier and missing_hcpcs",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "11"
+      },
+      "output": {
+        "code": "11",
+        "found": true,
+        "description": "The diagnosis doesn't support the procedure billed.",
+        "project_rule": "dx_procedure_mismatch",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "18"
+      },
+      "output": {
+        "code": "18",
+        "found": true,
+        "description": "Duplicate of a claim or service already submitted.",
+        "project_rule": "duplicate_claim",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "181"
+      },
+      "output": {
+        "code": "181",
+        "found": true,
+        "description": "The procedure code wasn't valid on the date of service.",
+        "project_rule": "deprecated_code",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "197"
+      },
+      "output": {
+        "code": "197",
+        "found": true,
+        "description": "Required prior authorization wasn't obtained.",
+        "project_rule": "missing_prior_auth",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    }
+  ],
+  "final_text": "**Claim 522224 (carrier claim): the model gives a low denial probability, and CARC 16 is the only code that loosely fits.**\n\nThe denial label in this project is synthetic. It was built from risk rules, so any reason code attached to this claim is illustrative and not a real payer decision.\n\n**Score:** The model gives a denial probability of 0.0769. The validation-set average is 0.1805, so this claim is 0.43 times that average and -10.4 percentage points below it. The model does not flag it as high risk.\n\n**Most plausible code:** CARC 16 is the closest match. The project's reference paraphrases it as \"The claim is missing information or has a billing error.\" Its project rules are provider_outlier and missing_hcpcs. This claim has no HCPCS code (null), and the principal diagnosis is Z604. I can't say what Z604 means, because no tool returned that. The other codes in the reference (11, 18, 181, 197) each need something this claim doesn't show. Code 11 needs a billed procedure to compare with the diagnosis. Codes 181 and 197 also concern the procedure code or prior authorization, and nothing here shows either. Code 18 needs a duplicate claim, and I have no data on duplicates. This is an inference from the project's rule mapping, not something the model outputs.\n\n**How the score relates:** The model weighs the missing HCPCS value slightly toward lower risk (odds change -10%). Its largest downward pushes are:\n- CARR_CLM_BLG_NPI_NUM, -20%\n- LINE_PLACE_OF_SRVC_CD, -14%\n- ORG_NPI_NUM, -11%\n\nNone of these three has a project dictionary entry, so I can't describe what they mean. The score therefore doesn't support CARC 16 for this claim. Even the most plausible code sits on a claim the model rates as unlikely to be denied. I ran no policy search, so I make no policy claims.",
+  "usage": {
+    "input": 5264,
+    "output": 1116,
+    "cache_write": 0,
+    "cache_read": 5056
+  },
+  "cost_usd": 0.0227,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-29T05:36:15+00:00"
+}

@@ -1,0 +1,40 @@
+{
+  "total_usd": 2.21205,
+  "entries": [
+    {
+      "run_id": "20260928-222210-smoke",
+      "model": "claude-haiku-4-5",
+      "usd": 0.02642,
+      "claims": 3,
+      "at": "2026-09-29T05:22:33+00:00"
+    },
+    {
+      "run_id": "20260928-222319-final-v1",
+      "model": "claude-sonnet-5-5",
+      "usd": 0.51829,
+      "claims": 30,
+      "at": "2026-09-29T05:28:12+00:00"
+    },
+    {
+      "run_id": "20260928-222954-final-v1-newtools",
+      "model": "claude-sonnet-5-5",
+      "usd": 0.52913,
+      "claims": 30,
+      "at": "2026-09-29T05:34:45+00:00"
+    },
+    {
+      "run_id": "20260928-223448-final-v2-newtools",
+      "model": "claude-sonnet-5-5",
+      "usd": 0.57401,
+      "claims": 30,
+      "at": "2026-09-29T05:39:37+00:00"
+    },
+    {
+      "run_id": "20260928-224007-heldout-v2",
+      "model": "claude-sonnet-5-5",
+      "usd": 0.5642,
+      "claims": 30,
+      "at": "2026-09-29T05:45:01+00:00"
+    }
+  ]
+}

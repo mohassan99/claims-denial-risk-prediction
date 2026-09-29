@@ -1,0 +1,162 @@
+{
+  "claim_id": 1281705,
+  "question": "Claim 1281705: why is its denial risk what it is, and what could a billing team check before submitting?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 4,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1281705
+      },
+      "output": {
+        "claim_id": 1281705,
+        "claim_type": "outpatient",
+        "probability_denied": 0.1099,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 0.61,
+        "points_versus_validation_average": -7.1,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "90935",
+        "principal_diagnosis": "N184"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1281705
+      },
+      "output": {
+        "claim_id": 1281705,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -2.091,
+        "final_probability": 0.1099,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "90935",
+            "shap_log_odds": -0.294,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.75,
+            "odds_change_percent": -25,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.063,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.94,
+            "odds_change_percent": -6,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "LINE_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.038,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.04,
+            "odds_change_percent": 4,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "TAX_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.038,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.96,
+            "odds_change_percent": -4,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "N184",
+            "shap_log_odds": 0.029,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.03,
+            "odds_change_percent": 3,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "CARR_LINE_PRCNG_LCLTY_CD",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.026,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.03,
+            "odds_change_percent": 3,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          }
+        ],
+        "all_other_features_log_odds": 0.023,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "pre-submission checks for outpatient claim procedure 90935 diagnosis N184",
+        "k": 3
+      },
+      "output": {
+        "query": "pre-submission checks for outpatient claim procedure 90935 diagnosis N184",
+        "results": [
+          {
+            "doc_id": "article_a52467_pap_coding",
+            "title": "CMS Policy Article A52467 - PAP devices, coding guidelines (companion to LCD L33718)",
+            "url": "https://www.cms.gov/medicare-coverage-database/view/article.aspx?articleid=52467",
+            "chunk_id": "article_a52467_pap_coding#0",
+            "text": "# CPAP/PAP device coding guidelines and diagnosis requirements\n\n## Overview\n\nPositive airway pressure devices fall under the Durable Medical Equipment benefit category. For Medicare payment the equipment must meet the reasonable and necessary standard in the related Local Coverage Determination (L33718) and the specific statutory payment requirements.\n\n## Diagnosis code requirements\n\nThe only diagnosis code that supports medical necessity for PAP therapy is G47.33 (obstructive sleep apnea). Having the code does not by itself guarantee coverage: the supplier must verify that all applicable coverage criteria in the LCD are met. ICD-10 codes other than G47.33 are treated as not supporting medical necessity for PAP devices, so other diagnoses cannot justify PAP claims.\n\n## Device coding",
+            "similarity": 0.086
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#2",
+            "text": "mobility devices, pressure reducing support surfaces, lower limb prosthetics and pneumatic compression devices. Selected items usually start in some geographic regions and then expand nationwide. ## Claims without prior authorization For items on the Required Prior Authorization List, prior authorization is a condition of payment. A claim submitted without an affirmative prior authorization decision, or without a provisional affirmation that meets the 90% compliance threshold, is not eligible for payment.\n\nStandard requests are decided within 7 calendar days (effective January 1, 2025). Expedited requests are decided within 2 business days. Suppliers furnishing items under urgent circumstances can use specific modifiers, such as ST, to indicate an emergency, which may bypass the standard timelines.\n\n## Submitting requests",
+            "similarity": 0.042
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#0",
+            "text": "# DMEPOS prior authorization process overview\n\n## Purpose\n\nThe prior authorization program for durable medical equipment, prosthetics, orthotics and supplies (DMEPOS) helps protect the Medicare Trust Fund from improper payments while making sure beneficiaries can get the items they need in a timely way. Prior authorization checks that applicable Medicare coverage, payment and coding requirements are met before the item is delivered.\n\n## How items are selected",
+            "similarity": 0.041
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    }
+  ],
+  "final_text": "**Claim 1281705 (outpatient, HCPCS 90935, principal diagnosis N184)**\n\nThe model gives this claim a denial probability of 0.1099. That is below the validation-set average of 0.1805, or 0.61 times the average and -7.1 percentage points. The denial label in this project is synthetic. It was built from risk rules, so this is not a real payer decision.\n\n**What the model weighs**\n- **HCPCS_CD = 90935** has the largest effect. It is described only as the procedure or service code billed. The model weighs it as lowering the odds of denial by 25%.\n- **PRNCPAL_DGNS_CD = N184** is the principal diagnosis (ICD-10-CM). The model weighs it as raising the odds by 3%.\n- **CARR_CLM_BLG_NPI_NUM, LINE_NUM, TAX_NUM and CARR_LINE_PRCNG_LCLTY_CD** all have the value NOT_APPLICABLE. Their effects are small, between -6% and +4% on the odds. The project data dictionary has no entry for any of them. They are native CMS claim fields, but this project doesn't describe their meaning.\n- The 153 features not shown are small, so no single one changes the picture.\n\nI'm not stating what 90935 or N184 mean, because no tool result says.\n\n**What to check before submitting**\nThe policy documents returned don't cover 90935 or N184. They cover only CPAP coding (Policy Article A52467) and DMEPOS prior authorization. I can't give policy-based checks for this claim. A general step is to confirm the procedure and diagnosis codes are entered as intended. Beyond that, follow your payer's own rules.",
+  "usage": {
+    "input": 5190,
+    "output": 858,
+    "cache_write": 0,
+    "cache_read": 5056
+  },
+  "cost_usd": 0.01997,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-29T05:42:21+00:00"
+}

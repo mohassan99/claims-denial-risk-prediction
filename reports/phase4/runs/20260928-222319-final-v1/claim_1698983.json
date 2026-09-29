@@ -1,0 +1,144 @@
+{
+  "claim_id": 1698983,
+  "question": "Claim 1698983: why is its denial risk what it is, and what could a billing team check before submitting?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v1",
+  "turns": 3,
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1698983
+      },
+      "output": {
+        "claim_id": 1698983,
+        "claim_type": "dme",
+        "probability_denied": 0.0208,
+        "average_probability_in_validation_set": 0.1805,
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "E1390",
+        "principal_diagnosis": "Z733"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1698983
+      },
+      "output": {
+        "claim_id": 1698983,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds): the factor this feature applies to the odds of denial.",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -3.849,
+        "final_probability": 0.0208,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "E1390",
+            "shap_log_odds": -1.24,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.29,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "LINE_NUM",
+            "value": "1",
+            "shap_log_odds": -0.387,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.68,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "11",
+            "shap_log_odds": -0.248,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.78,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.143,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.87,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z733",
+            "shap_log_odds": -0.044,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.96,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "TAX_NUM",
+            "value": "999968237",
+            "shap_log_odds": -0.043,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.96,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          }
+        ],
+        "all_other_features_log_odds": 0.068,
+        "number_of_features": 159
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "DME oxygen concentrator E1390 coverage documentation requirements and prior authorization"
+      },
+      "output": {
+        "query": "DME oxygen concentrator E1390 coverage documentation requirements and prior authorization",
+        "results": [
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#3",
+            "text": "within 2 business days. Suppliers furnishing items under urgent circumstances can use specific modifiers, such as ST, to indicate an emergency, which may bypass the standard timelines. ## Submitting requests Suppliers can submit prior authorization requests before delivering the item. A request needs the clinical documentation that supports medical necessity under Medicare coverage rules. A supplier with a provisional affirmation rate of 90% or higher may qualify for an exemption from prior authorization, established in December 2025, with the first exemption cycle starting June 1, 2026 and repeating annually. For power mobility device bases, suppliers may voluntarily request authorization for qualifying accessories using a separate voluntary list. Suppliers should contact their DME MAC or its website for jurisdiction-specific submission procedures, timeframes and documentation requirements.",
+            "similarity": 0.269
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#0",
+            "text": "# DMEPOS prior authorization process overview\n\n## Purpose\n\nThe prior authorization program for durable medical equipment, prosthetics, orthotics and supplies (DMEPOS) helps protect the Medicare Trust Fund from improper payments while making sure beneficiaries can get the items they need in a timely way. Prior authorization checks that applicable Medicare coverage, payment and coding requirements are met before the item is delivered.\n\n## How items are selected",
+            "similarity": 0.218
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#1",
+            "text": "items they need in a timely way. Prior authorization checks that applicable Medicare coverage, payment and coding requirements are met before the item is delivered. ## How items are selected CMS keeps a Master List of DMEPOS items that may require prior authorization or a face-to-face encounter with a written order before delivery. The list is updated at least once a year based on items with patterns of unnecessary utilization. Items on the Required Prior Authorization List are chosen by evaluating DMEPOS categories for problematic billing trends. Recent additions include orthoses, power mobility devices, pressure reducing support surfaces, lower limb prosthetics and pneumatic compression devices. Selected items usually start in some geographic regions and then expand nationwide.\n\n## Claims without prior authorization",
+            "similarity": 0.178
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    }
+  ],
+  "final_text": "Claim 1698983 (DME, HCPCS E1390, principal diagnosis Z733) has a **2.1% denial probability**. The validation-set average is 18%. The denial label in this project is synthetic. It was built from risk rules, so this score is not a prediction of a real payer decision.\n\n**Why it's low**\n- The E1390 code is the main driver. It lowers the odds of denial to about 0.29 times the baseline.\n- Smaller reductions come from line number 1, place of service 11, and a \"not applicable\" billing NPI. The data dictionary doesn't describe these fields, so I can't say what they mean here.\n- The diagnosis code barely moves the score, and no unusual category values were flagged.\n\n**What a billing team could check**\n- **Diagnosis fit:** From general knowledge, not from the tools, E1390 is an oxygen concentrator and Z733 is a stress-related code. That looks like a poor match for medical necessity. The model doesn't penalize it, so a human should review it.\n- **Prior authorization:** The policy documents I searched cover the DMEPOS prior authorization process in general. They say nothing specific about E1390, so check the current CMS Required Prior Authorization list and your DME MAC's rules.\n- **Documentation:** Confirm the order and clinical records that support medical necessity are on file.\n\nA low score doesn't mean the claim is clean.",
+  "usage": {
+    "input": 3545,
+    "output": 899,
+    "cache_write": 0,
+    "cache_read": 2802
+  },
+  "cost_usd": 0.01664,
+  "finished": true,
+  "at": "2026-09-29T05:28:01+00:00"
+}

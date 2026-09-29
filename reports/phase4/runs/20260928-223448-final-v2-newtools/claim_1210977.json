@@ -1,0 +1,124 @@
+{
+  "claim_id": 1210977,
+  "question": "Explain why claim 1210977 got its denial-risk score.",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 3,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1210977
+      },
+      "output": {
+        "claim_id": 1210977,
+        "claim_type": "outpatient",
+        "probability_denied": 0.2384,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 1.32,
+        "points_versus_validation_average": 5.8,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "G0444",
+        "principal_diagnosis": "N186"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1210977
+      },
+      "output": {
+        "claim_id": 1210977,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -1.162,
+        "final_probability": 0.2384,
+        "top_features": [
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "N186",
+            "shap_log_odds": 0.251,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.29,
+            "odds_change_percent": 29,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "HCPCS_CD",
+            "value": "G0444",
+            "shap_log_odds": 0.214,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.24,
+            "odds_change_percent": 24,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "REV_CNTR_TOT_CHRG_AMT",
+            "value": 0.0,
+            "shap_log_odds": 0.136,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.15,
+            "odds_change_percent": 15,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.052,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.95,
+            "odds_change_percent": -5,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "PRVDR_NUM",
+            "value": "100118",
+            "shap_log_odds": 0.044,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.04,
+            "odds_change_percent": 4,
+            "meaning": "Billing provider identifier",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.039,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.04,
+            "odds_change_percent": 4,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          }
+        ],
+        "all_other_features_log_odds": 0.018,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    }
+  ],
+  "final_text": "**Claim 1210977 (outpatient, HCPCS G0444, principal diagnosis N186)**\n\nThe model gives this claim a denial probability of 0.2384. The validation-set average is 0.1805. That puts the claim at 1.32 times the average, or 5.8 percentage points above it. The label is synthetic. It was built from risk rules, so this is not the probability of a real payer decision.\n\nThe model starts from a baseline probability of 0.1404. Three features push the score up the most:\n\n- **Principal diagnosis N186:** the odds change is 29%. The model weighs this most heavily.\n- **HCPCS code G0444 (procedure/service code billed):** the odds change is 24%.\n- **REV_CNTR_TOT_CHRG_AMT (value 0.0):** the odds change is 15%. The project data dictionary has no entry for this field. It is a native CMS claim field, and this project doesn't describe its meaning.\n\nSmaller effects:\n\n- **PRVDR_NUM 100118 (billing provider identifier):** up 4%.\n- **LINE_PLACE_OF_SRVC_CD (NOT_APPLICABLE):** up 4%. It is undocumented in the dictionary.\n- **CARR_CLM_BLG_NPI_NUM (NOT_APPLICABLE):** down 5%. It is also undocumented.\n\nThere are 153 other features not shown. Their combined effect is small, at 0.018 log-odds.\n\nThese values show what the model weighs, not what causes a denial. I didn't run a policy search, so I'm making no claims about Medicare rules for these codes.",
+  "usage": {
+    "input": 1987,
+    "output": 638,
+    "cache_write": 0,
+    "cache_read": 3792
+  },
+  "cost_usd": 0.01111,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-29T05:36:51+00:00"
+}

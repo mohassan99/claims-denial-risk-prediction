@@ -1,0 +1,219 @@
+{
+  "claim_id": 1786301,
+  "question": "For claim 1786301, which denial reason code is most plausible, and how does the model's score relate to it?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v1",
+  "turns": 3,
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1786301
+      },
+      "output": {
+        "claim_id": 1786301,
+        "claim_type": "dme",
+        "probability_denied": 0.09,
+        "average_probability_in_validation_set": 0.1805,
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "A4604",
+        "principal_diagnosis": "G479"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1786301
+      },
+      "output": {
+        "claim_id": 1786301,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds): the factor this feature applies to the odds of denial.",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -2.314,
+        "final_probability": 0.09,
+        "top_features": [
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "G479",
+            "shap_log_odds": -0.418,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.66,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "ICD_DGNS_CD1",
+            "value": "P2832",
+            "shap_log_odds": -0.147,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.86,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "ORG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.08,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.08,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "ICD_DGNS_CD2",
+            "value": "G479",
+            "shap_log_odds": -0.07,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.93,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.058,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.94,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "DMERC_LINE_PRCNG_STATE_CD",
+            "value": "50",
+            "shap_log_odds": 0.046,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.05,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          }
+        ],
+        "all_other_features_log_odds": 0.065,
+        "number_of_features": 159
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "CPAP tubing A4604 coverage diagnosis sleep apnea coding"
+      },
+      "output": {
+        "query": "CPAP tubing A4604 coverage diagnosis sleep apnea coding",
+        "results": [
+          {
+            "doc_id": "article_a52467_pap_coding",
+            "title": "CMS Policy Article A52467 - PAP devices, coding guidelines (companion to LCD L33718)",
+            "url": "https://www.cms.gov/medicare-coverage-database/view/article.aspx?articleid=52467",
+            "chunk_id": "article_a52467_pap_coding#0",
+            "text": "# CPAP/PAP device coding guidelines and diagnosis requirements\n\n## Overview\n\nPositive airway pressure devices fall under the Durable Medical Equipment benefit category. For Medicare payment the equipment must meet the reasonable and necessary standard in the related Local Coverage Determination (L33718) and the specific statutory payment requirements.\n\n## Diagnosis code requirements\n\nThe only diagnosis code that supports medical necessity for PAP therapy is G47.33 (obstructive sleep apnea). Having the code does not by itself guarantee coverage: the supplier must verify that all applicable coverage criteria in the LCD are met. ICD-10 codes other than G47.33 are treated as not supporting medical necessity for PAP devices, so other diagnoses cannot justify PAP claims.\n\n## Device coding",
+            "similarity": 0.198
+          },
+          {
+            "doc_id": "lcd_l33718_pap_devices",
+            "title": "CMS LCD L33718 - Positive Airway Pressure (PAP) devices for obstructive sleep apnea",
+            "url": "https://www.cms.gov/medicare-coverage-database/view/lcd.aspx?lcdid=33718",
+            "chunk_id": "lcd_l33718_pap_devices#0",
+            "text": "# Coverage indications for PAP devices in obstructive sleep apnea\n\n## Initial Medicare coverage requirements\n\nThree foundational criteria must be met. The item must fall within a defined Medicare benefit category. It must be reasonable and necessary for diagnosing or treating illness or injury or improving the function of a malformed body member. All other applicable statutory and regulatory requirements must be met.\n\nThe policy distinguishes E0601 (single-level continuous positive airway pressure, CPAP) from E0470 (bi-level respiratory assist device without backup rate). Both treat obstructive sleep apnea when specific conditions are documented.\n\n## E0601 coverage criteria",
+            "similarity": 0.152
+          },
+          {
+            "doc_id": "lcd_l33718_pap_devices",
+            "title": "CMS LCD L33718 - Positive Airway Pressure (PAP) devices for obstructive sleep apnea",
+            "url": "https://www.cms.gov/medicare-coverage-database/view/lcd.aspx?lcdid=33718",
+            "chunk_id": "lcd_l33718_pap_devices#1",
+            "text": "E0601 (single-level continuous positive airway pressure, CPAP) from E0470 (bi-level respiratory assist device without backup rate). Both treat obstructive sleep apnea when specific conditions are documented. ## E0601 coverage criteria Three conditions must all be met. First, the beneficiary has an in-person clinical evaluation by the treating practitioner before sleep testing, to assess for obstructive sleep apnea. Second, the beneficiary completes a sleep test that meets one of two thresholds: an apnea-hypopnea index (AHI) or respiratory disturbance index (RDI) of at least 15 events per hour with a minimum of 30 events, or an AHI or RDI of 5 to 14 events per hour with a minimum of 10 events together with documented excessive daytime sleepiness, impaired cognition, mood disorders, insomnia, hypertension, ischemic heart disease, or history of stroke. Third, the beneficiary is given instruction by the supplier in the proper use and care of the device.",
+            "similarity": 0.12
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "11"
+      },
+      "output": {
+        "code": "11",
+        "found": true,
+        "description": "The diagnosis doesn't support the procedure billed.",
+        "project_rule": "dx_procedure_mismatch",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "16"
+      },
+      "output": {
+        "code": "16",
+        "found": true,
+        "description": "The claim is missing information or has a billing error.",
+        "project_rule": "provider_outlier and missing_hcpcs",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "18"
+      },
+      "output": {
+        "code": "18",
+        "found": true,
+        "description": "Duplicate of a claim or service already submitted.",
+        "project_rule": "duplicate_claim",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "181"
+      },
+      "output": {
+        "code": "181",
+        "found": true,
+        "description": "The procedure code wasn't valid on the date of service.",
+        "project_rule": "deprecated_code",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "197"
+      },
+      "output": {
+        "code": "197",
+        "found": true,
+        "description": "Required prior authorization wasn't obtained.",
+        "project_rule": "missing_prior_auth",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    }
+  ],
+  "final_text": "**Most plausible code: CARC 11 (\"the diagnosis doesn't support the procedure billed\"). The model's score doesn't back this up.**\n\n**Why CARC 11 is plausible.** The claim is DME with HCPCS A4604 and principal diagnosis G47.9 (sleep disorder, unspecified). CMS Article A52467 says G47.33 (obstructive sleep apnea) is the only diagnosis that supports medical necessity for PAP therapy. It treats other ICD-10 codes as not supporting it. I'm treating A4604 as a CPAP-related supply from general knowledge, because the policy search didn't return anything on A4604 specifically. The retrieved text covers PAP devices, so applying it to this supply is an inference.\n\n**What the model says.** The denial probability is 9%, about half the validation average of 18%. SHAP shows the principal diagnosis G47.9 as the largest factor, and it lowered risk (odds \u00d70.66). The other factors are small, and most are undocumented in the project dictionary. So the model doesn't flag a diagnosis mismatch here. It may not have learned this rule for this code pair, or the rule may not apply to this supply.\n\n**Caveat.** The denial label is synthetic, built from risk rules. Any CARC here is illustrative, not a real payer decision.",
+  "usage": {
+    "input": 6242,
+    "output": 1290,
+    "cache_write": 0,
+    "cache_read": 2802
+  },
+  "cost_usd": 0.02594,
+  "finished": true,
+  "at": "2026-09-29T05:28:12+00:00"
+}

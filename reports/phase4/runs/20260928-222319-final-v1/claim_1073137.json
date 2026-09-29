@@ -1,0 +1,108 @@
+{
+  "claim_id": 1073137,
+  "question": "Explain why claim 1073137 got its denial-risk score.",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v1",
+  "turns": 3,
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1073137
+      },
+      "output": {
+        "claim_id": 1073137,
+        "claim_type": "carrier",
+        "probability_denied": 0.0937,
+        "average_probability_in_validation_set": 0.1805,
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": null,
+        "principal_diagnosis": "Z733"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1073137
+      },
+      "output": {
+        "claim_id": 1073137,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds): the factor this feature applies to the odds of denial.",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -2.269,
+        "final_probability": 0.0937,
+        "top_features": [
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "11",
+            "shap_log_odds": -0.153,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.86,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "HCPCS_CD",
+            "value": null,
+            "shap_log_odds": -0.119,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.89,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z733",
+            "shap_log_odds": -0.08,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.92,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "1629494398",
+            "shap_log_odds": -0.054,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.95,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "TAX_NUM",
+            "value": "999423070",
+            "shap_log_odds": -0.052,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.95,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "LINE_NUM",
+            "value": "3",
+            "shap_log_odds": 0.052,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.05,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          }
+        ],
+        "all_other_features_log_odds": -0.051,
+        "number_of_features": 159
+      }
+    }
+  ],
+  "final_text": "**Claim 1073137 has a low denial-risk score: 9.4%.** That is below the validation-set average of 18.1% and below the model's baseline of 14.0%. It is a carrier claim, and it has no HCPCS code on file. Its principal diagnosis is Z733.\n\n**What moved the score.** The SHAP values are in log-odds. The model started at a baseline of about 14% and ended at 9.4%. The features that pushed the score down most were:\n- **Place of service code 11 (odds \u00d70.86).** This is a native CMS field with no entry in the project's data dictionary, so I can't say from project documents what it means.\n- **Missing HCPCS code (\u00d70.89).** The model treated the blank code as slightly lower risk.\n- **Principal diagnosis Z733 (\u00d70.92).**\n- **Billing NPI and tax number (each about \u00d70.95).** These are identifiers, and neither is documented in the dictionary.\n\nOne feature pushed the score up slightly: line number 3 (\u00d71.05). The other 150 or so features together pushed it down a little (\u22120.05).\n\n**Caveats.**\n- No single feature has a large effect. This is a small accumulation of minor factors, not a strong signal.\n- The denial label is synthetic. It was engineered from risk rules, so 9.4% is the probability of that constructed label, not of a real payer decision.",
+  "usage": {
+    "input": 1795,
+    "output": 678,
+    "cache_write": 0,
+    "cache_read": 2802
+  },
+  "cost_usd": 0.01093,
+  "finished": true,
+  "at": "2026-09-29T05:23:57+00:00"
+}

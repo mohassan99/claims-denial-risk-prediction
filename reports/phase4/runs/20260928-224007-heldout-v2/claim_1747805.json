@@ -1,0 +1,124 @@
+{
+  "claim_id": 1747805,
+  "question": "Explain why claim 1747805 got its denial-risk score.",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 3,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1747805
+      },
+      "output": {
+        "claim_id": 1747805,
+        "claim_type": "dme",
+        "probability_denied": 0.2406,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 1.33,
+        "points_versus_validation_average": 6.0,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "A4604",
+        "principal_diagnosis": "Z604"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1747805
+      },
+      "output": {
+        "claim_id": 1747805,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -1.15,
+        "final_probability": 0.2406,
+        "top_features": [
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "22",
+            "shap_log_odds": 0.283,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.33,
+            "odds_change_percent": 33,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "HCPCS_CD",
+            "value": "A4604",
+            "shap_log_odds": 0.194,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.21,
+            "odds_change_percent": 21,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "ORG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.156,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.17,
+            "odds_change_percent": 17,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z604",
+            "shap_log_odds": -0.082,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.92,
+            "odds_change_percent": -8,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "PRVDR_NUM",
+            "value": "310084",
+            "shap_log_odds": 0.045,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.05,
+            "odds_change_percent": 5,
+            "meaning": "Billing provider identifier",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.045,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.96,
+            "odds_change_percent": -4,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          }
+        ],
+        "all_other_features_log_odds": 0.111,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    }
+  ],
+  "final_text": "**Claim 1747805 (DME claim, HCPCS A4604, principal diagnosis Z604)**\n\nThe model gives this claim a denial probability of 0.2406. The validation-set average is 0.1805. That makes the claim 1.33 times the average, or 6.0 percentage points higher. The project's denial label is synthetic. It was built from risk rules, so this score is not a prediction of a real payer decision.\n\n**What the model weighs**\n- **LINE_PLACE_OF_SRVC_CD = 22** raises the odds by 33%. The project data dictionary has no entry for this field, so I can't say what it means.\n- **HCPCS_CD = A4604** raises the odds by 21%. The dictionary describes this feature as the procedure or service code billed.\n- **ORG_NPI_NUM = NOT_APPLICABLE** raises the odds by 17%. This field is also undocumented in the dictionary.\n- **PRNCPAL_DGNS_CD = Z604** lowers the odds by 8%. The dictionary describes it as the principal diagnosis (ICD-10-CM).\n- **PRVDR_NUM = 310084** raises the odds by 5%. The dictionary describes it as the billing provider identifier.\n- **CARR_CLM_BLG_NPI_NUM = NOT_APPLICABLE** lowers the odds by 4%. This field is undocumented in the dictionary.\n\nThe model starts from a baseline probability of 0.1404. The features above, plus the 153 not shown, move it to 0.2406.\n\nI didn't search the policy documents, so I can't say whether any CMS rule applies to A4604. SHAP values show what the model weighs, not what causes a denial.",
+  "usage": {
+    "input": 1976,
+    "output": 673,
+    "cache_write": 0,
+    "cache_read": 3792
+  },
+  "cost_usd": 0.01144,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-29T05:43:39+00:00"
+}

@@ -1,0 +1,162 @@
+{
+  "claim_id": 1359486,
+  "question": "Claim 1359486: why is its denial risk what it is, and what could a billing team check before submitting?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 4,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1359486
+      },
+      "output": {
+        "claim_id": 1359486,
+        "claim_type": "outpatient",
+        "probability_denied": 0.0652,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 0.36,
+        "points_versus_validation_average": -11.5,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "99397",
+        "principal_diagnosis": "C50929"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1359486
+      },
+      "output": {
+        "claim_id": 1359486,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -2.662,
+        "final_probability": 0.0652,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "99397",
+            "shap_log_odds": -1.198,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.3,
+            "odds_change_percent": -70,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "PRVDR_NUM",
+            "value": "25S072",
+            "shap_log_odds": 0.355,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.43,
+            "odds_change_percent": 43,
+            "meaning": "Billing provider identifier",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.077,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.93,
+            "odds_change_percent": -7,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "C50929",
+            "shap_log_odds": 0.038,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.04,
+            "odds_change_percent": 4,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.034,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.03,
+            "odds_change_percent": 3,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "ORG_NPI_NUM",
+            "value": "1912945775",
+            "shap_log_odds": -0.031,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.97,
+            "odds_change_percent": -3,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          }
+        ],
+        "all_other_features_log_odds": 0.029,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "preventive visit code 99397 billing requirements denial",
+        "k": 3
+      },
+      "output": {
+        "query": "preventive visit code 99397 billing requirements denial",
+        "results": [
+          {
+            "doc_id": "cms_r1875cp_consultation_codes",
+            "title": "CMS Transmittal 1875 - Consultation service codes no longer recognized for Medicare payment",
+            "url": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf",
+            "chunk_id": "cms_r1875cp_consultation_codes#2",
+            "text": "AI. Follow-up visits use codes 99307-99310. Nurse practitioners, clinical nurse specialists and certified nurse midwives may perform initial visits where state law permits and collaboration and supervision requirements are met. Office and outpatient: physicians and qualified nonphysician practitioners choose a new or established patient visit code (99201-99215) based on visit complexity and the patient relationship. A new patient is one who has not received professional services from the physician or physician group practice within the previous 3 years.\n\nCritical Access Hospital Method II: appropriate new or established visit codes (99201-99215) are reported on type of bill 85X with revenue codes 96X, 97X or 98X for physicians and nonphysician practitioners with reassigned billing rights.\n\nRural Health Clinics and Federally Qualified Health Centers: consultation codes were discontinued in favor of office visit codes (99201-99215) and nursing facility codes (99304-99306) as appropriate.",
+            "similarity": 0.158
+          },
+          {
+            "doc_id": "cms_r1875cp_consultation_codes",
+            "title": "CMS Transmittal 1875 - Consultation service codes no longer recognized for Medicare payment",
+            "url": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf",
+            "chunk_id": "cms_r1875cp_consultation_codes#1",
+            "text": "facility visits. These increased values were also carried into practice expense and malpractice calculations and into the E/M component of global surgical codes. ## What to bill instead, by setting Hospital inpatient: physicians performing initial evaluations bill initial hospital care codes 99221-99223. More than one physician may bill an initial visit on the same date if each performs an independent evaluation. The principal physician, the one who oversees the patient's care as distinct from other physicians furnishing specialty care, appends modifier AI to the initial visit code. Follow-up visits use subsequent hospital care codes.\n\nNursing facility: physicians bill initial nursing facility care codes 99304-99306, and the principal physician appends modifier AI. Follow-up visits use codes 99307-99310. Nurse practitioners, clinical nurse specialists and certified nurse midwives may perform initial visits where state law permits and collaboration and supervision requirements are met.",
+            "similarity": 0.115
+          },
+          {
+            "doc_id": "cms_r1875cp_consultation_codes",
+            "title": "CMS Transmittal 1875 - Consultation service codes no longer recognized for Medicare payment",
+            "url": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf",
+            "chunk_id": "cms_r1875cp_consultation_codes#3",
+            "text": "with reassigned billing rights. Rural Health Clinics and Federally Qualified Health Centers: consultation codes were discontinued in favor of office visit codes (99201-99215) and nursing facility codes (99304-99306) as appropriate. ## Documentation\n\nAll E/M services must meet existing E/M documentation guidelines. Services should be documented during or immediately after they are provided. Code selection should reflect the actual service content.\n\n## Timeline\n\nThe effective date was January 1, 2010, and implementation was January 4, 2010. The transmittal removed all references to consultation codes from Claims Processing Manual Chapter 12, Section 30.6.",
+            "similarity": 0.095
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    }
+  ],
+  "final_text": "**Claim 1359486 (outpatient)** has a denial probability of 0.0652. The validation-set average is 0.1805, so this claim is 0.36 times the average and 11.5 percentage points below it. The denial label in this project is synthetic. The score is the probability of a constructed label, not of a real payer decision.\n\n**What the model weighs**\n- **Procedure code (HCPCS_CD = 99397):** This is the biggest factor. It lowers the odds of denial by 70% (\u20131.198 log-odds). The tool describes the feature only as the \"procedure/service code billed.\"\n- **Billing provider ID (PRVDR_NUM = 25S072):** The model weighs this as raising the odds by 43%.\n- **Principal diagnosis (C50929):** A very small increase, 4%.\n- **Three fields with no entry in the project data dictionary:** CARR_CLM_BLG_NPI_NUM, LINE_PLACE_OF_SRVC_CD and ORG_NPI_NUM. Each has a small effect (\u20137%, +3% and \u20133%). They are native CMS claim fields, but this project doesn't describe them.\n- 153 other features are not shown.\n\n**What to check before submitting**\nThe policy documents don't cover this claim. My search for 99397 returned only the CMS Transmittal 1875 consultation-code document, which doesn't mention 99397 or this diagnosis. I can't cite any policy requirement for them.\n\nThese are general checks, and none comes from a tool result:\n- Confirm the billing provider identifier is correct.\n- Confirm the procedure and diagnosis codes match the documentation.\n- Review the fields that lack dictionary entries.\n\nTransmittal 1875 does say that E/M services must meet existing documentation guidelines.",
+  "usage": {
+    "input": 5123,
+    "output": 870,
+    "cache_write": 0,
+    "cache_read": 5056
+  },
+  "cost_usd": 0.01996,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-29T05:37:55+00:00"
+}

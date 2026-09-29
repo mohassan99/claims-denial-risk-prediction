@@ -1,0 +1,89 @@
+{
+  "run": "20260928-222210-smoke",
+  "pooled": {
+    "explanations": 3,
+    "tokens": 26,
+    "grounded_tokens": 19,
+    "share": 0.7307692307692307,
+    "explanations_fully_grounded": 0,
+    "by_kind": {
+      "code": {
+        "tokens": 6,
+        "grounded": 6,
+        "share": 1.0
+      },
+      "desc": {
+        "tokens": 4,
+        "grounded": 0,
+        "share": 0.0
+      },
+      "number": {
+        "tokens": 15,
+        "grounded": 12,
+        "share": 0.8
+      },
+      "carc": {
+        "tokens": 1,
+        "grounded": 1,
+        "share": 1.0
+      }
+    },
+    "empty_explanations": 0
+  },
+  "per_claim": [
+    {
+      "claim_id": 1478014,
+      "question": "Claim 1478014: why is its denial risk what it is, and what could a billing team check before submitting?",
+      "tools": [
+        "score_claim",
+        "explain_shap"
+      ],
+      "tokens": 7,
+      "grounded": 5,
+      "share": 0.7142857142857143,
+      "ungrounded": [
+        "90935 (dialysis-related procedure)",
+        "24%"
+      ],
+      "cost_usd": 0.00662
+    },
+    {
+      "claim_id": 1721550,
+      "question": "For claim 1721550, which denial reason code is most plausible, and how does the model's score relate to it?",
+      "tools": [
+        "score_claim",
+        "explain_shap",
+        "search_policy",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc"
+      ],
+      "tokens": 9,
+      "grounded": 7,
+      "share": 0.7777777777777778,
+      "ungrounded": [
+        "A7037 (a respiratory supply code)",
+        "40%"
+      ],
+      "cost_usd": 0.01351
+    },
+    {
+      "claim_id": 420689,
+      "question": "Explain why claim 420689 got its denial-risk score.",
+      "tools": [
+        "score_claim",
+        "explain_shap"
+      ],
+      "tokens": 10,
+      "grounded": 7,
+      "share": 0.7,
+      "ungrounded": [
+        "G0444 (a consultation code)",
+        "Z733 (problem-related encounter)",
+        "66%"
+      ],
+      "cost_usd": 0.00629
+    }
+  ],
+  "cost_usd": 0.0264
+}

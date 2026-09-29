@@ -1,0 +1,162 @@
+{
+  "claim_id": 38928,
+  "question": "Claim 38928: why is its denial risk what it is, and what could a billing team check before submitting?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 4,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 38928
+      },
+      "output": {
+        "claim_id": 38928,
+        "claim_type": "carrier",
+        "probability_denied": 0.1051,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 0.58,
+        "points_versus_validation_average": -7.5,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "96156",
+        "principal_diagnosis": "Z608"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 38928
+      },
+      "output": {
+        "claim_id": 38928,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -2.141,
+        "final_probability": 0.1051,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "96156",
+            "shap_log_odds": -0.947,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.39,
+            "odds_change_percent": -61,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "20",
+            "shap_log_odds": 0.7,
+            "effect": "raises denial risk",
+            "odds_multiplier": 2.01,
+            "odds_change_percent": 101,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z608",
+            "shap_log_odds": -0.057,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.94,
+            "odds_change_percent": -6,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "1558308825",
+            "shap_log_odds": -0.053,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.95,
+            "odds_change_percent": -5,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "CARR_LINE_PRCNG_LCLTY_CD",
+            "value": "3",
+            "shap_log_odds": 0.03,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.03,
+            "odds_change_percent": 3,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "ICD_DGNS_CD9",
+            "value": "D4959",
+            "shap_log_odds": -0.027,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.97,
+            "odds_change_percent": -3,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          }
+        ],
+        "all_other_features_log_odds": 0.025,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "carrier claim 96156 place of service documentation requirements before submission",
+        "k": 3
+      },
+      "output": {
+        "query": "carrier claim 96156 place of service documentation requirements before submission",
+        "results": [
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#3",
+            "text": "within 2 business days. Suppliers furnishing items under urgent circumstances can use specific modifiers, such as ST, to indicate an emergency, which may bypass the standard timelines. ## Submitting requests Suppliers can submit prior authorization requests before delivering the item. A request needs the clinical documentation that supports medical necessity under Medicare coverage rules. A supplier with a provisional affirmation rate of 90% or higher may qualify for an exemption from prior authorization, established in December 2025, with the first exemption cycle starting June 1, 2026 and repeating annually. For power mobility device bases, suppliers may voluntarily request authorization for qualifying accessories using a separate voluntary list. Suppliers should contact their DME MAC or its website for jurisdiction-specific submission procedures, timeframes and documentation requirements.",
+            "similarity": 0.139
+          },
+          {
+            "doc_id": "cms_r1875cp_consultation_codes",
+            "title": "CMS Transmittal 1875 - Consultation service codes no longer recognized for Medicare payment",
+            "url": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf",
+            "chunk_id": "cms_r1875cp_consultation_codes#3",
+            "text": "with reassigned billing rights. Rural Health Clinics and Federally Qualified Health Centers: consultation codes were discontinued in favor of office visit codes (99201-99215) and nursing facility codes (99304-99306) as appropriate. ## Documentation\n\nAll E/M services must meet existing E/M documentation guidelines. Services should be documented during or immediately after they are provided. Code selection should reflect the actual service content.\n\n## Timeline\n\nThe effective date was January 1, 2010, and implementation was January 4, 2010. The transmittal removed all references to consultation codes from Claims Processing Manual Chapter 12, Section 30.6.",
+            "similarity": 0.09
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#2",
+            "text": "mobility devices, pressure reducing support surfaces, lower limb prosthetics and pneumatic compression devices. Selected items usually start in some geographic regions and then expand nationwide. ## Claims without prior authorization For items on the Required Prior Authorization List, prior authorization is a condition of payment. A claim submitted without an affirmative prior authorization decision, or without a provisional affirmation that meets the 90% compliance threshold, is not eligible for payment.\n\nStandard requests are decided within 7 calendar days (effective January 1, 2025). Expedited requests are decided within 2 business days. Suppliers furnishing items under urgent circumstances can use specific modifiers, such as ST, to indicate an emergency, which may bypass the standard timelines.\n\n## Submitting requests",
+            "similarity": 0.042
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    }
+  ],
+  "final_text": "**Claim 38928 has a denial risk of 0.1051. That is below the validation-set average of 0.1805, or 0.58 times the average (\u22127.5 percentage points).** The denial label in this project is synthetic. It was built from risk rules, so this is not a real payer decision.\n\n**What the model weighs**\n- **HCPCS_CD 96156 (procedure/service code billed):** This is the biggest factor. It lowers the odds of denial by 61%.\n- **LINE_PLACE_OF_SRVC_CD = 20:** This is the main factor pushing risk up, raising the odds by 101%. The project's data dictionary has no entry for this field, so I can't say what the value means.\n- **Principal diagnosis Z608:** This lowers the odds by 6%. I can't say what the code means, because the tools didn't say.\n- **Other features:** The billing NPI, the pricing locality and a secondary diagnosis field each move the odds by 5% or less. None of them is in the data dictionary.\n- **Features not shown:** 153 features aren't shown.\n\n**What to check before submitting**\nThe policy documents don't cover 96156, place-of-service code 20, or this diagnosis. The DMEPOS prior-authorization overview and the consultation-code transmittal (CMS Transmittal 1875) were the only results, and neither addresses this claim. Any policy check for this claim would have to come from outside this project.\n\nSome practical checks follow from the model output:\n- Confirm that the place-of-service value 20 is correct for this service, using the CMS/ResDAC documentation.\n- Confirm that the code and diagnosis match the clinical record.\n\nThe model weighs these features, but that doesn't mean they cause a denial.",
+  "usage": {
+    "input": 5216,
+    "output": 869,
+    "cache_write": 0,
+    "cache_read": 5056
+  },
+  "cost_usd": 0.02013,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-29T05:35:36+00:00"
+}

@@ -1,0 +1,124 @@
+{
+  "claim_id": 1734643,
+  "question": "Explain why claim 1734643 got its denial-risk score.",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 3,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1734643
+      },
+      "output": {
+        "claim_id": 1734643,
+        "claim_type": "dme",
+        "probability_denied": 0.1993,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 1.1,
+        "points_versus_validation_average": 1.9,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "A7035",
+        "principal_diagnosis": "Z604"
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1734643
+      },
+      "output": {
+        "claim_id": 1734643,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -1.391,
+        "final_probability": 0.1993,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "A7035",
+            "shap_log_odds": 0.256,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.29,
+            "odds_change_percent": 29,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "ORG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.189,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.21,
+            "odds_change_percent": 21,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z604",
+            "shap_log_odds": -0.126,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.88,
+            "odds_change_percent": -12,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "11",
+            "shap_log_odds": -0.124,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.88,
+            "odds_change_percent": -12,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "LINE_PRMRY_ALOWD_CHRG_AMT",
+            "value": 0.0,
+            "shap_log_odds": 0.062,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.06,
+            "odds_change_percent": 6,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.06,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.94,
+            "odds_change_percent": -6,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false
+          }
+        ],
+        "all_other_features_log_odds": 0.224,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    }
+  ],
+  "final_text": "Claim 1734643 is a DME claim. The model gives it a denial probability of 0.1993. The validation-set average is 0.1805, so the claim scores 1.1 times the average, which is 1.9 percentage points higher. The model's baseline probability is 0.1404. The denial label in this project is synthetic, so this is the probability of a constructed label and not of a real payer decision.\n\n**What the model weighs most (log-odds, top six of 159 features):**\n- **HCPCS_CD = A7035** (+0.256, odds up 29%). The tool describes this feature as the procedure or service code billed.\n- **ORG_NPI_NUM = NOT_APPLICABLE** (+0.189, odds up 21%). This feature is undocumented in the project data dictionary.\n- **PRNCPAL_DGNS_CD = Z604** (\u22120.126, odds down 12%). This is the principal diagnosis (ICD-10-CM).\n- **LINE_PLACE_OF_SRVC_CD = 11** (\u22120.124, odds down 12%). This feature is undocumented.\n- **LINE_PRMRY_ALOWD_CHRG_AMT = 0.0** (+0.062, odds up 6%). This feature is undocumented.\n- **CARR_CLM_BLG_NPI_NUM = NOT_APPLICABLE** (\u22120.06, odds down 6%). This feature is undocumented.\n\nThe 153 features not shown add +0.224 in total. Together these move the score from the baseline to a final log-odds of \u22121.391.\n\nThese values show what the model weighs. They don't show what causes a denial. I didn't look up any policy documents, so I can't say whether payer policy affects this claim.",
+  "usage": {
+    "input": 2044,
+    "output": 725,
+    "cache_write": 0,
+    "cache_read": 3792
+  },
+  "cost_usd": 0.0121,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-29T05:38:45+00:00"
+}
