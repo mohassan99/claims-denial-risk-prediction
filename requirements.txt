@@ -31,3 +31,7 @@ statsmodels==0.15.0
 # against its actual API (see fit_chow_test.py's _fit_logit_firth
 # docstring) before writing any code against it.
 firthmodels>=0.8.2
+
+# Phase 4 agentic claim explainer (src/agent/); scripts/make_val_sample.py uses requests
+anthropic>=0.40
+requests>=2.31
