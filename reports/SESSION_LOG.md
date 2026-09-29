@@ -809,3 +809,64 @@ Phase 4: the GenAI layer.
   `deploy.sh`, silently restoring the old model. Run `deploy.sh download-model` first (expect hash
   `11f409f72fc4c45e`).
 - Databricks Free Edition costs nothing; no action needed there.
+
+## 2026-09-28/29: Phase 4, the agentic claim explainer (built, measured, documented)
+
+### Results
+
+An agent on the Anthropic API now explains a claim's denial-risk score using four tools (score, SHAP,
+denial-code lookup, policy search). A deterministic check measures how many of the numbers and codes in
+each explanation appear in the tool outputs of the same run. On 30 validation claims (Claude Sonnet 5.5):
+
+| Run | Checkable tokens | Grounded | Share |
+|---|---|---|---|
+| v1 prompt, original tool outputs | 364 | 355 | 97.5% (2 of 30 answers empty) |
+| v1 prompt, tools return precomputed numbers | 409 | 406 | 99.3% |
+| v2 prompt, precomputed numbers | 540 | 540 | 100.0% |
+| v2 prompt, 30 different held-out claims | 542 | 542 | 100.0% |
+
+Grounded means traceable to a tool output. It does not mean correct or useful. The v2 prompt is cautious
+and often says a code's meaning is unknown, which raises grounding and lowers what the answer tells you.
+The v2 prompt was written after reading the first 30 answers, so the held-out run is the fair test.
+
+Details, the five failures and fixes, and how to run everything: `docs/PHASE4.md`. Short version of the
+failures: (1) the model did its own arithmetic, so the tools now return those numbers; (2) it described
+codes from memory and called G0444 a consultation code (it is depression screening), so there is a
+description check and a prompt rule; (3) it over-stated a DME prior-authorization policy, found by
+reading, fixed by requiring policy claims to come from a search result; (4) two answers came back
+empty, cause unconfirmed, now guarded; (5) my first grader was wrong (94.0% instead of 97.5%), fixed
+and every run re-graded.
+
+### What I built and where
+
+- `src/agent/{tools,agent,grounding,run_eval}.py`, `tests/test_agent.py` (10 tests pass, including that
+  SHAP values add up to the model's probability), `data/policy/` (four CMS documents, condensed
+  renderings, see its README), `data/agent/carc_reference.json`, `scripts/make_val_sample.py`,
+  `scripts/make_env.sh`, `docs/PHASE4.md`, `docs/LOCAL_SETUP.md`.
+- All transcripts are in `reports/phase4/runs/` and re-grade offline with no API key.
+- Claims: 600 rows (200 per claim type) pulled from Databricks `gold_val_model`, verified to score
+  sensibly with model v2 (ROC-AUC 0.827 on the 600, against 0.849 on all of val). Your local
+  `val_sample.parquet` was stale (written before the 2026-09-27 split fix), so it was not used.
+- Model: downloaded from the Azure registry, hash `11f409f72fc4c45e` as expected. Not refit. The Azure
+  endpoint stayed stopped.
+
+### What went wrong on the way
+
+- The first Azure secret you pasted was rejected (Azure: invalid client secret, 39 characters); a fresh
+  secret worked. The `.env` did not exist on your machine, which is why this session needed secrets
+  pasted. It does now, and `scripts/make_env.sh` plus `docs/LOCAL_SETUP.md` exist so it never needs
+  pasting again.
+- My cost estimate was about 3 times too high: I said roughly $0.05 per claim, and the measured cost is
+  $0.017 to $0.019 on Sonnet 5.5. Total API spend for the phase is $2.21 (`reports/phase4/cost_ledger.json`).
+- The two policy URLs I first guessed (MLN Matters MM6740 and a DMEPOS list page) returned 404; I found
+  working ones by search. The policy files are condensed renderings from a fetch tool, not verbatim.
+
+### Decisions and follow-ups for you
+
+- Rotate: the Anthropic API key and the Azure client secret were both pasted in chat. Delete the old
+  Azure secret (the one whose ID is not `6dfc2154-...`) and the old Databricks token if it is unused.
+  Revoke the API key when Phase 4 is done, or set a short expiry.
+- Local venv: `pip install -r requirements.txt` picks up the new `anthropic` and `requests` lines.
+- Phase 5 starts with the one-time test-set evaluation, as planned. Nothing in Phase 4 touched the test set.
+- Optional next step for Phase 4: verified meanings for the most common features and codes (with sources),
+  so the agent can say more without guessing.

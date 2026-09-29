@@ -3,8 +3,8 @@
 Portfolio project: predict claim-denial risk on CMS Synthetic Medicare Claims (carrier,
 outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since the 2026-09-24 carrier fix; was 12.1%). Phases: 0 setup,
 1 data/EDA (done), 2 baseline logistic + Chow test + XGBoost + SHAP (done 2026-09-25),
-**3 Azure ML deploy (done 2026-09-25)**, **3b Databricks port (done 2026-09-27)**, **4 agentic claim explainer (next)**,
-5 report/video, 6 README/portfolio.
+**3 Azure ML deploy (done 2026-09-25)**, **3b Databricks port (done 2026-09-27)**, **4 agentic claim explainer (done 2026-09-28)**, **5 report/video (next)**,
+6 README/portfolio.
 
 ## How the user wants to work (read first)
 
@@ -311,6 +311,27 @@ naming in the writeup rather than acting on (no evidence it's driving the report
 small fraction of total importance). Full tables in `reports/shap_results.txt` /
 `reports/shap_fit.json`.
 
+### Phase 4 state (2026-09-28)
+
+**Phase 4 (agentic claim explainer): done.** Code in `src/agent/` (tools, agent loop, grounding check,
+eval runner), guide in `docs/PHASE4.md`, all transcripts in `reports/phase4/runs/` (re-gradable offline).
+- Grounding on 30 val claims (Sonnet 5.5): v1 prompt 97.5% (355/364 checkable tokens, 2 empty answers);
+  after precomputing numbers in the tools 99.3%; prompt v2 100% (540/540), and 100% (542/542) on 30
+  held-out claims. Grounded = traceable to a tool output, not correct. Failures and fixes (model
+  arithmetic, invented code meanings, over-stated policy, empty answers, and bugs in my own grader) are
+  in `docs/PHASE4.md`.
+- Claims come from Databricks `gold_val_model` via `scripts/make_val_sample.py` (writes
+  `data/processed/val_sample_v2.parquet`). The older `val_sample.parquet` is stale (pre-split-fix).
+- The Azure endpoint stayed stopped; `score_claim` runs `deploy/score.py` locally on model v2.
+- API spend $2.21 (`reports/phase4/cost_ledger.json`); runner has a `--budget` cap.
+- Tools need no API key (`python -m src.agent.tools ...`); only live agent runs do. Tests:
+  `python -m pytest tests/test_agent.py`.
+- Local env: `.env` (gitignored) holds every secret; `bash scripts/make_env.sh` builds it; the full list of
+  gitignored items and how to rebuild them is `docs/LOCAL_SETUP.md`. The Claude desktop bridge can read
+  `.env` but refuses to write it.
+- Open: the explainer can only describe the few features in `data/data_dictionary.md` and the codes it is
+  told about; it says "undocumented" for the rest. Adding verified code/feature meanings is the obvious next step.
+
 ## Task queue (do in order; log each in SESSION_LOG.md)
 
 1. ~~Build the Phase 2 baseline mixed model~~ — done 2026-09-25 (`fit_baseline_model.py`).
@@ -322,7 +343,7 @@ small fraction of total importance). Full tables in `reports/shap_results.txt` /
    ambiguous.
 5. ~~Phase 3: Azure ML deploy~~ — done 2026-09-25 (`deploy/`), see Azure section above.
 6. ~~Phase 3b: Databricks port~~ -- done 2026-09-27; split fixed and everything refit.
-7. **Phase 4: agentic claim explainer** (scope revised 2026-09-28, user's decision). Replaces the
+7. ~~Phase 4: agentic claim explainer~~ -- done 2026-09-28, see 'Phase 4 state' above and `docs/PHASE4.md`. Scope (revised 2026-09-28, user's decision): Replaces the
    earlier "SHAP narrative + RAG chunking comparison" plan, which duplicated the user's separate RAG
    project. Claim explanation is structured lookup (SHAP values, feature meanings, CARC codes are
    fetched by exact key), so RAG is used only where it fits: policy questions.

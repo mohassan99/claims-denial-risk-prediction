@@ -18,13 +18,13 @@ Built to bring the same "own the metric" analytical discipline behind 10+ years 
 work (HEDIS/STARS gap closure, risk adjustment) to a full ML build: data engineering → target
 construction → modeling → deployment.
 
-**Status: Phases 1–3 complete.** Data + engineered label (Phase 1), a Chow-tested baseline logistic
+**Status: Phases 1 to 4 complete.** Data + engineered label (Phase 1), a Chow-tested baseline logistic
 model and an XGBoost model with SHAP explainability (Phase 2), and the XGBoost model deployed as a
 live, key-authenticated Azure ML managed online endpoint whose predictions are verified to match
 the local model (Phase 3). The data pipeline also runs on Databricks (PySpark, Delta Lake, MLflow,
 Unity Catalog, a Databricks Job), verified cell-for-cell against the pandas version from raw CSV to
 model tables (Phase 3b; study guide in `docs/DATABRICKS.md`). All models use a true time-based
-train/val/test split. Next: a GenAI layer on top of the endpoint (Phase 4).
+train/val/test split. An agentic claim explainer (an LLM that calls four tools: score, SHAP, denial-code lookup, policy search) is scored on how much of what it says traces back to tool outputs (Phase 4; `docs/PHASE4.md`). Next: the written report and video (Phase 5).
 
 ## Setup
 
@@ -89,6 +89,21 @@ dbc-venv/bin/python databricks/deploy_job.py --run          # publish code + (re
 
 In the Databricks UI the same run is **Workflows > claims-denial-medallion-pipeline > Run now**; the tables
 are under **Catalog > workspace > claims_denial**. `docs/DATABRICKS.md` explains every piece.
+
+### Agentic claim explainer (Phase 4)
+
+An LLM agent explains one claim's denial-risk score using four tools, and a deterministic check
+measures how many of its numbers and codes trace back to tool outputs. Full write-up, results,
+failures and fixes: `docs/PHASE4.md`. The tools and the grading run with no API key:
+
+```bash
+python -m src.agent.tools score_claim <claim_id>       # also: explain_shap, lookup_carc, search_policy, list_claims
+python -m src.agent.run_eval --replay reports/phase4/runs/20260928-224007-heldout-v2   # re-grade saved answers
+python -m pytest tests/test_agent.py -q
+```
+
+Live agent runs need `ANTHROPIC_API_KEY` in `.env` (about $0.02 per claim). Everything that is not
+in git, including `.env`, and how to rebuild it: `docs/LOCAL_SETUP.md`.
 
 ## Progress
 
@@ -348,3 +363,34 @@ the ceiling of an 8 GB machine. The same pipeline now also runs on Databricks as
   Unity Catalog (v3; the model trained from the Delta tables is byte-identical to the pandas-trained
   one).
 
+### Phase 4: Agentic claim explainer (complete, 2026-09-28)
+
+- **What it is:** an agent on the Anthropic API (tool use) that explains why one claim got its denial-risk
+  score. It has four tools: `score_claim` (the local XGBoost model), `explain_shap` (SHAP contributions
+  joined to the data dictionary), `lookup_carc` (paraphrased denial-reason codes, linking to the X12 list
+  that X12 owns) and `search_policy` (retrieval over four public CMS policy documents behind the risk
+  rules). The tools are plain Python and run with no API key.
+- **How it is measured:** a grounding check, deterministic and offline, extracts the numbers and codes
+  in each explanation and looks for them in that run's tool outputs. It measures traceability, not
+  correctness. On 30 validation claims with Claude Sonnet 5.5:
+
+  | Run | Checkable tokens | Grounded |
+  |---|---|---|
+  | First prompt, original tool outputs | 364 | 97.5% (2 of 30 answers empty) |
+  | First prompt, tools return precomputed numbers | 409 | 99.3% |
+  | Revised prompt | 540 | 100.0% |
+  | Revised prompt, 30 different held-out claims | 542 | 100.0% |
+
+- **Real failures and fixes (details in `docs/PHASE4.md`):** the model did its own arithmetic (turning
+  an odds multiplier of 0.72 into "28% lower"), so the tools now return those values precomputed; it
+  described billing codes from memory and called G0444 a consultation code when it is depression
+  screening, caught by a description check and a prompt rule; it over-stated a DME prior-authorization
+  policy, found by reading and fixed by requiring policy claims to come from a search result; two answers
+  came back empty (cause unconfirmed, now guarded). My first version of the grader was also wrong (94.0%
+  instead of 97.5% on the first run: ICD-10 codes with and without the dot, the claim id, a rounding
+  boundary), so every saved run was re-graded with the final grader.
+- **Limits:** 100% grounded means the explanation stayed inside what the tools said, not that it is
+  right or useful; the revised prompt is cautious and often says a code's meaning is unknown. The
+  denial label and its reason codes are synthetic. Retrieval is lexical and was not evaluated.
+- **Cost:** $2.21 of API spend for the whole phase, including repeated runs, capped by a budget
+  guard. The Azure endpoint stayed stopped; scoring ran locally on the same code.
