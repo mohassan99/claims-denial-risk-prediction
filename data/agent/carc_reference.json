@@ -1,0 +1,12 @@
+{
+  "source_note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+  "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes",
+  "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+  "codes": {
+    "11":  {"description": "The diagnosis doesn't support the procedure billed.", "project_rule": "dx_procedure_mismatch"},
+    "16":  {"description": "The claim is missing information or has a billing error.", "project_rule": "provider_outlier and missing_hcpcs"},
+    "18":  {"description": "Duplicate of a claim or service already submitted.", "project_rule": "duplicate_claim"},
+    "181": {"description": "The procedure code wasn't valid on the date of service.", "project_rule": "deprecated_code"},
+    "197": {"description": "Required prior authorization wasn't obtained.", "project_rule": "missing_prior_auth"}
+  }
+}
