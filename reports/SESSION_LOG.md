@@ -937,3 +937,12 @@ the meaning to CMS or the tool and none called it the AMA wording. One sample pe
 **Left open.** CPT 99397 and 99401, other CPT codes, and 7 rare diagnosis codes (J029, E034, O039, K011, Y0703, L209,
 J441) still get an honest decline. Retrieval weakness unchanged. Phase 5 audience (provider vs payer) and Tableau vs static
 figures still need your answer.
+
+### Phase 4 follow-up 2: CPT 99397 and 99401 (2026-09-30, patch 0009)
+
+You pointed me to CMS Transmittal 12546 for 99397 and 99401. I fetched it twice. It names 99397 only inside the range
+99381 to 99397 (preventive medicine visits: not to be used for Medicare annual wellness visits, noncovered by Medicare).
+99401 does not appear in it, so nothing there supports describing it. Added 99397 to the `cpt` section with that source,
+worded only from what the document says; 99401 stays undescribed and on the not-verified list. Tests updated (99397 now
+described, 99401 still declines). I did not re-run the 30 claims: none of them showed 99397 as a top feature, so a re-run would
+not measure anything. The earlier Phase 4 finding that an agent invented "99397 (a preventive visit)" under prompt v1 is unchanged.

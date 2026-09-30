@@ -217,7 +217,7 @@ Things that did not go to plan, and how each was handled:
   specific codes, so the reference now has a separate `cpt` section. Each entry is a short paraphrase of what a CMS
   document says about that code, with the CMS URL beside it, and the tool output labels it "our paraphrase of a CMS
   document, not the official AMA wording". A test caps each entry at 60 words and requires a cms.gov source.
-  Seven codes qualified (the codes that appear in the held-out sample where CMS text could be found):
+  Seven codes qualified at first (an eighth, 99397, was added afterwards, see below) (the codes that appear in the held-out sample where CMS text could be found):
 
   | CPT code | What the entry says, in short | CMS source |
   |---|---|---|
@@ -229,7 +229,11 @@ Things that did not go to plan, and how each was handled:
   | 96127 | A developmental and behavioral screening and testing code | Coverage article A57481 |
   | 45378 | A colonoscopy code, with a CMS note on when it must not be used | NCCI ch. 6 |
 
-  Two CPT codes, 99397 and 99401, had no CMS source I could find in this session. They stay undescribed, are listed in
+  Two CPT codes, 99397 and 99401, had no CMS source when this section was first written. You then pointed me to CMS
+  Transmittal 12546 (Claims Processing Manual, 2024-03-14). Fetched and checked twice: it names 99397 only inside the
+  range 99381 to 99397 (preventive medicine E/M, not to be used for annual wellness visits, noncovered by Medicare), and
+  it does not mention 99401 at all. So 99397 is now an eighth entry, worded only from what the document says (I left out
+  what I recall about the code's age band, since the document does not say it), and 99401 stays undescribed. 99401 is listed in
   `not_verified_left_out["cpt"]`, and a test keeps them out. The paraphrases describe what CMS says about the code, so
   they can be narrower than the official descriptor; that is why each is labelled as a paraphrase.
 - **The sources corrected me.** I had guessed that diagnosis `T7432X` meant psychological abuse. The official
@@ -298,7 +302,7 @@ What the numbers say, and one measurement mistake I made on the way:
 
 ### What is still open
 
-- CPT codes 99397 and 99401 (no CMS source found), any CPT code not in the seven above, and the 7 rare diagnosis codes
+- CPT code 99401 (the CMS transmittal offered for it does not mention it), any CPT code not in the seven above, and the 7 rare diagnosis codes
   outside the frequency cutoff. The agent declines on these with a stated reason.
 - The seven CPT paraphrases were chosen because they appear in the held-out sample, so the 91% is coverage of this
   sample and not a claim about all claims. Codes outside the sample would need the same source work.
@@ -335,7 +339,7 @@ python -m src.agent.run_eval --model claude-sonnet-5-5 --prompt v2 --n-per-type 
 ## Known limits and next steps
 
 - Meanings for fields and common codes were added on 2026-09-29 (see "Adding sourced definitions"), and seven CPT
-  codes carry labelled CMS paraphrases. Other CPT codes (for example 99397, 99401) and rare diagnosis codes are still missing,
+  codes carry labelled CMS paraphrases. Other CPT codes (for example 99401) and rare diagnosis codes are still missing,
   so the agent declines on those.
 - Retrieval is lexical and unevaluated. Only rules with a CMS policy behind them are covered: nothing
   supports duplicate-claim or provider-outlier questions, and the agent says so.

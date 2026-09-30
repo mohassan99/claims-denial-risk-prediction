@@ -6,8 +6,10 @@
   "not_verified_left_out": {
     "hcpcs": [],
     "icd10cm": [],
-    "cpt": ["99397", "99401"],
-    "reason": "The first lookups for HCPCS A4604, G9572, M1069, H2001 and ICD-10 C50.929, M54.50 were refused with a rate-limit error (HTTP 429) and the proxy said not to refetch those exact pages. All six were later verified through different query pages of the same NLM service, so they are now in the reference. CPT 99397 and 99401 are left out because no CMS document found in this session describes them; every other CPT code in the sample is in the cpt section with its CMS source."
+    "cpt": [
+      "99401"
+    ],
+    "reason": "The first lookups for HCPCS A4604, G9572, M1069, H2001 and ICD-10 C50.929, M54.50 were refused with a rate-limit error (HTTP 429) and the proxy said not to refetch those exact pages. All six were later verified through different query pages of the same NLM service, so they are now in the reference. CPT 99401 is left out because no CMS document found in this session describes it (CMS Transmittal 12546 was checked and does not mention it; 99397 appears there and is in the cpt section); every other CPT code in the sample is in the cpt section with its CMS source."
   },
   "sources": {
     "hcpcs_level_ii": {
@@ -100,38 +102,136 @@
     "H2001": "Rehabilitation program, per 1/2 day"
   },
   "cpt": {
-    "99241": {"meaning": "A consultation service code, one of the office or outpatient consultation codes 99241 to 99245. Medicare stopped recognizing consultation codes for payment on January 1, 2010.", "source": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf (CMS Transmittal 1875, as condensed in data/policy/cms_r1875cp_consultation_codes.md)"},
-    "90935": {"meaning": "A renal dialysis procedure code for physician dialysis services. CMS says evaluation and management services related to the dialysis procedure are included in it.", "source": "https://www.cms.gov/files/document/11-chapter11-ncci-medicare-policy-manual-2025finalcleanpdf.pdf (NCCI Medicare Policy Manual, chapter 11); also listed in Medicare Claims Processing Manual chapter 8, section 170, physician dialysis services (https://www.cms.gov/regulations-and-guidance/guidance/manuals/downloads/clm104c08.pdf)"},
-    "99408": {"meaning": "A structured alcohol and/or substance (other than tobacco) abuse assessment with a brief intervention. CMS describes 99408 and 99409 as similar to HCPCS G0396 and G0397, and G0396 is a 15 to 30 minute assessment and brief intervention using tools such as AUDIT or DAST.", "source": "https://www.cms.gov/files/document/12-chapter12-ncci-medicare-policy-manual-2026-final.pdf (NCCI Medicare Policy Manual, chapter 12) and https://www.cms.gov/outreach-and-education/medicare-learning-network-mln/mlnproducts/downloads/sbirt_factsheet_icn904084.pdf (for G0396)"},
-    "96156": {"meaning": "A health behavior assessment or re-assessment: it identifies the psychological, behavioral, emotional, cognitive and social factors that affect a physical health problem and its treatment.", "source": "https://www.cms.gov/medicare-coverage-database/view/article.aspx?articleId=52434 (Local Coverage Article A52434) and https://www.cms.gov/files/document/mln1986542-medicare-mental-health-coverage.pdf"},
-    "99495": {"meaning": "Transitional care management after a hospital or facility discharge: interactive contact within 2 business days of discharge, a face-to-face visit within 14 calendar days, and at least moderate complexity medical decision making.", "source": "https://www.cms.gov/files/document/mln908628-transitional-care-management-services.pdf"},
-    "96127": {"meaning": "A developmental and behavioral screening and testing code. CMS Local Coverage Article A57481 lists it with 96110, 96112 and 96113 for developmental or behavioral screening and testing.", "source": "https://www.cms.gov/medicare-coverage-database/view/article.aspx?articleId=57481"},
-    "45378": {"meaning": "A colonoscopy code. CMS notes it must not be used for an examination limited to the anus.", "source": "https://www.cms.gov/files/document/06-chapter6-ncci-medicare-policy-manual-2026-final.pdf (NCCI Medicare Policy Manual, chapter 6)"}
+    "99241": {
+      "meaning": "A consultation service code, one of the office or outpatient consultation codes 99241 to 99245. Medicare stopped recognizing consultation codes for payment on January 1, 2010.",
+      "source": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf (CMS Transmittal 1875, as condensed in data/policy/cms_r1875cp_consultation_codes.md)"
+    },
+    "90935": {
+      "meaning": "A renal dialysis procedure code for physician dialysis services. CMS says evaluation and management services related to the dialysis procedure are included in it.",
+      "source": "https://www.cms.gov/files/document/11-chapter11-ncci-medicare-policy-manual-2025finalcleanpdf.pdf (NCCI Medicare Policy Manual, chapter 11); also listed in Medicare Claims Processing Manual chapter 8, section 170, physician dialysis services (https://www.cms.gov/regulations-and-guidance/guidance/manuals/downloads/clm104c08.pdf)"
+    },
+    "99408": {
+      "meaning": "A structured alcohol and/or substance (other than tobacco) abuse assessment with a brief intervention. CMS describes 99408 and 99409 as similar to HCPCS G0396 and G0397, and G0396 is a 15 to 30 minute assessment and brief intervention using tools such as AUDIT or DAST.",
+      "source": "https://www.cms.gov/files/document/12-chapter12-ncci-medicare-policy-manual-2026-final.pdf (NCCI Medicare Policy Manual, chapter 12) and https://www.cms.gov/outreach-and-education/medicare-learning-network-mln/mlnproducts/downloads/sbirt_factsheet_icn904084.pdf (for G0396)"
+    },
+    "96156": {
+      "meaning": "A health behavior assessment or re-assessment: it identifies the psychological, behavioral, emotional, cognitive and social factors that affect a physical health problem and its treatment.",
+      "source": "https://www.cms.gov/medicare-coverage-database/view/article.aspx?articleId=52434 (Local Coverage Article A52434) and https://www.cms.gov/files/document/mln1986542-medicare-mental-health-coverage.pdf"
+    },
+    "99495": {
+      "meaning": "Transitional care management after a hospital or facility discharge: interactive contact within 2 business days of discharge, a face-to-face visit within 14 calendar days, and at least moderate complexity medical decision making.",
+      "source": "https://www.cms.gov/files/document/mln908628-transitional-care-management-services.pdf"
+    },
+    "96127": {
+      "meaning": "A developmental and behavioral screening and testing code. CMS Local Coverage Article A57481 lists it with 96110, 96112 and 96113 for developmental or behavioral screening and testing.",
+      "source": "https://www.cms.gov/medicare-coverage-database/view/article.aspx?articleId=57481"
+    },
+    "45378": {
+      "meaning": "A colonoscopy code. CMS notes it must not be used for an examination limited to the anus.",
+      "source": "https://www.cms.gov/files/document/06-chapter6-ncci-medicare-policy-manual-2026-final.pdf (NCCI Medicare Policy Manual, chapter 6)"
+    },
+    "99397": {
+      "meaning": "A comprehensive preventive medicine evaluation and management code (CMS refers to the range 99381 to 99397). CMS says these codes should not be used for Medicare annual wellness visits and that preventive medicine services under them are noncovered by Medicare; HCPCS G codes are used for the wellness visits instead.",
+      "source": "https://www.cms.gov/files/document/r12546cp.pdf"
+    }
   },
   "icd10cm": {
-    "Z733": {"code": "Z73.3", "title": "Stress, not elsewhere classified"},
-    "N184": {"code": "N18.4", "title": "Chronic kidney disease, stage 4 (severe)"},
-    "Z608": {"code": "Z60.8", "title": "Other problems related to social environment"},
-    "T7432X": {"code": "T74.32X-", "title": "Child psychological abuse, confirmed", "note": "Official codes in this family carry a seventh character (A initial encounter, D subsequent encounter, S sequela). This data value has no seventh character, so the encounter type is unknown."},
-    "E785": {"code": "E78.5", "title": "Hyperlipidemia, unspecified"},
-    "Z604": {"code": "Z60.4", "title": "Social exclusion and rejection"},
-    "I259": {"code": "I25.9", "title": "Chronic ischemic heart disease, unspecified"},
-    "R931": {"code": "R93.1", "title": "Abnormal findings on diagnostic imaging of heart and coronary circulation"},
-    "N186": {"code": "N18.6", "title": "End stage renal disease"},
-    "J209": {"code": "J20.9", "title": "Acute bronchitis, unspecified"},
-    "J329": {"code": "J32.9", "title": "Chronic sinusitis, unspecified"},
-    "J0190": {"code": "J01.90", "title": "Acute sinusitis, unspecified"},
-    "Z3480": {"code": "Z34.80", "title": "Encounter for supervision of other normal pregnancy, unspecified trimester"},
-    "C50919": {"code": "C50.919", "title": "Malignant neoplasm of unspecified site of unspecified female breast"},
-    "G479": {"code": "G47.9", "title": "Sleep disorder, unspecified"},
-    "T50901A": {"code": "T50.901A", "title": "Poisoning by unspecified drugs, medicaments and biological substances, accidental (unintentional), initial encounter"},
-    "F1010": {"code": "F10.10", "title": "Alcohol abuse, uncomplicated"},
-    "P292": {"code": "P29.2", "title": "Neonatal hypertension"},
-    "B9789": {"code": "B97.89", "title": "Other viral agents as the cause of diseases classified elsewhere"},
-    "F0280": {"code": "F02.80", "title": "Dementia in other diseases classified elsewhere, unspecified severity, without behavioral disturbance, psychotic disturbance, mood disturbance, and anxiety"},
-    "Z940": {"code": "Z94.0", "title": "Kidney transplant status"},
-    "Z653": {"code": "Z65.3", "title": "Problems related to other legal circumstances"},
-    "C50929": {"code": "C50.929", "title": "Malignant neoplasm of unspecified site of unspecified male breast"},
-    "M5450": {"code": "M54.50", "title": "Low back pain, unspecified"}
+    "Z733": {
+      "code": "Z73.3",
+      "title": "Stress, not elsewhere classified"
+    },
+    "N184": {
+      "code": "N18.4",
+      "title": "Chronic kidney disease, stage 4 (severe)"
+    },
+    "Z608": {
+      "code": "Z60.8",
+      "title": "Other problems related to social environment"
+    },
+    "T7432X": {
+      "code": "T74.32X-",
+      "title": "Child psychological abuse, confirmed",
+      "note": "Official codes in this family carry a seventh character (A initial encounter, D subsequent encounter, S sequela). This data value has no seventh character, so the encounter type is unknown."
+    },
+    "E785": {
+      "code": "E78.5",
+      "title": "Hyperlipidemia, unspecified"
+    },
+    "Z604": {
+      "code": "Z60.4",
+      "title": "Social exclusion and rejection"
+    },
+    "I259": {
+      "code": "I25.9",
+      "title": "Chronic ischemic heart disease, unspecified"
+    },
+    "R931": {
+      "code": "R93.1",
+      "title": "Abnormal findings on diagnostic imaging of heart and coronary circulation"
+    },
+    "N186": {
+      "code": "N18.6",
+      "title": "End stage renal disease"
+    },
+    "J209": {
+      "code": "J20.9",
+      "title": "Acute bronchitis, unspecified"
+    },
+    "J329": {
+      "code": "J32.9",
+      "title": "Chronic sinusitis, unspecified"
+    },
+    "J0190": {
+      "code": "J01.90",
+      "title": "Acute sinusitis, unspecified"
+    },
+    "Z3480": {
+      "code": "Z34.80",
+      "title": "Encounter for supervision of other normal pregnancy, unspecified trimester"
+    },
+    "C50919": {
+      "code": "C50.919",
+      "title": "Malignant neoplasm of unspecified site of unspecified female breast"
+    },
+    "G479": {
+      "code": "G47.9",
+      "title": "Sleep disorder, unspecified"
+    },
+    "T50901A": {
+      "code": "T50.901A",
+      "title": "Poisoning by unspecified drugs, medicaments and biological substances, accidental (unintentional), initial encounter"
+    },
+    "F1010": {
+      "code": "F10.10",
+      "title": "Alcohol abuse, uncomplicated"
+    },
+    "P292": {
+      "code": "P29.2",
+      "title": "Neonatal hypertension"
+    },
+    "B9789": {
+      "code": "B97.89",
+      "title": "Other viral agents as the cause of diseases classified elsewhere"
+    },
+    "F0280": {
+      "code": "F02.80",
+      "title": "Dementia in other diseases classified elsewhere, unspecified severity, without behavioral disturbance, psychotic disturbance, mood disturbance, and anxiety"
+    },
+    "Z940": {
+      "code": "Z94.0",
+      "title": "Kidney transplant status"
+    },
+    "Z653": {
+      "code": "Z65.3",
+      "title": "Problems related to other legal circumstances"
+    },
+    "C50929": {
+      "code": "C50.929",
+      "title": "Malignant neoplasm of unspecified site of unspecified male breast"
+    },
+    "M5450": {
+      "code": "M54.50",
+      "title": "Low back pain, unspecified"
+    }
   }
 }

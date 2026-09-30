@@ -102,6 +102,7 @@ def test_describe_value_covers_the_four_cases():
     # CPT codes are AMA-licensed: the reference carries only our paraphrase of a CMS document, marked as such
     cpt = describe_value("HCPCS_CD", "99495")
     assert cpt["meaning"] and cpt["source"].startswith("https://www.cms.gov/") and "not the official AMA wording" in cpt["note"]
+    assert describe_value("HCPCS_CD", "99397")["source"].endswith("r12546cp.pdf")  # added from CMS Transmittal 12546
     # a CPT code with no CMS source on file declines with an explicit reason
     nocms = describe_value("HCPCS_CD", "99401")
     assert nocms["meaning"] is None and "CPT" in nocms["note"]

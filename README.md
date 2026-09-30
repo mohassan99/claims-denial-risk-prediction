@@ -410,7 +410,7 @@ the ceiling of an 8 GB machine. The same pipeline now also runs on Databricks as
 - Added `data/agent/code_reference.json` (9 fields, 8 place-of-service codes, 14 HCPCS Level II codes, 22 ICD-10-CM
   codes), each with its source, and joined it into `score_claim` and `explain_shap`. Follow-up (patch 0008): the six
   rate-limited lookups were retried and verified, and seven CPT codes carry short paraphrases of CMS documents (the AMA owns
-  the official descriptors, so each is labelled a paraphrase). CPT 99397 and 99401 had no CMS source and stay undescribed. A test keeps unsourced entries out.
+  the official descriptors, so each is labelled a paraphrase). A later check of CMS Transmittal 12546 added 99397; CPT 99401 is not in it and stays undescribed. A test keeps unsourced entries out.
 - Same 30 claims, prompt v2 unchanged: grounded 511 of 511; features with a meaning 68 to 178 of 180; code values
   with a meaning 0 to 56 of 74; answers that cannot say what an item is 14 to 8 of 30. My first decline counter
   misread honest provenance notes as refusals; the split I made afterward is post hoc and labeled so.
