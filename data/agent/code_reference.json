@@ -1,0 +1,125 @@
+{
+  "about": "Sourced meanings for the fields and code values the claim explainer most often meets. Built 2026-09-29 to fix a measured gap: 26 to 28 of every 30 saved answers said some version of 'I can't say what this means' because data/data_dictionary.md covers few fields and no code values. Every entry names its source. Entries that could not be verified are left out on purpose, so the agent still says it cannot describe them. See docs/PHASE4.md, section 'Adding sourced definitions'.",
+  "retrieved": "2026-09-29",
+  "synthetic_note": "The claims are CMS synthetic data. A code on a claim here does not describe a real patient, diagnosis or service. Use these meanings to say what a code or field IS, never to tell a story about the patient.",
+  "selection_rule": "HCPCS codes seen 3 or more times, and diagnosis codes seen 4 or more times, in the 600-row validation sample (data/processed/val_sample_v2.parquet): 26 HCPCS codes covering 73.7% of rows and 24 diagnosis codes covering 83.7% of rows. All 9 place-of-service values seen in the sample are covered. Chosen by frequency, before looking at any answer text from the held-out evaluation claims.",
+  "not_verified_left_out": {
+    "hcpcs": ["G9572", "M1069", "H2001"],
+    "icd10cm": ["C50929", "M5450"],
+    "reason": "The lookups for these were refused with a rate-limit error (HTTP 429) and the proxy said not to retry those pages, so they are not verified. CPT codes are handled separately (see cpt_note)."
+  },
+  "sources": {
+    "hcpcs_level_ii": {
+      "name": "HCPCS Level II long descriptions, via the U.S. National Library of Medicine Clinical Table Search Service (the code set is maintained by CMS)",
+      "url_pattern": "https://clinicaltables.nlm.nih.gov/api/hcpcs/v3/search?terms=<code>&ef=long_desc"
+    },
+    "icd10cm": {
+      "name": "ICD-10-CM code titles, via the U.S. National Library of Medicine Clinical Table Search Service (the code set is maintained by CMS and NCHS)",
+      "url_pattern": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=<code>"
+    },
+    "place_of_service": {
+      "name": "CMS Place of Service Code Set",
+      "url": "https://www.cms.gov/medicare/coding-billing/place-of-service-codes/code-sets"
+    },
+    "resdac": {
+      "name": "ResDAC (Research Data Assistance Center) variable documentation for CMS claims files",
+      "url_pattern": "https://resdac.org/cms-data/variables/<variable-name>"
+    }
+  },
+  "cpt_note": "A 5-digit numeric HCPCS_CD value is a CPT code (HCPCS Level I). CPT is maintained and licensed by the American Medical Association, so this project does not carry CPT descriptions. The agent may say it is a CPT code and that the description is not carried here; it may not describe what the procedure is.",
+  "not_applicable_note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong.",
+  "fields": {
+    "LINE_PLACE_OF_SRVC_CD": {
+      "meaning": "Place of service code for this claim line: where the service was delivered, using the Medicare place-of-service code set. Exists on carrier and durable medical equipment (DME) claims, not on outpatient facility claims.",
+      "source": "https://resdac.org/cms-data/variables/line-place-service-code-ffs",
+      "value_kind": "place_of_service"
+    },
+    "TAX_NUM": {
+      "meaning": "The federal taxpayer identification number (TIN) of the physician, practice or supplier paid for the line-item service. Exists on carrier and DME claims. The values in this synthetic data are not real TINs.",
+      "source": "https://resdac.org/cms-data/variables/line-provider-tax-number"
+    },
+    "CARR_CLM_BLG_NPI_NUM": {
+      "meaning": "The National Provider Identifier (NPI) of the billing provider on a carrier claim. The values in this synthetic data are not real NPIs.",
+      "source": "https://resdac.org/cms-data/variables/carrier-claim-billing-npi-number"
+    },
+    "ORG_NPI_NUM": {
+      "meaning": "The National Provider Identifier (NPI) of the organization or group practice on the claim. Exists on institutional files (such as outpatient) and carrier claims. The values in this synthetic data are not real NPIs.",
+      "source": "https://resdac.org/cms-data/variables/organization-or-group-npi-number"
+    },
+    "LINE_NUM": {
+      "meaning": "The line number of a service on a claim: a sequence number that separates the distinct services billed on the same claim. ResDAC now names this field CLM_LINE_NUM; this dataset calls it LINE_NUM.",
+      "source": "https://resdac.org/cms-data/variables/claim-line-number"
+    },
+    "CARR_LINE_PRCNG_LCLTY_CD": {
+      "meaning": "Pricing locality code: a carrier-specific geographic identifier used to price line items on carrier claims. Medicare fee-for-service pricing uses 89 localities across states.",
+      "source": "https://resdac.org/cms-data/variables/carrier-line-pricing-locality-code"
+    },
+    "LINE_PRMRY_ALOWD_CHRG_AMT": {
+      "meaning": "The allowed charge amount from a primary payer other than Medicare for this line-item service, filled in only when such an amount exists. Exists on DME claims.",
+      "source": "https://resdac.org/cms-data/variables/line-primary-payer-allowed-charge-amount"
+    },
+    "REV_CNTR_TOT_CHRG_AMT": {
+      "meaning": "Total charges, covered and non-covered, for all accommodations and services in the billing period, before deductible and coinsurance reductions. Exists on institutional files such as outpatient.",
+      "source": "https://resdac.org/cms-data/variables/revenue-center-total-charge-amount"
+    },
+    "ICD_DGNS_CD<n>": {
+      "meaning": "One of the numbered diagnosis code fields on a claim (ICD_DGNS_CD1, ICD_DGNS_CD2, and so on). Each holds one ICD-10-CM diagnosis code that identifies a diagnosis for the beneficiary.",
+      "source": "https://resdac.org/cms-data/variables/claim-diagnosis-code-i-ffs",
+      "value_kind": "icd10cm",
+      "pattern": "^ICD_DGNS_CD[0-9]+$"
+    }
+  },
+  "place_of_service": {
+    "11": "Office",
+    "12": "Home",
+    "20": "Urgent care facility",
+    "21": "Inpatient hospital",
+    "22": "On-campus outpatient hospital",
+    "23": "Emergency room, hospital",
+    "31": "Skilled nursing facility",
+    "34": "Hospice"
+  },
+  "hcpcs": {
+    "A7030": "Full face mask used with a positive airway pressure (PAP) device, each",
+    "A7031": "Face mask interface, replacement for full face mask, each",
+    "A7034": "Nasal interface (mask or cannula type) used with a positive airway pressure device, with or without head strap",
+    "A7035": "Headgear used with a positive airway pressure device",
+    "A7037": "Tubing used with a positive airway pressure device",
+    "A7038": "Filter, disposable, used with a positive airway pressure device",
+    "A7046": "Water chamber for humidifier, used with a positive airway pressure device, replacement, each",
+    "A4253": "Blood glucose test or reagent strips for home blood glucose monitor, per 50 strips",
+    "A4259": "Lancets, per box of 100",
+    "G0442": "Annual alcohol misuse screening, 5 to 15 minutes",
+    "G0444": "Annual depression screening, 5 to 15 minutes",
+    "E0601": "Continuous positive airway pressure (CPAP) device",
+    "E0570": "Nebulizer, with compressor",
+    "A4604": {
+      "meaning": "Tubing used with a heated humidifier that has a heated wire running the length of the tubing (positive airway pressure accessory)",
+      "source": "CMS Policy Article A52467, as condensed in data/policy/article_a52467_pap_coding.md. The description comes from the policy article, not from the HCPCS file."
+    }
+  },
+  "icd10cm": {
+    "Z733": {"code": "Z73.3", "title": "Stress, not elsewhere classified"},
+    "N184": {"code": "N18.4", "title": "Chronic kidney disease, stage 4 (severe)"},
+    "Z608": {"code": "Z60.8", "title": "Other problems related to social environment"},
+    "T7432X": {"code": "T74.32X-", "title": "Child psychological abuse, confirmed", "note": "Official codes in this family carry a seventh character (A initial encounter, D subsequent encounter, S sequela). This data value has no seventh character, so the encounter type is unknown."},
+    "E785": {"code": "E78.5", "title": "Hyperlipidemia, unspecified"},
+    "Z604": {"code": "Z60.4", "title": "Social exclusion and rejection"},
+    "I259": {"code": "I25.9", "title": "Chronic ischemic heart disease, unspecified"},
+    "R931": {"code": "R93.1", "title": "Abnormal findings on diagnostic imaging of heart and coronary circulation"},
+    "N186": {"code": "N18.6", "title": "End stage renal disease"},
+    "J209": {"code": "J20.9", "title": "Acute bronchitis, unspecified"},
+    "J329": {"code": "J32.9", "title": "Chronic sinusitis, unspecified"},
+    "J0190": {"code": "J01.90", "title": "Acute sinusitis, unspecified"},
+    "Z3480": {"code": "Z34.80", "title": "Encounter for supervision of other normal pregnancy, unspecified trimester"},
+    "C50919": {"code": "C50.919", "title": "Malignant neoplasm of unspecified site of unspecified female breast"},
+    "G479": {"code": "G47.9", "title": "Sleep disorder, unspecified"},
+    "T50901A": {"code": "T50.901A", "title": "Poisoning by unspecified drugs, medicaments and biological substances, accidental (unintentional), initial encounter"},
+    "F1010": {"code": "F10.10", "title": "Alcohol abuse, uncomplicated"},
+    "P292": {"code": "P29.2", "title": "Neonatal hypertension"},
+    "B9789": {"code": "B97.89", "title": "Other viral agents as the cause of diseases classified elsewhere"},
+    "F0280": {"code": "F02.80", "title": "Dementia in other diseases classified elsewhere, unspecified severity, without behavioral disturbance, psychotic disturbance, mood disturbance, and anxiety"},
+    "Z940": {"code": "Z94.0", "title": "Kidney transplant status"},
+    "Z653": {"code": "Z65.3", "title": "Problems related to other legal circumstances"}
+  }
+}

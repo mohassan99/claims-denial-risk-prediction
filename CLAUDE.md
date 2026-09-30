@@ -329,8 +329,14 @@ eval runner), guide in `docs/PHASE4.md`, all transcripts in `reports/phase4/runs
 - Local env: `.env` (gitignored) holds every secret; `bash scripts/make_env.sh` builds it; the full list of
   gitignored items and how to rebuild them is `docs/LOCAL_SETUP.md`. The Claude desktop bridge can read
   `.env` but refuses to write it.
-- Open: the explainer can only describe the few features in `data/data_dictionary.md` and the codes it is
-  told about; it says "undocumented" for the rest. Adding verified code/feature meanings is the obvious next step.
+- **Sourced definitions added 2026-09-29** (`data/agent/code_reference.json`, section "Adding sourced definitions"
+  in `docs/PHASE4.md`): field meanings (ResDAC), place of service (CMS), HCPCS Level II and ICD-10-CM (NLM
+  serving the CMS code sets), joined into `score_claim` / `explain_shap` output with a source per entry. Same 30
+  held-out claims, prompt v2 unchanged: grounding 511/511, features with a meaning 68/180 to 178/180, code values
+  with a meaning 0/74 to 56/74. CPT codes (AMA licensed) are deliberately left without descriptions; 5 items
+  whose lookups were rate limited (a 6th, A4604, is covered by a CMS policy article) are listed in the reference under `not_verified_left_out` and a test keeps them out
+  until verified. Rule kept: never add an entry that was not checked against a source in the session.
+- Open: CPT descriptions, the 5 unverified items and rare diagnosis codes still get an honest decline.
 
 ## Task queue (do in order; log each in SESSION_LOG.md)
 

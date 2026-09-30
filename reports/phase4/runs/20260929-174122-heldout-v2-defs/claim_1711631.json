@@ -1,0 +1,192 @@
+{
+  "claim_id": 1711631,
+  "question": "Claim 1711631: why is its denial risk what it is, and what could a billing team check before submitting?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 4,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1711631
+      },
+      "output": {
+        "claim_id": 1711631,
+        "claim_type": "dme",
+        "probability_denied": 0.007,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 0.04,
+        "points_versus_validation_average": -17.3,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "A4253",
+        "hcpcs_cd_meaning": {
+          "meaning": "Blood glucose test or reagent strips for home blood glucose monitor, per 50 strips",
+          "source": "https://clinicaltables.nlm.nih.gov/api/hcpcs/v3/search?terms=A4253&ef=long_desc",
+          "kind": "HCPCS Level II code"
+        },
+        "principal_diagnosis": "Z733",
+        "principal_diagnosis_meaning": {
+          "meaning": "Z73.3: Stress, not elsewhere classified",
+          "kind": "ICD-10-CM diagnosis code",
+          "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=Z73.3"
+        }
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1711631
+      },
+      "output": {
+        "claim_id": 1711631,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -4.952,
+        "final_probability": 0.007,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "A4253",
+            "shap_log_odds": -2.073,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.13,
+            "odds_change_percent": -87,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "Blood glucose test or reagent strips for home blood glucose monitor, per 50 strips",
+              "source": "https://clinicaltables.nlm.nih.gov/api/hcpcs/v3/search?terms=A4253&ef=long_desc",
+              "kind": "HCPCS Level II code"
+            }
+          },
+          {
+            "feature": "LINE_NUM",
+            "value": "1",
+            "shap_log_odds": -0.398,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.67,
+            "odds_change_percent": -33,
+            "meaning": "The line number of a service on a claim: a sequence number that separates the distinct services billed on the same claim. ResDAC now names this field CLM_LINE_NUM; this dataset calls it LINE_NUM.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/claim-line-number"
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "11",
+            "shap_log_odds": -0.27,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.76,
+            "odds_change_percent": -24,
+            "meaning": "Place of service code for this claim line: where the service was delivered, using the Medicare place-of-service code set. Exists on carrier and durable medical equipment (DME) claims, not on outpatient facility claims.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-place-service-code-ffs",
+            "value_meaning": {
+              "meaning": "Office",
+              "source": "https://www.cms.gov/medicare/coding-billing/place-of-service-codes/code-sets",
+              "kind": "Place of service code"
+            }
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.143,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.87,
+            "odds_change_percent": -13,
+            "meaning": "The National Provider Identifier (NPI) of the billing provider on a carrier claim. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/carrier-claim-billing-npi-number",
+            "value_meaning": {
+              "meaning": null,
+              "note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong."
+            }
+          },
+          {
+            "feature": "PRVDR_NUM",
+            "value": "101107",
+            "shap_log_odds": -0.141,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.87,
+            "odds_change_percent": -13,
+            "meaning": "Billing provider identifier",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md"
+          },
+          {
+            "feature": "TAX_NUM",
+            "value": "999821563",
+            "shap_log_odds": -0.055,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.95,
+            "odds_change_percent": -5,
+            "meaning": "The federal taxpayer identification number (TIN) of the physician, practice or supplier paid for the line-item service. Exists on carrier and DME claims. The values in this synthetic data are not real TINs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-provider-tax-number"
+          }
+        ],
+        "meaning_note": "meaning and value_meaning come from the project data dictionary or from the sourced reference named in meaning_source. The claims are synthetic, so a code on a claim says what the code is, not anything about a real patient.",
+        "all_other_features_log_odds": -0.059,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "DMEPOS prior authorization required items glucose test strips A4253"
+      },
+      "output": {
+        "query": "DMEPOS prior authorization required items glucose test strips A4253",
+        "results": [
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#0",
+            "text": "# DMEPOS prior authorization process overview\n\n## Purpose\n\nThe prior authorization program for durable medical equipment, prosthetics, orthotics and supplies (DMEPOS) helps protect the Medicare Trust Fund from improper payments while making sure beneficiaries can get the items they need in a timely way. Prior authorization checks that applicable Medicare coverage, payment and coding requirements are met before the item is delivered.\n\n## How items are selected",
+            "similarity": 0.343
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#1",
+            "text": "items they need in a timely way. Prior authorization checks that applicable Medicare coverage, payment and coding requirements are met before the item is delivered. ## How items are selected CMS keeps a Master List of DMEPOS items that may require prior authorization or a face-to-face encounter with a written order before delivery. The list is updated at least once a year based on items with patterns of unnecessary utilization. Items on the Required Prior Authorization List are chosen by evaluating DMEPOS categories for problematic billing trends. Recent additions include orthoses, power mobility devices, pressure reducing support surfaces, lower limb prosthetics and pneumatic compression devices. Selected items usually start in some geographic regions and then expand nationwide.\n\n## Claims without prior authorization",
+            "similarity": 0.269
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#2",
+            "text": "mobility devices, pressure reducing support surfaces, lower limb prosthetics and pneumatic compression devices. Selected items usually start in some geographic regions and then expand nationwide. ## Claims without prior authorization For items on the Required Prior Authorization List, prior authorization is a condition of payment. A claim submitted without an affirmative prior authorization decision, or without a provisional affirmation that meets the 90% compliance threshold, is not eligible for payment.\n\nStandard requests are decided within 7 calendar days (effective January 1, 2025). Expedited requests are decided within 2 business days. Suppliers furnishing items under urgent circumstances can use specific modifiers, such as ST, to indicate an emergency, which may bypass the standard timelines.\n\n## Submitting requests",
+            "similarity": 0.248
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    }
+  ],
+  "final_text": "**Claim 1711631 has a low denial risk.** The model gives it a probability of denial of 0.007. The validation-set average is 0.1805, so this claim is 0.04 times the average and 17.3 percentage points below it. The claim is a DME claim. It bills HCPCS A4253, which the tool describes as blood glucose test or reagent strips for a home monitor, per 50 strips. The principal diagnosis is Z73.3, which the tool describes as \"Stress, not elsewhere classified\". The denial label in this project is synthetic, so this is the probability of a constructed label and not of a real payer decision.\n\n**What the model weighs.** The starting point is a probability of 0.1404. Every feature shown pushes the risk down.\n- **HCPCS_CD = A4253** is by far the largest. It has an odds change of -87%.\n- **LINE_NUM = 1** has an odds change of -33%. This field is not in the project data dictionary.\n- **LINE_PLACE_OF_SRVC_CD = 11** (Office) has an odds change of -24%. This field is also undocumented in the dictionary.\n- **CARR_CLM_BLG_NPI_NUM = NOT_APPLICABLE** has -13%. This is a pipeline placeholder for a field that doesn't apply to this claim type. It doesn't mean a value is missing or wrong.\n- **PRVDR_NUM** has -13%, and **TAX_NUM** has -5%.\n\nThere are 153 more features not shown. The model weighs all of these. SHAP values don't show what causes a denial.\n\n**What a billing team could check.**\n- **Prior authorization:** the CMS DMEPOS prior authorization overview says a claim for an item on the Required Prior Authorization List is not eligible for payment without an affirmative decision. The result I retrieved doesn't say whether A4253 is on that list, so check the list directly.\n- **Diagnosis and item:** confirm that Z73.3 is the diagnosis you intend to pair with glucose strips. The policy documents I searched don't cover coverage rules for A4253 or for this diagnosis.\n- **Fields:** check that the provider, place of service and line details match your records.",
+  "usage": {
+    "input": 6891,
+    "output": 979,
+    "cache_write": 0,
+    "cache_read": 5056
+  },
+  "cost_usd": 0.02458,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-30T00:45:35+00:00"
+}

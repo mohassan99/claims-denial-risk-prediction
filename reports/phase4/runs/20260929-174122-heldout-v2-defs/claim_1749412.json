@@ -1,0 +1,164 @@
+{
+  "claim_id": 1749412,
+  "question": "Explain why claim 1749412 got its denial-risk score.",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 3,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1749412
+      },
+      "output": {
+        "claim_id": 1749412,
+        "claim_type": "dme",
+        "probability_denied": 0.2282,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 1.26,
+        "points_versus_validation_average": 4.8,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 1,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "A7034",
+        "hcpcs_cd_meaning": {
+          "meaning": "Nasal interface (mask or cannula type) used with a positive airway pressure device, with or without head strap",
+          "source": "https://clinicaltables.nlm.nih.gov/api/hcpcs/v3/search?terms=A7034&ef=long_desc",
+          "kind": "HCPCS Level II code"
+        },
+        "principal_diagnosis": "Z604",
+        "principal_diagnosis_meaning": {
+          "meaning": "Z60.4: Social exclusion and rejection",
+          "kind": "ICD-10-CM diagnosis code",
+          "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=Z60.4"
+        }
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1749412
+      },
+      "output": {
+        "claim_id": 1749412,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -1.219,
+        "final_probability": 0.2282,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "A7034",
+            "shap_log_odds": 0.454,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.57,
+            "odds_change_percent": 57,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "Nasal interface (mask or cannula type) used with a positive airway pressure device, with or without head strap",
+              "source": "https://clinicaltables.nlm.nih.gov/api/hcpcs/v3/search?terms=A7034&ef=long_desc",
+              "kind": "HCPCS Level II code"
+            }
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "23",
+            "shap_log_odds": 0.247,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.28,
+            "odds_change_percent": 28,
+            "meaning": "Place of service code for this claim line: where the service was delivered, using the Medicare place-of-service code set. Exists on carrier and durable medical equipment (DME) claims, not on outpatient facility claims.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-place-service-code-ffs",
+            "value_meaning": {
+              "meaning": "Emergency room, hospital",
+              "source": "https://www.cms.gov/medicare/coding-billing/place-of-service-codes/code-sets",
+              "kind": "Place of service code"
+            }
+          },
+          {
+            "feature": "LINE_NUM",
+            "value": "1",
+            "shap_log_odds": -0.247,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.78,
+            "odds_change_percent": -22,
+            "meaning": "The line number of a service on a claim: a sequence number that separates the distinct services billed on the same claim. ResDAC now names this field CLM_LINE_NUM; this dataset calls it LINE_NUM.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/claim-line-number"
+          },
+          {
+            "feature": "ORG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.156,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.17,
+            "odds_change_percent": 17,
+            "meaning": "The National Provider Identifier (NPI) of the organization or group practice on the claim. Exists on institutional files (such as outpatient) and carrier claims. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/organization-or-group-npi-number",
+            "value_meaning": {
+              "meaning": null,
+              "note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong."
+            }
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z604",
+            "shap_log_odds": -0.116,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.89,
+            "odds_change_percent": -11,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "Z60.4: Social exclusion and rejection",
+              "kind": "ICD-10-CM diagnosis code",
+              "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=Z60.4"
+            }
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.063,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.94,
+            "odds_change_percent": -6,
+            "meaning": "The National Provider Identifier (NPI) of the billing provider on a carrier claim. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/carrier-claim-billing-npi-number",
+            "value_meaning": {
+              "meaning": null,
+              "note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong."
+            }
+          }
+        ],
+        "meaning_note": "meaning and value_meaning come from the project data dictionary or from the sourced reference named in meaning_source. The claims are synthetic, so a code on a claim says what the code is, not anything about a real patient.",
+        "all_other_features_log_odds": 0.162,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    }
+  ],
+  "final_text": "Claim 1749412 is a DME claim. The model gives it a probability of denial of 0.2282. The validation-set average is 0.1805, so the claim is 1.26 times that average, or 4.8 percentage points above it. The denial label in this project is synthetic, so this is the probability of a constructed label, not of a real payer decision.\n\nThe model weighs these features most:\n\n- **HCPCS_CD = A7034** raises the odds by 57%. The tool describes A7034 as a nasal interface used with a positive airway pressure device.\n- **LINE_PLACE_OF_SRVC_CD = 23** raises the odds by 28%. The tool gives 23 as \"Emergency room, hospital\". The data dictionary doesn't document this feature.\n- **LINE_NUM = 1** lowers the odds by 22%. This feature is also undocumented in the data dictionary.\n- **ORG_NPI_NUM = NOT_APPLICABLE** raises the odds by 17%. This is a pipeline placeholder for a field that doesn't apply to this claim type. It doesn't mean data is missing or wrong.\n- **PRNCPAL_DGNS_CD = Z604** lowers the odds by 11%. The tool describes Z60.4 as social exclusion and rejection.\n\nThe tool also reports that one category value on this claim was unseen by the model. 153 features are not shown. I didn't check any policy documents, so I can't say whether Medicare policy explains any of these weights.",
+  "usage": {
+    "input": 3287,
+    "output": 682,
+    "cache_write": 0,
+    "cache_read": 3792
+  },
+  "cost_usd": 0.01415,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-30T00:45:56+00:00"
+}

@@ -1,0 +1,192 @@
+{
+  "claim_id": 637252,
+  "question": "Claim 637252: why is its denial risk what it is, and what could a billing team check before submitting?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 4,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 637252
+      },
+      "output": {
+        "claim_id": 637252,
+        "claim_type": "carrier",
+        "probability_denied": 0.055,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 0.3,
+        "points_versus_validation_average": -12.6,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 1,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "96127",
+        "hcpcs_cd_meaning": {
+          "meaning": null,
+          "note": "A 5-digit numeric HCPCS_CD value is a CPT code (HCPCS Level I). CPT is maintained and licensed by the American Medical Association, so this project does not carry CPT descriptions. The agent may say it is a CPT code and that the description is not carried here; it may not describe what the procedure is."
+        },
+        "principal_diagnosis": "Z733",
+        "principal_diagnosis_meaning": {
+          "meaning": "Z73.3: Stress, not elsewhere classified",
+          "kind": "ICD-10-CM diagnosis code",
+          "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=Z73.3"
+        }
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 637252
+      },
+      "output": {
+        "claim_id": 637252,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -2.844,
+        "final_probability": 0.055,
+        "top_features": [
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z733",
+            "shap_log_odds": -0.398,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.67,
+            "odds_change_percent": -33,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "Z73.3: Stress, not elsewhere classified",
+              "kind": "ICD-10-CM diagnosis code",
+              "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=Z73.3"
+            }
+          },
+          {
+            "feature": "HCPCS_CD",
+            "value": "96127",
+            "shap_log_odds": -0.246,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.78,
+            "odds_change_percent": -22,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": null,
+              "note": "A 5-digit numeric HCPCS_CD value is a CPT code (HCPCS Level I). CPT is maintained and licensed by the American Medical Association, so this project does not carry CPT descriptions. The agent may say it is a CPT code and that the description is not carried here; it may not describe what the procedure is."
+            }
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "11",
+            "shap_log_odds": -0.172,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.84,
+            "odds_change_percent": -16,
+            "meaning": "Place of service code for this claim line: where the service was delivered, using the Medicare place-of-service code set. Exists on carrier and durable medical equipment (DME) claims, not on outpatient facility claims.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-place-service-code-ffs",
+            "value_meaning": {
+              "meaning": "Office",
+              "source": "https://www.cms.gov/medicare/coding-billing/place-of-service-codes/code-sets",
+              "kind": "Place of service code"
+            }
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": null,
+            "shap_log_odds": -0.069,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.93,
+            "odds_change_percent": -7,
+            "meaning": "The National Provider Identifier (NPI) of the billing provider on a carrier claim. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/carrier-claim-billing-npi-number"
+          },
+          {
+            "feature": "CARR_CLM_RFRNG_PIN_NUM",
+            "value": null,
+            "shap_log_odds": -0.059,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.94,
+            "odds_change_percent": -6,
+            "meaning": "No entry in data/data_dictionary.md. It is a native CMS claim field (see the CMS/ResDAC variable documentation); its meaning is not described in this project's dictionary.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": null
+          },
+          {
+            "feature": "TAX_NUM",
+            "value": "999122358",
+            "shap_log_odds": -0.053,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.95,
+            "odds_change_percent": -5,
+            "meaning": "The federal taxpayer identification number (TIN) of the physician, practice or supplier paid for the line-item service. Exists on carrier and DME claims. The values in this synthetic data are not real TINs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-provider-tax-number"
+          }
+        ],
+        "meaning_note": "meaning and value_meaning come from the project data dictionary or from the sourced reference named in meaning_source. The claims are synthetic, so a code on a claim says what the code is, not anything about a real patient.",
+        "all_other_features_log_odds": -0.035,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "CPT 96127 billing requirements denial",
+        "k": 3
+      },
+      "output": {
+        "query": "CPT 96127 billing requirements denial",
+        "results": [
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#1",
+            "text": "items they need in a timely way. Prior authorization checks that applicable Medicare coverage, payment and coding requirements are met before the item is delivered. ## How items are selected CMS keeps a Master List of DMEPOS items that may require prior authorization or a face-to-face encounter with a written order before delivery. The list is updated at least once a year based on items with patterns of unnecessary utilization. Items on the Required Prior Authorization List are chosen by evaluating DMEPOS categories for problematic billing trends. Recent additions include orthoses, power mobility devices, pressure reducing support surfaces, lower limb prosthetics and pneumatic compression devices. Selected items usually start in some geographic regions and then expand nationwide.\n\n## Claims without prior authorization",
+            "similarity": 0.081
+          },
+          {
+            "doc_id": "cms_r1875cp_consultation_codes",
+            "title": "CMS Transmittal 1875 - Consultation service codes no longer recognized for Medicare payment",
+            "url": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf",
+            "chunk_id": "cms_r1875cp_consultation_codes#2",
+            "text": "AI. Follow-up visits use codes 99307-99310. Nurse practitioners, clinical nurse specialists and certified nurse midwives may perform initial visits where state law permits and collaboration and supervision requirements are met. Office and outpatient: physicians and qualified nonphysician practitioners choose a new or established patient visit code (99201-99215) based on visit complexity and the patient relationship. A new patient is one who has not received professional services from the physician or physician group practice within the previous 3 years.\n\nCritical Access Hospital Method II: appropriate new or established visit codes (99201-99215) are reported on type of bill 85X with revenue codes 96X, 97X or 98X for physicians and nonphysician practitioners with reassigned billing rights.\n\nRural Health Clinics and Federally Qualified Health Centers: consultation codes were discontinued in favor of office visit codes (99201-99215) and nursing facility codes (99304-99306) as appropriate.",
+            "similarity": 0.069
+          },
+          {
+            "doc_id": "cms_r1875cp_consultation_codes",
+            "title": "CMS Transmittal 1875 - Consultation service codes no longer recognized for Medicare payment",
+            "url": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf",
+            "chunk_id": "cms_r1875cp_consultation_codes#3",
+            "text": "with reassigned billing rights. Rural Health Clinics and Federally Qualified Health Centers: consultation codes were discontinued in favor of office visit codes (99201-99215) and nursing facility codes (99304-99306) as appropriate. ## Documentation\n\nAll E/M services must meet existing E/M documentation guidelines. Services should be documented during or immediately after they are provided. Code selection should reflect the actual service content.\n\n## Timeline\n\nThe effective date was January 1, 2010, and implementation was January 4, 2010. The transmittal removed all references to consultation codes from Claims Processing Manual Chapter 12, Section 30.6.",
+            "similarity": 0.061
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    }
+  ],
+  "final_text": "**Claim 637252 has a low denial risk in this model.** The model gives it a probability of denial of 0.055. The validation-set average is 0.1805, so the claim scores 0.3 times that average, or -12.6 percentage points. The denial label in this project is synthetic. The score is for a constructed label, not for a real payer decision.\n\n**What the model weighs.** This is a carrier claim. Every feature the model weighs most heavily lowers the risk:\n- **Principal diagnosis Z733** (Z73.3, Stress, not elsewhere classified) has the largest effect. It lowers the odds of denial by 33%.\n- **HCPCS code 96127** lowers the odds by 22%. It is a CPT code, and this project doesn't carry CPT descriptions, so I can't say what the service is.\n- **Place of service 11** (Office) lowers the odds by 16%.\n- **Billing provider NPI, referring PIN and TAX_NUM** each lower the odds by 5\u20137%. The referring PIN field is undocumented in the project dictionary, so I can't say what it means. The NPI and TIN values are synthetic.\n\nThe other 153 features together add a small further reduction.\n\nThe model also reported one unseen category value on this claim. That makes the score somewhat less certain.\n\n**What to check before submitting.** The policy documents I searched don't cover CPT 96127 or this diagnosis. They cover only the consultation-code rule (CMS Transmittal 1875), CPAP, and DMEPOS prior authorization. Nothing in them applies to this claim, so I can't give a policy-based checklist. A general review is still reasonable. Confirm that the codes and the place of service match the documentation, and check the payer's own rules for 96127. Also find out which field was the unseen category value.",
+  "usage": {
+    "input": 6929,
+    "output": 881,
+    "cache_write": 0,
+    "cache_read": 5056
+  },
+  "cost_usd": 0.02368,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-30T00:42:39+00:00"
+}

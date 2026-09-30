@@ -870,3 +870,48 @@ and every run re-graded.
 - Phase 5 starts with the one-time test-set evaluation, as planned. Nothing in Phase 4 touched the test set.
 - Optional next step for Phase 4: verified meanings for the most common features and codes (with sources),
   so the agent can say more without guessing.
+
+## 2026-09-29 Phase 4 follow-up: sourced definitions for the claim explainer
+
+**Result first.** The explainer now says what more fields and codes mean, from named sources, without losing
+grounding. On the same 30 held-out claims and the same prompt (v2), grounded tokens stayed 100% (511 of 511), the
+share of top features that came with a meaning rose from 38% (68 of 180) to 99% (178 of 180), and the share of coded
+values (procedure, diagnosis, place of service) with a meaning rose from 0% to 76% (56 of 74). Answers saying they
+cannot say what an item is fell from 14 to 8 of 30. Cost of the after run: $0.62. Tests: 17 pass in my
+sandbox (your machine ran the earlier 10; run all 17 after applying the patch).
+
+**Why it was done.** You ran the live agent and I read claim 420689's answer: fully grounded and honest, but it
+told a reviewer almost nothing ("no entry in the dictionary, so I can't say what it means" about the biggest
+driver). Grounding cannot see that, so I measured it on the saved answers: 27 of 30 declined something, 68 of 180
+features had a meaning, 0 of 74 code values did. You then asked that whatever I add be explained thoroughly, with the tests, results and thought
+process. That is `docs/PHASE4.md`, section "Adding sourced definitions".
+
+**What I did.** Considered four options (let the model use its own knowledge, put definitions in the prompt, add a
+fifth tool, join them into existing tool output) and chose the last, for the reasons in the doc. Selected entries by
+frequency in the 600-row sample. Verified each entry against ResDAC, the CMS place-of-service page, and the National
+Library of Medicine's service for the CMS code sets. Added `data/agent/code_reference.json`, changed
+`src/agent/tools.py` to return meanings with sources, added `--claims-from` to the runner, added a coverage measure
+that reads tool outputs (wording-free), and 7 tests.
+
+**What went wrong.**
+- Six lookups were refused with a rate limit error and the proxy said not to retry: HCPCS G9572, M1069, H2001, A4604
+  and ICD-10 C50.929, M54.50. I did not retry or fill them from memory. A4604 is covered by a CMS policy article
+  already in the repo and is included with that source; the other five are listed in the reference as not verified
+  and a test keeps them out.
+- My first measure (one combined count of decline phrases) barely moved (27 to 28 explanations) and I nearly read it
+  as failure. The answers now give a meaning and then note that the dictionary has no entry, which the counter read
+  as a refusal. I split the counter after seeing the answers, so the split is post hoc; the original count is kept.
+  The wording-free coverage measure is the trustworthy one.
+- A source corrected me: `T7432X` is child psychological abuse, confirmed (I had guessed generic psychological abuse).
+- I described the field list as chosen before looking at answers; that was not fully true, since I looked at which
+  features the held-out run showed. The doc now says so. I also dropped verified code E1390 because it appeared
+  only in the evaluation claims.
+
+**Left open.** CPT codes have no descriptions on purpose (AMA licensed) and they are the most common codes in the
+data, so this is the largest remaining gap. The 5 unverified items and rare diagnosis codes still get an honest
+decline. Retrieval weakness (most relevant policy chunk ranked last) is unchanged.
+
+**Decision for you.** Do you want CPT descriptions carried, from a CMS source for specific codes, or is the honest
+decline with a stated reason good enough for the report? Recommendation: keep the decline. It is accurate, it
+costs nothing, and it shows the boundary.
+

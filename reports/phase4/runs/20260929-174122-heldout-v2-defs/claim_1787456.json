@@ -1,0 +1,226 @@
+{
+  "claim_id": 1787456,
+  "question": "For claim 1787456, which denial reason code is most plausible, and how does the model's score relate to it?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 4,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1787456
+      },
+      "output": {
+        "claim_id": 1787456,
+        "claim_type": "dme",
+        "probability_denied": 0.14,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 0.78,
+        "points_versus_validation_average": -4.1,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "A7038",
+        "hcpcs_cd_meaning": {
+          "meaning": "Filter, disposable, used with a positive airway pressure device",
+          "source": "https://clinicaltables.nlm.nih.gov/api/hcpcs/v3/search?terms=A7038&ef=long_desc",
+          "kind": "HCPCS Level II code"
+        },
+        "principal_diagnosis": "Z733",
+        "principal_diagnosis_meaning": {
+          "meaning": "Z73.3: Stress, not elsewhere classified",
+          "kind": "ICD-10-CM diagnosis code",
+          "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=Z73.3"
+        }
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1787456
+      },
+      "output": {
+        "claim_id": 1787456,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -1.816,
+        "final_probability": 0.14,
+        "top_features": [
+          {
+            "feature": "PRVDR_NUM",
+            "value": "503902",
+            "shap_log_odds": -0.3,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.74,
+            "odds_change_percent": -26,
+            "meaning": "Billing provider identifier",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md"
+          },
+          {
+            "feature": "ORG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.188,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.21,
+            "odds_change_percent": 21,
+            "meaning": "The National Provider Identifier (NPI) of the organization or group practice on the claim. Exists on institutional files (such as outpatient) and carrier claims. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/organization-or-group-npi-number",
+            "value_meaning": {
+              "meaning": null,
+              "note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong."
+            }
+          },
+          {
+            "feature": "HCPCS_CD",
+            "value": "A7038",
+            "shap_log_odds": 0.141,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.15,
+            "odds_change_percent": 15,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "Filter, disposable, used with a positive airway pressure device",
+              "source": "https://clinicaltables.nlm.nih.gov/api/hcpcs/v3/search?terms=A7038&ef=long_desc",
+              "kind": "HCPCS Level II code"
+            }
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "11",
+            "shap_log_odds": -0.127,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.88,
+            "odds_change_percent": -12,
+            "meaning": "Place of service code for this claim line: where the service was delivered, using the Medicare place-of-service code set. Exists on carrier and durable medical equipment (DME) claims, not on outpatient facility claims.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-place-service-code-ffs",
+            "value_meaning": {
+              "meaning": "Office",
+              "source": "https://www.cms.gov/medicare/coding-billing/place-of-service-codes/code-sets",
+              "kind": "Place of service code"
+            }
+          },
+          {
+            "feature": "LINE_PRMRY_ALOWD_CHRG_AMT",
+            "value": 0.0,
+            "shap_log_odds": 0.062,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.06,
+            "odds_change_percent": 6,
+            "meaning": "The allowed charge amount from a primary payer other than Medicare for this line-item service, filled in only when such an amount exists. Exists on DME claims.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-primary-payer-allowed-charge-amount"
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.06,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.94,
+            "odds_change_percent": -6,
+            "meaning": "The National Provider Identifier (NPI) of the billing provider on a carrier claim. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/carrier-claim-billing-npi-number",
+            "value_meaning": {
+              "meaning": null,
+              "note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong."
+            }
+          }
+        ],
+        "meaning_note": "meaning and value_meaning come from the project data dictionary or from the sourced reference named in meaning_source. The claims are synthetic, so a code on a claim says what the code is, not anything about a real patient.",
+        "all_other_features_log_odds": 0.093,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "CPAP supplies coverage diagnosis coding denial A7038"
+      },
+      "output": {
+        "query": "CPAP supplies coverage diagnosis coding denial A7038",
+        "results": [
+          {
+            "doc_id": "article_a52467_pap_coding",
+            "title": "CMS Policy Article A52467 - PAP devices, coding guidelines (companion to LCD L33718)",
+            "url": "https://www.cms.gov/medicare-coverage-database/view/article.aspx?articleid=52467",
+            "chunk_id": "article_a52467_pap_coding#0",
+            "text": "# CPAP/PAP device coding guidelines and diagnosis requirements\n\n## Overview\n\nPositive airway pressure devices fall under the Durable Medical Equipment benefit category. For Medicare payment the equipment must meet the reasonable and necessary standard in the related Local Coverage Determination (L33718) and the specific statutory payment requirements.\n\n## Diagnosis code requirements\n\nThe only diagnosis code that supports medical necessity for PAP therapy is G47.33 (obstructive sleep apnea). Having the code does not by itself guarantee coverage: the supplier must verify that all applicable coverage criteria in the LCD are met. ICD-10 codes other than G47.33 are treated as not supporting medical necessity for PAP devices, so other diagnoses cannot justify PAP claims.\n\n## Device coding",
+            "similarity": 0.195
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#0",
+            "text": "# DMEPOS prior authorization process overview\n\n## Purpose\n\nThe prior authorization program for durable medical equipment, prosthetics, orthotics and supplies (DMEPOS) helps protect the Medicare Trust Fund from improper payments while making sure beneficiaries can get the items they need in a timely way. Prior authorization checks that applicable Medicare coverage, payment and coding requirements are met before the item is delivered.\n\n## How items are selected",
+            "similarity": 0.106
+          },
+          {
+            "doc_id": "lcd_l33718_pap_devices",
+            "title": "CMS LCD L33718 - Positive Airway Pressure (PAP) devices for obstructive sleep apnea",
+            "url": "https://www.cms.gov/medicare-coverage-database/view/lcd.aspx?lcdid=33718",
+            "chunk_id": "lcd_l33718_pap_devices#0",
+            "text": "# Coverage indications for PAP devices in obstructive sleep apnea\n\n## Initial Medicare coverage requirements\n\nThree foundational criteria must be met. The item must fall within a defined Medicare benefit category. It must be reasonable and necessary for diagnosing or treating illness or injury or improving the function of a malformed body member. All other applicable statutory and regulatory requirements must be met.\n\nThe policy distinguishes E0601 (single-level continuous positive airway pressure, CPAP) from E0470 (bi-level respiratory assist device without backup rate). Both treat obstructive sleep apnea when specific conditions are documented.\n\n## E0601 coverage criteria",
+            "similarity": 0.062
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "11"
+      },
+      "output": {
+        "code": "11",
+        "found": true,
+        "description": "The diagnosis doesn't support the procedure billed.",
+        "project_rule": "dx_procedure_mismatch",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "197"
+      },
+      "output": {
+        "code": "197",
+        "found": true,
+        "description": "Required prior authorization wasn't obtained.",
+        "project_rule": "missing_prior_auth",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    }
+  ],
+  "final_text": "**Claim 1787456 (DME): the most plausible code is CARC 11, and the model's score doesn't support it.**\n\n**Why CARC 11.** The claim bills HCPCS A7038, which the tool describes as a disposable filter used with a positive airway pressure device. The principal diagnosis is Z733, described as \"Stress, not elsewhere classified.\" The project's reference paraphrases CARC 11 as \"The diagnosis doesn't support the procedure billed.\" CMS Policy Article A52467 (PAP devices, coding guidelines) says G47.33 is the only diagnosis code that supports medical necessity for PAP therapy. It also says other ICD-10 codes are treated as not supporting it. Z733 is a different code from G47.33, so CARC 11 fits. The policy search didn't confirm that supplies such as A7038 fall under that rule. CARC 197 (prior authorization) has no support here. The prior-authorization document returned nothing that names A7038.\n\n**How the score relates.** The probability of denial is 0.14, against a validation average of 0.1805. That is 0.78 times the average, or -4.1 percentage points. So the model rates this claim below average risk, and the diagnosis mismatch doesn't push the score up.\n\nThe model weighs these features most:\n- **HCPCS_CD (A7038):** raises the odds by 15%.\n- **ORG_NPI_NUM (NOT_APPLICABLE):** raises the odds by 21%. This field is undocumented in the data dictionary. The value is a pipeline placeholder for fields that don't apply to the claim type.\n- **PRVDR_NUM:** lowers the odds by 26%.\n- **LINE_PLACE_OF_SRVC_CD (11, Office):** lowers the odds by 12%. This field is also undocumented in the data dictionary.\n\nThe diagnosis code isn't among the top features shown. 153 features are not shown. These values describe what the model weighs, not what causes a denial. The denial label here is synthetic, so any CARC is illustrative, not a real payer decision.",
+  "usage": {
+    "input": 9105,
+    "output": 1036,
+    "cache_write": 0,
+    "cache_read": 5056
+  },
+  "cost_usd": 0.02958,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-30T00:44:46+00:00"
+}

@@ -1,0 +1,164 @@
+{
+  "claim_id": 1747805,
+  "question": "Explain why claim 1747805 got its denial-risk score.",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 3,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1747805
+      },
+      "output": {
+        "claim_id": 1747805,
+        "claim_type": "dme",
+        "probability_denied": 0.2406,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 1.33,
+        "points_versus_validation_average": 6.0,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "A4604",
+        "hcpcs_cd_meaning": {
+          "meaning": "Tubing used with a heated humidifier that has a heated wire running the length of the tubing (positive airway pressure accessory)",
+          "source": "CMS Policy Article A52467, as condensed in data/policy/article_a52467_pap_coding.md. The description comes from the policy article, not from the HCPCS file.",
+          "kind": "HCPCS Level II code"
+        },
+        "principal_diagnosis": "Z604",
+        "principal_diagnosis_meaning": {
+          "meaning": "Z60.4: Social exclusion and rejection",
+          "kind": "ICD-10-CM diagnosis code",
+          "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=Z60.4"
+        }
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1747805
+      },
+      "output": {
+        "claim_id": 1747805,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -1.15,
+        "final_probability": 0.2406,
+        "top_features": [
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "22",
+            "shap_log_odds": 0.283,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.33,
+            "odds_change_percent": 33,
+            "meaning": "Place of service code for this claim line: where the service was delivered, using the Medicare place-of-service code set. Exists on carrier and durable medical equipment (DME) claims, not on outpatient facility claims.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-place-service-code-ffs",
+            "value_meaning": {
+              "meaning": "On-campus outpatient hospital",
+              "source": "https://www.cms.gov/medicare/coding-billing/place-of-service-codes/code-sets",
+              "kind": "Place of service code"
+            }
+          },
+          {
+            "feature": "HCPCS_CD",
+            "value": "A4604",
+            "shap_log_odds": 0.194,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.21,
+            "odds_change_percent": 21,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "Tubing used with a heated humidifier that has a heated wire running the length of the tubing (positive airway pressure accessory)",
+              "source": "CMS Policy Article A52467, as condensed in data/policy/article_a52467_pap_coding.md. The description comes from the policy article, not from the HCPCS file.",
+              "kind": "HCPCS Level II code"
+            }
+          },
+          {
+            "feature": "ORG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.156,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.17,
+            "odds_change_percent": 17,
+            "meaning": "The National Provider Identifier (NPI) of the organization or group practice on the claim. Exists on institutional files (such as outpatient) and carrier claims. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/organization-or-group-npi-number",
+            "value_meaning": {
+              "meaning": null,
+              "note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong."
+            }
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z604",
+            "shap_log_odds": -0.082,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.92,
+            "odds_change_percent": -8,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "Z60.4: Social exclusion and rejection",
+              "kind": "ICD-10-CM diagnosis code",
+              "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=Z60.4"
+            }
+          },
+          {
+            "feature": "PRVDR_NUM",
+            "value": "310084",
+            "shap_log_odds": 0.045,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.05,
+            "odds_change_percent": 5,
+            "meaning": "Billing provider identifier",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md"
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.045,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.96,
+            "odds_change_percent": -4,
+            "meaning": "The National Provider Identifier (NPI) of the billing provider on a carrier claim. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/carrier-claim-billing-npi-number",
+            "value_meaning": {
+              "meaning": null,
+              "note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong."
+            }
+          }
+        ],
+        "meaning_note": "meaning and value_meaning come from the project data dictionary or from the sourced reference named in meaning_source. The claims are synthetic, so a code on a claim says what the code is, not anything about a real patient.",
+        "all_other_features_log_odds": 0.111,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    }
+  ],
+  "final_text": "Claim 1747805 is a DME claim. The model gives it a denial probability of 0.2406, and the validation-set average is 0.1805. That is 1.33 times the average, or 6.0 percentage points higher. The denial label in this project is synthetic, so this is the probability of a constructed label and not of a real payer decision.\n\nThe model weighs these features most:\n\n- **Place of service (LINE_PLACE_OF_SRVC_CD = 22):** This is the largest push up, with odds change +33%. The value means on-campus outpatient hospital. The feature is not documented in the project data dictionary.\n- **HCPCS_CD A4604:** Odds change is +21%. A CMS Policy Article A52467 summary describes it as tubing for a heated humidifier with a heated wire, a positive airway pressure accessory.\n- **ORG_NPI_NUM = NOT_APPLICABLE:** Odds change is +17%. This is a placeholder for a field that doesn't apply to this claim type. It is not a missing or wrong value, and the feature is undocumented.\n- **Principal diagnosis Z604 (social exclusion and rejection):** This lowers the odds by 8%.\n- **Billing provider 310084:** This raises the odds by 5%.\n- **CARR_CLM_BLG_NPI_NUM = NOT_APPLICABLE:** This lowers the odds by 4%. It is also undocumented.\n\nThe other 153 features are not shown. The model weighs all of these, and they don't show what would cause a real denial. I didn't search the policy documents, so I can't say whether any of them match a payer rule.",
+  "usage": {
+    "input": 3270,
+    "output": 785,
+    "cache_write": 0,
+    "cache_read": 3792
+  },
+  "cost_usd": 0.01515,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-30T00:44:57+00:00"
+}

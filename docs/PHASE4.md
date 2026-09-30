@@ -30,6 +30,7 @@ show what happened when it did not.
 | `src/agent/grounding.py` | The grounding check. Deterministic, offline. |
 | `src/agent/run_eval.py` | Runs the 30-claim evaluation live, or re-grades saved transcripts offline (`--replay`). |
 | `data/agent/carc_reference.json` | Paraphrased CARC descriptions for 11, 16, 18, 181, 197. |
+| `data/agent/code_reference.json` | Sourced meanings for fields, place-of-service codes, HCPCS Level II codes and ICD-10-CM codes (added 2026-09-29, see below). |
 | `data/policy/` | Four CMS documents behind the risk rules, chunked for `search_policy`. Read its README first. |
 | `reports/phase4/runs/` | Every run: config, one JSON transcript per claim (tool calls, outputs, answer, cost), summary. |
 | `reports/phase4/cost_ledger.json` | Running API spend across all runs. |
@@ -41,9 +42,12 @@ show what happened when it did not.
 1. `score_claim(claim_id)`: runs the XGBoost model (v2, hash `11f409f72fc4c45e`) locally through
    `deploy/score.py`, the same code the Azure endpoint runs. Returns the probability, the validation-set
    average, and precomputed comparisons.
-2. `explain_shap(claim_id, top_k)`: SHAP values for that claim in log-odds, each joined to its meaning from
-   `data/data_dictionary.md`. A feature with no dictionary entry is marked undocumented rather than described.
-   The SHAP values plus the baseline reproduce the model's probability (tested).
+2. `explain_shap(claim_id, top_k)`: SHAP values for that claim in log-odds, each joined to its meaning: first
+   from `data/data_dictionary.md`, then from the sourced reference `data/agent/code_reference.json`. For coded
+   fields (procedure, diagnosis, place of service) it also returns what the value means. Anything in neither
+   place is marked undocumented rather than described, and every meaning names its source. The SHAP values
+   plus the baseline reproduce the model's probability (tested). `score_claim` returns the same value
+   meanings for the claim's procedure and principal diagnosis.
 3. `lookup_carc(code)`: paraphrased description and which project rule uses the code. Unknown codes return
    "not in the reference".
 4. `search_policy(query, k)`: retrieval over the policy corpus. Chunks are packed paragraphs of up to 140
@@ -137,6 +141,144 @@ holding numbers was read as a description. All are fixed, every saved run was re
 grader, and the tests pin each case. Grading the grader before trusting it is why the table above uses one
 grader version throughout.
 
+## Adding sourced definitions (2026-09-29)
+
+Why this was done, what was done, how it was tested, and what it did and did not fix. Written so a reader can
+follow the reasoning without having been there.
+
+### The problem, measured before anything was changed
+
+After the Phase 4 numbers came in (100% grounded), I read one answer end to end (claim 420689). It was fully
+grounded and honest, and it told a billing reviewer almost nothing: it said "the data dictionary has no entry
+for this field, so I can't say what it means" about the biggest driver. Grounding cannot see this problem,
+because an answer that says nothing is trivially 100% grounded. So I measured it. In the 30 held-out answers
+(old tools), 27 said in some form that they could not describe something (79 phrases), and only 68 of the 180
+top features the agent was shown came with a meaning. None of the 74 coded values (procedure, diagnosis,
+place of service) came with one.
+
+The features doing the most work were the same handful every time: place of service (`LINE_PLACE_OF_SRVC_CD`),
+the provider identifier fields (`TAX_NUM`, `CARR_CLM_BLG_NPI_NUM`, `ORG_NPI_NUM`), `LINE_NUM`, and the values of
+the procedure and diagnosis codes themselves.
+
+### The options I considered
+
+1. **Let the model use what it knows about codes.** Rejected. This is exactly the failure from the first smoke run,
+   where a model called G0444 a consultation code when it is annual depression screening. Prompt rule 2 exists to stop it.
+2. **Put the definitions in the prompt.** Rejected: a long static list is paid for on every call, cannot be
+   sourced entry by entry, and gives no way to say "this one was not verified".
+3. **Add a fifth tool, `lookup_code`.** Rejected: the agent would have to decide to call it, and the meanings are
+   only needed for the values already in front of it. Extra tool calls also cost money and add a place to go wrong.
+4. **Join the meanings into the tools' existing output (chosen).** `score_claim` and `explain_shap` already return the
+   claim's fields and codes, so they now return each meaning next to its value, with its source. The prompt
+   (v2) was left exactly as it was, so the only thing that changed between the two runs is the tool output.
+
+A separate file, `data/agent/code_reference.json`, holds the meanings instead of editing `data/data_dictionary.md`.
+The dictionary is the project's own reference for its columns; the new file holds outside facts, and each entry
+carries its outside source. The tools check the dictionary first, then the reference, and report which one
+answered (`meaning_source`).
+
+### Which codes, and how they were picked
+
+Codes: HCPCS codes seen 3 or more times, and diagnosis codes seen 4 or more times, in the 600-row validation
+sample. That is 26 HCPCS codes (73.7% of rows) and 24 diagnosis codes (83.7% of rows), plus all 9 place-of-service
+values in the sample. Fields: I counted which features appeared most often among the top features shown to the agent
+in the two earlier 30-claim runs, and defined the ones that came up repeatedly and were undocumented.
+
+Two honest limits on independence. First, the field list was chosen partly from the held-out run's own tool
+outputs, so the after test is not independent for fields. Second, the 600-row sample contains the held-out
+claims, so a code that is common in the sample is more likely to appear in the evaluation. Both favor the after
+run a little. I did not read any answer text to choose entries, and I dropped one code (E1390) that I had
+verified because it appeared only in the evaluation claims and would have been a direct advantage.
+
+### Where the definitions came from, and what could not be verified
+
+Each entry was checked against an official source in this session, not written from memory:
+
+| What | Source | Count verified |
+|---|---|---|
+| Field meanings (`TAX_NUM`, NPI fields, `LINE_NUM`, place of service, pricing locality, and others) | ResDAC (the Research Data Assistance Center) variable pages for CMS claims files | 9 fields |
+| Place of service codes | CMS Place of Service Code Set page | 8 codes |
+| HCPCS Level II codes (the letter-prefixed ones) | Long descriptions from the National Library of Medicine's Clinical Table Search Service, which serves the CMS code set | 13 codes |
+| ICD-10-CM diagnosis codes | Code titles from the same NLM service, which serves the CMS and NCHS code set | 22 codes |
+
+Things that did not go to plan, and how each was handled:
+
+- **Rate limits.** Six lookups were refused with an HTTP 429 error and the proxy said not to retry those pages.
+  They are HCPCS A4604, G9572, M1069, H2001 and ICD-10 C50.929, M54.50. I did not retry, and I did not fill them in from
+  memory. Five of them (all but A4604, below) are listed in the reference under `not_verified_left_out`, and a test fails if any of them is
+  ever added without being verified.
+- **A4604** (tubing for a heated humidifier) was the one HCPCS code whose lookup was refused but that a CMS document
+  already in this repo describes (policy article A52467, condensed in `data/policy/`). It is included, and its source line says
+  the description comes from the policy article, not from the HCPCS file.
+- **CPT codes are left without descriptions on purpose.** A 5-digit numeric code in `HCPCS_CD` is a CPT code
+  (HCPCS Level I), and the American Medical Association owns and licenses CPT descriptions. These public
+  sources do not carry them, and copying them would not be right. The tools tell the agent it is a CPT code and give
+  the reason, so it can decline with a reason. This matters: 90935 and 99241 are the two most common codes in the sample.
+- **The sources corrected me.** I had guessed that diagnosis `T7432X` meant psychological abuse. The official
+  title is "Child psychological abuse, confirmed", and the official codes in that family carry a seventh character
+  the data value lacks. That is why entries are looked up, not remembered.
+- **`CARR_CLM_RFRNG_PIN_NUM` was left out.** The only page I found for it listed a different short name, so its
+  name could not be matched exactly. The rule was: a field is included only if a source matches its name.
+- **These are mirrors, not the CMS files themselves.** The NLM service republishes the CMS code sets. That is a
+  stated source, not a claim that I read the CMS release file.
+
+The reference also carries a note that the claims are synthetic, and the tool output repeats it, so the agent says
+what a code is and does not tell a story about a patient. I read the answers for this (below).
+
+### How it was tested
+
+1. **Unit tests** (17 in total now, from 10): meanings are returned for known values; CPT codes, the
+   `NOT_APPLICABLE` placeholder and unverified values decline instead of guessing; the order of lookup is dictionary,
+   then reference, then undocumented; an integrity test fails if an unverified code sneaks in, if a CPT code is given
+   a description, or if any entry lacks a source; a description quoted from a tool output grades as grounded.
+2. **A controlled before and after.** The same 30 held-out claims, the same prompt (v2), the same model
+   (Claude Sonnet 5.5), the same questions. Only the tool output changed. Run `20260929-174122-heldout-v2-defs`
+   against `20260928-224007-heldout-v2`. Added `--claims-from` to the runner to re-run exactly a previous run's claims.
+3. **A hand read** of the after answers for anything the reference did not support, especially the diagnosis
+   codes with sensitive titles.
+
+### Results
+
+| Measure (30 held-out claims) | Before | After |
+|---|---|---|
+| Checkable tokens grounded | 542 of 542 | 511 of 511 |
+| Top features shown that came with a meaning | 68 of 180 (38%) | 178 of 180 (99%) |
+| Coded values (procedure, diagnosis, place of service) that came with a meaning | 0 of 74 | 56 of 74 (76%) |
+| Explanations saying they cannot say what an item is | 14 of 30 (16 phrases) | 8 of 30 (10 phrases) |
+| Explanations noting "not in the dictionary" | 23 of 30 (53 phrases) | 18 of 30 (36 phrases) |
+| Description checks passed (a description after a code) | 7 of 7 | 14 of 14 |
+| Cost per claim | $0.019 | $0.021 |
+
+What the numbers say, and one measurement mistake I made on the way:
+
+- **Grounding held at 100%.** Giving the agent more to say did not make it invent anything the tools did not return.
+- **Coverage is the clean number.** It reads the tool outputs, not the answer wording, so it measures what the agent was
+  able to say. Features with a meaning went from 38% to 99%; code values from 0% to 76%.
+- **The wording counts moved less, and my first proxy was misleading.** I first counted "decline phrases" as one number.
+  It barely moved (27 to 28 explanations) and I nearly read that as failure. Reading the sentences showed why: the agent now
+  gives a field's sourced meaning and then adds "it is undocumented in the dictionary" as a provenance note. That is
+  honest, but the phrase counter reads it as a refusal. I split the counter into refusals to say what an item is
+  and provenance notes. **The split was written after I saw the after answers, so it is post hoc.** The
+  original combined count is kept in the summary files next to it, unchanged.
+- **The 18 code values still without a meaning:** 11 are CPT codes (99241 four times, 90935 three times, and one each of
+  45378, 99408, 99495, 96127), and 7 are rare diagnosis codes outside the frequency cutoff (K011, J029, L209, E034,
+  O039, Y0703, J441). The 2 features without a meaning are `CARR_CLM_RFRNG_PIN_NUM`.
+- **The hand read found no story about a patient.** The answers said things like "the tool lists this as Child
+  psychological abuse, confirmed" and, in the same place, that the encounter type is unknown. They attributed
+  meanings to the tool, and several added useful reviewer checks ("confirm that the place-of-service code matches where the
+  item was supplied"). That read was by eye on 46 sentences. It is not a measured rate.
+- **Checkable tokens fell from 542 to 511.** I did not investigate why. One guess is that answers describe more
+  and quote fewer numbers, but that is a guess.
+- **One sample per claim.** Both runs are single samples, so a difference of a few explanations is inside the run-to-run
+  variation this project has already seen.
+
+### What is still open
+
+- CPT descriptions. This is the largest remaining gap, because CPT codes are the most common codes in the data.
+  Options: a CMS source for the specific codes, or accept the honest decline with its stated reason.
+- The 5 unverified items above (A4604 is covered by a CMS policy article), and the rare diagnosis codes outside the cutoff.
+- The retrieval weakness seen in the demo (the most relevant policy chunk ranked last) is unchanged.
+
 ## Run it yourself
 
 Setup once: `docs/LOCAL_SETUP.md` (creates `.env`, gets the model). The claim sample:
@@ -167,8 +309,8 @@ python -m src.agent.run_eval --model claude-sonnet-5-5 --prompt v2 --n-per-type 
 
 ## Known limits and next steps
 
-- The dictionary covers few features, so many top SHAP features are reported as undocumented. Adding
-  verified feature and code meanings (with sources) would let the agent say more without guessing.
+- Meanings for fields and common codes were added on 2026-09-29 (see "Adding sourced definitions"). CPT
+  descriptions, 5 unverified items and rare diagnosis codes are still missing, so the agent still declines on those.
 - Retrieval is lexical and unevaluated. Only rules with a CMS policy behind them are covered: nothing
   supports duplicate-claim or provider-outlier questions, and the agent says so.
 - The Azure endpoint was not used. `score_claim` runs the same scoring code locally. Restarting the

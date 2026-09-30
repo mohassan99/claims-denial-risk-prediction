@@ -184,6 +184,50 @@ def grade(explanation: str, tool_calls: list[dict], question: str = "") -> dict:
     }
 
 
+# How often does an explanation decline to say what something means? Added 2026-09-29 to measure whether
+# sourced definitions (data/agent/code_reference.json) make the answers say more. Grounding alone cannot
+# show that: an answer that says nothing is trivially 100% grounded. The phrases were read off the saved
+# v2 answers before any definitions were added; a phrase count is a proxy, not a quality score.
+DECLINE = re.compile(
+    r"(can(?:no|')t say|cannot say|can't tell|cannot tell|no entry|not in (?:the|this) (?:project(?:'s)? )?(?:data dictionary|"
+    r"reference)|undocumented|no documented|not documented|don't know what|doesn't say what|does not say what|"
+    r"isn't documented|not described|no description)",
+    re.I,
+)
+
+
+# The combined count above turned out to mix two different things, which only showed once the definitions
+# were added (see docs/PHASE4.md): an answer can now give a field's sourced meaning AND note that the data
+# dictionary has no entry for it. That is honest provenance, not a refusal. So the same phrases are also
+# split. These two patterns were written AFTER seeing the with-definitions answers, so treat the split as
+# post hoc; the combined count (fixed in advance) is reported next to it.
+CANNOT_DESCRIBE = re.compile(
+    r"(can(?:no|')t (?:say|tell|describe|confirm) what|does not say what|doesn't say what|don't know what|"
+    r"can(?:no|')t say what it (?:is|means|describes))",
+    re.I,
+)
+NOT_IN_DICTIONARY = re.compile(
+    r"(undocumented|no entry|not in (?:the|this) (?:project(?:'s)? )?data dictionary|not documented|"
+    r"no (?:documented )?(?:description|meaning) )",
+    re.I,
+)
+
+
+def count_declines(text: str) -> int:
+    """Number of decline phrases ("I can't say what this means", "undocumented", ...) in an explanation."""
+    return len(DECLINE.findall(text or ""))
+
+
+def count_cannot_describe(text: str) -> int:
+    """Refusals to say what a code or field is ("I can't say what it means")."""
+    return len(CANNOT_DESCRIBE.findall(text or ""))
+
+
+def count_not_in_dictionary(text: str) -> int:
+    """Statements that the project data dictionary has no entry (provenance; may sit next to a sourced meaning)."""
+    return len(NOT_IN_DICTIONARY.findall(text or ""))
+
+
 def pooled(graded: list[dict]) -> dict:
     """Micro-average over many explanations (every token counts once)."""
     total = sum(g["total"] for g in graded)

@@ -1,0 +1,278 @@
+{
+  "claim_id": 1501634,
+  "question": "For claim 1501634, which denial reason code is most plausible, and how does the model's score relate to it?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 4,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1501634
+      },
+      "output": {
+        "claim_id": 1501634,
+        "claim_type": "outpatient",
+        "probability_denied": 0.9283,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 5.14,
+        "points_versus_validation_average": 74.8,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "99241",
+        "hcpcs_cd_meaning": {
+          "meaning": null,
+          "note": "A 5-digit numeric HCPCS_CD value is a CPT code (HCPCS Level I). CPT is maintained and licensed by the American Medical Association, so this project does not carry CPT descriptions. The agent may say it is a CPT code and that the description is not carried here; it may not describe what the procedure is."
+        },
+        "principal_diagnosis": "E785",
+        "principal_diagnosis_meaning": {
+          "meaning": "E78.5: Hyperlipidemia, unspecified",
+          "kind": "ICD-10-CM diagnosis code",
+          "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=E78.5"
+        }
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1501634
+      },
+      "output": {
+        "claim_id": 1501634,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": 2.562,
+        "final_probability": 0.9283,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "99241",
+            "shap_log_odds": 4.504,
+            "effect": "raises denial risk",
+            "odds_multiplier": 90.34,
+            "odds_change_percent": 8934,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": null,
+              "note": "A 5-digit numeric HCPCS_CD value is a CPT code (HCPCS Level I). CPT is maintained and licensed by the American Medical Association, so this project does not carry CPT descriptions. The agent may say it is a CPT code and that the description is not carried here; it may not describe what the procedure is."
+            }
+          },
+          {
+            "feature": "ICD_DGNS_CD4",
+            "value": "E034",
+            "shap_log_odds": -0.146,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.86,
+            "odds_change_percent": -14,
+            "meaning": "One of the numbered diagnosis code fields on a claim (ICD_DGNS_CD1, ICD_DGNS_CD2, and so on). Each holds one ICD-10-CM diagnosis code that identifies a diagnosis for the beneficiary.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/claim-diagnosis-code-i-ffs",
+            "value_meaning": {
+              "meaning": null,
+              "note": "This value is not in the project's sourced code reference (data/agent/code_reference.json). Do not say what it means."
+            }
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "E785",
+            "shap_log_odds": 0.068,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.07,
+            "odds_change_percent": 7,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "E78.5: Hyperlipidemia, unspecified",
+              "kind": "ICD-10-CM diagnosis code",
+              "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=E78.5"
+            }
+          },
+          {
+            "feature": "ICD_DGNS_CD9",
+            "value": "O039",
+            "shap_log_odds": -0.056,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.95,
+            "odds_change_percent": -5,
+            "meaning": "One of the numbered diagnosis code fields on a claim (ICD_DGNS_CD1, ICD_DGNS_CD2, and so on). Each holds one ICD-10-CM diagnosis code that identifies a diagnosis for the beneficiary.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/claim-diagnosis-code-i-ffs",
+            "value_meaning": {
+              "meaning": null,
+              "note": "This value is not in the project's sourced code reference (data/agent/code_reference.json). Do not say what it means."
+            }
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.034,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.97,
+            "odds_change_percent": -3,
+            "meaning": "The National Provider Identifier (NPI) of the billing provider on a carrier claim. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/carrier-claim-billing-npi-number",
+            "value_meaning": {
+              "meaning": null,
+              "note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong."
+            }
+          },
+          {
+            "feature": "ICD_DGNS_CD6",
+            "value": "T50901A",
+            "shap_log_odds": -0.03,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.97,
+            "odds_change_percent": -3,
+            "meaning": "One of the numbered diagnosis code fields on a claim (ICD_DGNS_CD1, ICD_DGNS_CD2, and so on). Each holds one ICD-10-CM diagnosis code that identifies a diagnosis for the beneficiary.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/claim-diagnosis-code-i-ffs",
+            "value_meaning": {
+              "meaning": "T50.901A: Poisoning by unspecified drugs, medicaments and biological substances, accidental (unintentional), initial encounter",
+              "kind": "ICD-10-CM diagnosis code",
+              "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=T50.901A"
+            }
+          }
+        ],
+        "meaning_note": "meaning and value_meaning come from the project data dictionary or from the sourced reference named in meaning_source. The claims are synthetic, so a code on a claim says what the code is, not anything about a real patient.",
+        "all_other_features_log_odds": 0.069,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "consultation code rule Medicare denial 99241"
+      },
+      "output": {
+        "query": "consultation code rule Medicare denial 99241",
+        "results": [
+          {
+            "doc_id": "cms_r1875cp_consultation_codes",
+            "title": "CMS Transmittal 1875 - Consultation service codes no longer recognized for Medicare payment",
+            "url": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf",
+            "chunk_id": "cms_r1875cp_consultation_codes#0",
+            "text": "# Medicare consultation code elimination, January 1, 2010\n\n## Policy change\n\nEffective January 1, 2010, Medicare stopped recognizing consultation service codes 99241-99245 and 99251-99255 for Part B payment under the physician fee schedule. The change was applied budget-neutrally across inpatient and office/outpatient settings, with limited exceptions for telehealth consultation G-codes.\n\n## Rationale\n\nCMS restructured evaluation and management (E/M) payment. The transmittal states that the agency increased the work relative value units (RVUs) for new and established office visits and increased payment for initial hospital and nursing facility visits. These increased values were also carried into practice expense and malpractice calculations and into the E/M component of global surgical codes.\n\n## What to bill instead, by setting",
+            "similarity": 0.193
+          },
+          {
+            "doc_id": "cms_r1875cp_consultation_codes",
+            "title": "CMS Transmittal 1875 - Consultation service codes no longer recognized for Medicare payment",
+            "url": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf",
+            "chunk_id": "cms_r1875cp_consultation_codes#3",
+            "text": "with reassigned billing rights. Rural Health Clinics and Federally Qualified Health Centers: consultation codes were discontinued in favor of office visit codes (99201-99215) and nursing facility codes (99304-99306) as appropriate. ## Documentation\n\nAll E/M services must meet existing E/M documentation guidelines. Services should be documented during or immediately after they are provided. Code selection should reflect the actual service content.\n\n## Timeline\n\nThe effective date was January 1, 2010, and implementation was January 4, 2010. The transmittal removed all references to consultation codes from Claims Processing Manual Chapter 12, Section 30.6.",
+            "similarity": 0.091
+          },
+          {
+            "doc_id": "cms_r1875cp_consultation_codes",
+            "title": "CMS Transmittal 1875 - Consultation service codes no longer recognized for Medicare payment",
+            "url": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf",
+            "chunk_id": "cms_r1875cp_consultation_codes#2",
+            "text": "AI. Follow-up visits use codes 99307-99310. Nurse practitioners, clinical nurse specialists and certified nurse midwives may perform initial visits where state law permits and collaboration and supervision requirements are met. Office and outpatient: physicians and qualified nonphysician practitioners choose a new or established patient visit code (99201-99215) based on visit complexity and the patient relationship. A new patient is one who has not received professional services from the physician or physician group practice within the previous 3 years.\n\nCritical Access Hospital Method II: appropriate new or established visit codes (99201-99215) are reported on type of bill 85X with revenue codes 96X, 97X or 98X for physicians and nonphysician practitioners with reassigned billing rights.\n\nRural Health Clinics and Federally Qualified Health Centers: consultation codes were discontinued in favor of office visit codes (99201-99215) and nursing facility codes (99304-99306) as appropriate.",
+            "similarity": 0.062
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "11"
+      },
+      "output": {
+        "code": "11",
+        "found": true,
+        "description": "The diagnosis doesn't support the procedure billed.",
+        "project_rule": "dx_procedure_mismatch",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "16"
+      },
+      "output": {
+        "code": "16",
+        "found": true,
+        "description": "The claim is missing information or has a billing error.",
+        "project_rule": "provider_outlier and missing_hcpcs",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "18"
+      },
+      "output": {
+        "code": "18",
+        "found": true,
+        "description": "Duplicate of a claim or service already submitted.",
+        "project_rule": "duplicate_claim",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "181"
+      },
+      "output": {
+        "code": "181",
+        "found": true,
+        "description": "The procedure code wasn't valid on the date of service.",
+        "project_rule": "deprecated_code",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "197"
+      },
+      "output": {
+        "code": "197",
+        "found": true,
+        "description": "Required prior authorization wasn't obtained.",
+        "project_rule": "missing_prior_auth",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    }
+  ],
+  "final_text": "**Most plausible code: CARC 181.** The project's paraphrase reads \"The procedure code wasn't valid on the date of service.\" It maps to the project rule `deprecated_code`. This is an inference. No tool showed which rule, if any, labelled this claim. The label is synthetic, so any CARC here is illustrative and not a real payer decision.\n\n**Why 181 fits:** The claim bills HCPCS 99241, which is a CPT code. The project doesn't carry CPT descriptions, so I can't say what the service is. CMS Transmittal 1875 says that from January 1, 2010, Medicare stopped recognizing consultation codes 99241-99245 and 99251-99255 for Part B payment. I did not see the claim's date of service.\n\n**How the score relates:** The model gives a denial probability of 0.9283. The validation-set average is 0.1805, which the tool reports as 5.14 times the average. HCPCS_CD = 99241 (\"Procedure/service code billed\") contributes 4.504 log-odds, with an odds change of 8934 percent. The principal diagnosis E785 (Hyperlipidemia, unspecified) adds only 0.068. The other listed features are small and mostly push the score down.\n\nThe model weighs the procedure code heavily, and that matches the 181 reading. It doesn't know the CARC, and SHAP values don't show what causes a denial.",
+  "usage": {
+    "input": 10762,
+    "output": 1021,
+    "cache_write": 0,
+    "cache_read": 5056
+  },
+  "cost_usd": 0.03275,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-30T00:43:48+00:00"
+}

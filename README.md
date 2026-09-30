@@ -394,3 +394,23 @@ the ceiling of an 8 GB machine. The same pipeline now also runs on Databricks as
   denial label and its reason codes are synthetic. Retrieval is lexical and was not evaluated.
 - **Cost:** $2.21 of API spend for the whole phase, including repeated runs, capped by a budget
   guard. The Azure endpoint stayed stopped; scoring ran locally on the same code.
+- **Sourced definitions (2026-09-29):** the explainer used to decline on most fields and codes because the data
+  dictionary is small. I added a sourced reference (field meanings from ResDAC, place of service from CMS,
+  HCPCS and ICD-10-CM titles via the National Library of Medicine's service for the CMS code sets), joined into the
+  tool output, and re-ran the same 30 held-out claims with the prompt unchanged. Grounding stayed at 100%
+  (511 of 511); the share of top features that came with a meaning went from 38% to 99% and of code values from 0% to
+  76%. CPT codes are left undescribed on purpose (AMA licensed). Sources, misses and the measurement mistake I made
+  are in `docs/PHASE4.md`.
+
+### Phase 4 addendum: sourced definitions for the explainer (2026-09-29)
+
+- Measured a gap grounding cannot see: with the small data dictionary, 27 of 30 held-out answers declined to
+  describe something and 0 of 74 coded values came with a meaning. An answer that says nothing is trivially grounded.
+- Added `data/agent/code_reference.json` (9 fields, 8 place-of-service codes, 14 HCPCS Level II codes, 22 ICD-10-CM
+  codes), each with its source, and joined it into `score_claim` and `explain_shap`. Left out on purpose: CPT
+  descriptions (AMA licensed) and 5 items whose lookups were rate limited (a 6th, A4604, is covered by a CMS policy article). A test keeps unverified items out.
+- Same 30 claims, prompt v2 unchanged: grounded 511 of 511; features with a meaning 68 to 178 of 180; code values
+  with a meaning 0 to 56 of 74; answers that cannot say what an item is 14 to 8 of 30. My first decline counter
+  misread honest provenance notes as refusals; the split I made afterward is post hoc and labeled so.
+- A source corrected my guess: `T7432X` is child psychological abuse, confirmed, not generic psychological abuse.
+- Cost $0.62 for the after run. Tests: 17 pass.

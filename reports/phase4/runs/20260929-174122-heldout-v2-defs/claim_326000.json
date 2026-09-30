@@ -1,0 +1,146 @@
+{
+  "claim_id": 326000,
+  "question": "Explain why claim 326000 got its denial-risk score.",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 3,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 326000
+      },
+      "output": {
+        "claim_id": 326000,
+        "claim_type": "carrier",
+        "probability_denied": 0.0837,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 0.46,
+        "points_versus_validation_average": -9.7,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": null,
+        "principal_diagnosis": "Z733",
+        "principal_diagnosis_meaning": {
+          "meaning": "Z73.3: Stress, not elsewhere classified",
+          "kind": "ICD-10-CM diagnosis code",
+          "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=Z73.3"
+        }
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 326000
+      },
+      "output": {
+        "claim_id": 326000,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -2.393,
+        "final_probability": 0.0837,
+        "top_features": [
+          {
+            "feature": "TAX_NUM",
+            "value": "999654949",
+            "shap_log_odds": -0.154,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.86,
+            "odds_change_percent": -14,
+            "meaning": "The federal taxpayer identification number (TIN) of the physician, practice or supplier paid for the line-item service. Exists on carrier and DME claims. The values in this synthetic data are not real TINs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-provider-tax-number"
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "11",
+            "shap_log_odds": -0.151,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.86,
+            "odds_change_percent": -14,
+            "meaning": "Place of service code for this claim line: where the service was delivered, using the Medicare place-of-service code set. Exists on carrier and durable medical equipment (DME) claims, not on outpatient facility claims.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-place-service-code-ffs",
+            "value_meaning": {
+              "meaning": "Office",
+              "source": "https://www.cms.gov/medicare/coding-billing/place-of-service-codes/code-sets",
+              "kind": "Place of service code"
+            }
+          },
+          {
+            "feature": "HCPCS_CD",
+            "value": null,
+            "shap_log_odds": -0.101,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.9,
+            "odds_change_percent": -10,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md"
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "1205889540",
+            "shap_log_odds": -0.072,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.93,
+            "odds_change_percent": -7,
+            "meaning": "The National Provider Identifier (NPI) of the billing provider on a carrier claim. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/carrier-claim-billing-npi-number"
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z733",
+            "shap_log_odds": -0.072,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.93,
+            "odds_change_percent": -7,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "Z73.3: Stress, not elsewhere classified",
+              "kind": "ICD-10-CM diagnosis code",
+              "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=Z73.3"
+            }
+          },
+          {
+            "feature": "LINE_NUM",
+            "value": "9",
+            "shap_log_odds": 0.053,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.05,
+            "odds_change_percent": 5,
+            "meaning": "The line number of a service on a claim: a sequence number that separates the distinct services billed on the same claim. ResDAC now names this field CLM_LINE_NUM; this dataset calls it LINE_NUM.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/claim-line-number"
+          }
+        ],
+        "meaning_note": "meaning and value_meaning come from the project data dictionary or from the sourced reference named in meaning_source. The claims are synthetic, so a code on a claim says what the code is, not anything about a real patient.",
+        "all_other_features_log_odds": -0.084,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    }
+  ],
+  "final_text": "**Claim 326000 (carrier claim): probability of denial 0.0837.** The validation-set average is 0.1805. That puts this claim at 0.46 times the average, or -9.7 percentage points. The denial label in this project is synthetic. The score is the probability of a constructed label, not of a real payer decision.\n\n**What the model weighs.** The model starts from a baseline probability of 0.1404. Five of the six most influential features lower the score, and one raises it slightly:\n\n- **TAX_NUM (999654949):** lowers the odds by 14%. This is the taxpayer ID of the paid provider. The data dictionary doesn't document this feature, and the values in this data aren't real TINs.\n- **LINE_PLACE_OF_SRVC_CD (11):** lowers the odds by 14%. The code means \"Office\". It is also undocumented in the data dictionary.\n- **HCPCS_CD (no value):** lowers the odds by 10%. The feature is the procedure/service code billed, and this claim has none.\n- **CARR_CLM_BLG_NPI_NUM (1205889540):** lowers the odds by 7%. This is the billing provider's NPI. It is undocumented in the data dictionary, and the NPIs in this data aren't real.\n- **PRNCPAL_DGNS_CD (Z733):** lowers the odds by 7%. The tool gives its meaning as \"Z73.3: Stress, not elsewhere classified\".\n- **LINE_NUM (9):** raises the odds by 5%. It is the line number of the service on the claim. It is also undocumented in the data dictionary.\n\nThe tool did not show 153 other features. Together they lower the score by a further 0.084 log-odds.\n\nThese values describe what the model weighs, not what causes a denial. I didn't search policy documents, because this question didn't need them.",
+  "usage": {
+    "input": 2636,
+    "output": 709,
+    "cache_write": 1264,
+    "cache_read": 2528
+  },
+  "cost_usd": 0.01603,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-30T00:41:31+00:00"
+}

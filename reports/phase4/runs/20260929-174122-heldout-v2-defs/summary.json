@@ -1,46 +1,46 @@
 {
-  "run": "20260928-224007-heldout-v2",
+  "run": "20260929-174122-heldout-v2-defs",
   "pooled": {
     "explanations": 30,
-    "tokens": 542,
-    "grounded_tokens": 542,
+    "tokens": 511,
+    "grounded_tokens": 511,
     "share": 1.0,
     "explanations_fully_grounded": 30,
     "by_kind": {
       "code": {
-        "tokens": 81,
-        "grounded": 81,
+        "tokens": 84,
+        "grounded": 84,
         "share": 1.0
       },
       "number": {
-        "tokens": 428,
-        "grounded": 428,
-        "share": 1.0
-      },
-      "desc": {
-        "tokens": 7,
-        "grounded": 7,
+        "tokens": 386,
+        "grounded": 386,
         "share": 1.0
       },
       "carc": {
-        "tokens": 26,
-        "grounded": 26,
+        "tokens": 27,
+        "grounded": 27,
+        "share": 1.0
+      },
+      "desc": {
+        "tokens": 14,
+        "grounded": 14,
         "share": 1.0
       }
     },
     "empty_explanations": 0,
     "tool_coverage": {
       "features_shown": 180,
-      "features_with_meaning": 68,
+      "features_with_meaning": 178,
       "coded_values_shown": 74,
-      "coded_values_with_meaning": 0
+      "coded_values_with_meaning": 56
     },
-    "explanations_with_a_decline": 27,
-    "decline_phrases": 79,
-    "explanations_that_cannot_describe_something": 14,
-    "cannot_describe_phrases": 16,
-    "explanations_noting_not_in_dictionary": 23,
-    "not_in_dictionary_phrases": 53
+    "explanations_with_a_decline": 28,
+    "decline_phrases": 58,
+    "explanations_that_cannot_describe_something": 8,
+    "cannot_describe_phrases": 10,
+    "explanations_noting_not_in_dictionary": 18,
+    "not_in_dictionary_phrases": 36
   },
   "per_claim": [
     {
@@ -50,14 +50,14 @@
         "score_claim",
         "explain_shap"
       ],
-      "tokens": 19,
-      "grounded": 19,
+      "tokens": 18,
+      "grounded": 18,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01174,
-      "declines": 6,
-      "cannot_describe": 1,
-      "not_in_dictionary": 4
+      "cost_usd": 0.01367,
+      "declines": 4,
+      "cannot_describe": 0,
+      "not_in_dictionary": 3
     },
     {
       "claim_id": 115337,
@@ -66,31 +66,30 @@
         "score_claim",
         "explain_shap"
       ],
-      "tokens": 15,
-      "grounded": 15,
+      "tokens": 20,
+      "grounded": 20,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01088,
-      "declines": 4,
-      "cannot_describe": 1,
-      "not_in_dictionary": 3
+      "cost_usd": 0.013,
+      "declines": 1,
+      "cannot_describe": 0,
+      "not_in_dictionary": 0
     },
     {
       "claim_id": 1156006,
       "question": "Explain why claim 1156006 got its denial-risk score.",
       "tools": [
         "score_claim",
-        "explain_shap",
-        "search_policy"
+        "explain_shap"
       ],
-      "tokens": 27,
-      "grounded": 27,
+      "tokens": 15,
+      "grounded": 15,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.0191,
+      "cost_usd": 0.01518,
       "declines": 2,
       "cannot_describe": 1,
-      "not_in_dictionary": 1
+      "not_in_dictionary": 0
     },
     {
       "claim_id": 1241668,
@@ -99,14 +98,14 @@
         "score_claim",
         "explain_shap"
       ],
-      "tokens": 22,
-      "grounded": 22,
+      "tokens": 25,
+      "grounded": 25,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01187,
-      "declines": 5,
-      "cannot_describe": 1,
-      "not_in_dictionary": 3
+      "cost_usd": 0.01417,
+      "declines": 2,
+      "cannot_describe": 0,
+      "not_in_dictionary": 1
     },
     {
       "claim_id": 1254448,
@@ -121,13 +120,13 @@
         "lookup_carc",
         "lookup_carc"
       ],
-      "tokens": 25,
-      "grounded": 25,
+      "tokens": 22,
+      "grounded": 22,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02473,
+      "cost_usd": 0.03295,
       "declines": 2,
-      "cannot_describe": 0,
+      "cannot_describe": 2,
       "not_in_dictionary": 0
     },
     {
@@ -138,14 +137,14 @@
         "explain_shap",
         "search_policy"
       ],
-      "tokens": 13,
-      "grounded": 13,
+      "tokens": 12,
+      "grounded": 12,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01997,
+      "cost_usd": 0.02531,
       "declines": 1,
-      "cannot_describe": 0,
-      "not_in_dictionary": 1
+      "cannot_describe": 1,
+      "not_in_dictionary": 0
     },
     {
       "claim_id": 1317939,
@@ -154,52 +153,45 @@
         "score_claim",
         "explain_shap"
       ],
-      "tokens": 15,
-      "grounded": 15,
+      "tokens": 14,
+      "grounded": 14,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.0129,
+      "cost_usd": 0.01549,
       "declines": 1,
-      "cannot_describe": 1,
-      "not_in_dictionary": 0
+      "cannot_describe": 0,
+      "not_in_dictionary": 1
     },
     {
       "claim_id": 1450749,
       "question": "Claim 1450749: why is its denial risk what it is, and what could a billing team check before submitting?",
       "tools": [
         "score_claim",
-        "explain_shap",
-        "search_policy"
+        "explain_shap"
       ],
       "tokens": 17,
       "grounded": 17,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02058,
-      "declines": 4,
+      "cost_usd": 0.01693,
+      "declines": 2,
       "cannot_describe": 1,
-      "not_in_dictionary": 3
+      "not_in_dictionary": 0
     },
     {
       "claim_id": 1463277,
       "question": "For claim 1463277, which denial reason code is most plausible, and how does the model's score relate to it?",
       "tools": [
         "score_claim",
-        "explain_shap",
-        "lookup_carc",
-        "lookup_carc",
-        "lookup_carc",
-        "lookup_carc",
-        "lookup_carc",
-        "search_policy"
+        "explain_shap"
       ],
-      "tokens": 11,
-      "grounded": 11,
+      "tokens": 12,
+      "grounded": 12,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02407,
-      "declines": 1,
-      "cannot_describe": 0,
+      "cost_usd": 0.01604,
+      "declines": 2,
+      "cannot_describe": 1,
       "not_in_dictionary": 0
     },
     {
@@ -214,13 +206,13 @@
         "lookup_carc",
         "lookup_carc"
       ],
-      "tokens": 15,
-      "grounded": 15,
+      "tokens": 17,
+      "grounded": 17,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02214,
-      "declines": 2,
-      "cannot_describe": 1,
+      "cost_usd": 0.02467,
+      "declines": 1,
+      "cannot_describe": 0,
       "not_in_dictionary": 1
     },
     {
@@ -236,13 +228,13 @@
         "lookup_carc",
         "lookup_carc"
       ],
-      "tokens": 22,
-      "grounded": 22,
+      "tokens": 18,
+      "grounded": 18,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02468,
-      "declines": 0,
-      "cannot_describe": 0,
+      "cost_usd": 0.03275,
+      "declines": 1,
+      "cannot_describe": 1,
       "not_in_dictionary": 0
     },
     {
@@ -252,14 +244,14 @@
         "score_claim",
         "explain_shap"
       ],
-      "tokens": 17,
-      "grounded": 17,
+      "tokens": 12,
+      "grounded": 12,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01181,
-      "declines": 2,
-      "cannot_describe": 0,
-      "not_in_dictionary": 2
+      "cost_usd": 0.01565,
+      "declines": 1,
+      "cannot_describe": 1,
+      "not_in_dictionary": 0
     },
     {
       "claim_id": 1652852,
@@ -269,11 +261,11 @@
         "explain_shap",
         "search_policy"
       ],
-      "tokens": 16,
-      "grounded": 16,
+      "tokens": 19,
+      "grounded": 19,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01651,
+      "cost_usd": 0.01797,
       "declines": 1,
       "cannot_describe": 0,
       "not_in_dictionary": 1
@@ -287,18 +279,16 @@
         "search_policy",
         "lookup_carc",
         "lookup_carc",
-        "lookup_carc",
-        "lookup_carc",
         "lookup_carc"
       ],
-      "tokens": 21,
-      "grounded": 21,
+      "tokens": 15,
+      "grounded": 15,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02697,
-      "declines": 2,
+      "cost_usd": 0.03498,
+      "declines": 0,
       "cannot_describe": 0,
-      "not_in_dictionary": 2
+      "not_in_dictionary": 0
     },
     {
       "claim_id": 1701358,
@@ -308,14 +298,14 @@
         "explain_shap",
         "search_policy"
       ],
-      "tokens": 21,
-      "grounded": 21,
+      "tokens": 18,
+      "grounded": 18,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01886,
-      "declines": 3,
-      "cannot_describe": 1,
-      "not_in_dictionary": 2
+      "cost_usd": 0.01878,
+      "declines": 1,
+      "cannot_describe": 0,
+      "not_in_dictionary": 0
     },
     {
       "claim_id": 1702463,
@@ -323,17 +313,16 @@
       "tools": [
         "score_claim",
         "explain_shap",
-        "search_policy",
         "search_policy"
       ],
-      "tokens": 21,
-      "grounded": 21,
+      "tokens": 14,
+      "grounded": 14,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02449,
+      "cost_usd": 0.01952,
       "declines": 2,
       "cannot_describe": 0,
-      "not_in_dictionary": 1
+      "not_in_dictionary": 2
     },
     {
       "claim_id": 1711631,
@@ -343,14 +332,14 @@
         "explain_shap",
         "search_policy"
       ],
-      "tokens": 18,
-      "grounded": 18,
+      "tokens": 17,
+      "grounded": 17,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.0202,
-      "declines": 3,
-      "cannot_describe": 2,
-      "not_in_dictionary": 1
+      "cost_usd": 0.02458,
+      "declines": 2,
+      "cannot_describe": 0,
+      "not_in_dictionary": 2
     },
     {
       "claim_id": 1747805,
@@ -363,9 +352,9 @@
       "grounded": 18,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01144,
-      "declines": 5,
-      "cannot_describe": 1,
+      "cost_usd": 0.01515,
+      "declines": 4,
+      "cannot_describe": 0,
       "not_in_dictionary": 3
     },
     {
@@ -375,14 +364,14 @@
         "score_claim",
         "explain_shap"
       ],
-      "tokens": 23,
-      "grounded": 23,
+      "tokens": 16,
+      "grounded": 16,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01247,
-      "declines": 5,
-      "cannot_describe": 1,
-      "not_in_dictionary": 4
+      "cost_usd": 0.01415,
+      "declines": 2,
+      "cannot_describe": 0,
+      "not_in_dictionary": 1
     },
     {
       "claim_id": 1753129,
@@ -393,15 +382,13 @@
         "search_policy",
         "lookup_carc",
         "lookup_carc",
-        "lookup_carc",
-        "lookup_carc",
         "lookup_carc"
       ],
-      "tokens": 15,
-      "grounded": 15,
+      "tokens": 22,
+      "grounded": 22,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02546,
+      "cost_usd": 0.02932,
       "declines": 1,
       "cannot_describe": 0,
       "not_in_dictionary": 1
@@ -413,14 +400,14 @@
         "score_claim",
         "explain_shap"
       ],
-      "tokens": 23,
-      "grounded": 23,
+      "tokens": 20,
+      "grounded": 20,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01254,
+      "cost_usd": 0.01637,
       "declines": 4,
       "cannot_describe": 0,
-      "not_in_dictionary": 3
+      "not_in_dictionary": 4
     },
     {
       "claim_id": 1787456,
@@ -430,16 +417,13 @@
         "explain_shap",
         "search_policy",
         "lookup_carc",
-        "lookup_carc",
-        "lookup_carc",
-        "lookup_carc",
         "lookup_carc"
       ],
-      "tokens": 19,
-      "grounded": 19,
+      "tokens": 21,
+      "grounded": 21,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02816,
+      "cost_usd": 0.02958,
       "declines": 2,
       "cannot_describe": 0,
       "not_in_dictionary": 2
@@ -450,20 +434,16 @@
       "tools": [
         "score_claim",
         "explain_shap",
-        "lookup_carc",
-        "lookup_carc",
-        "lookup_carc",
-        "lookup_carc",
-        "lookup_carc",
         "search_policy",
-        "search_policy"
+        "lookup_carc",
+        "lookup_carc"
       ],
-      "tokens": 16,
-      "grounded": 16,
+      "tokens": 14,
+      "grounded": 14,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.03943,
-      "declines": 1,
+      "cost_usd": 0.03029,
+      "declines": 0,
       "cannot_describe": 0,
       "not_in_dictionary": 0
     },
@@ -474,13 +454,13 @@
         "score_claim",
         "explain_shap"
       ],
-      "tokens": 17,
-      "grounded": 17,
+      "tokens": 20,
+      "grounded": 20,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01135,
-      "declines": 6,
-      "cannot_describe": 1,
+      "cost_usd": 0.01324,
+      "declines": 4,
+      "cannot_describe": 0,
       "not_in_dictionary": 4
     },
     {
@@ -490,16 +470,19 @@
         "score_claim",
         "explain_shap",
         "lookup_carc",
+        "lookup_carc",
+        "lookup_carc",
+        "lookup_carc",
         "lookup_carc"
       ],
       "tokens": 13,
       "grounded": 13,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01965,
-      "declines": 0,
+      "cost_usd": 0.02486,
+      "declines": 2,
       "cannot_describe": 0,
-      "not_in_dictionary": 0
+      "not_in_dictionary": 1
     },
     {
       "claim_id": 324308,
@@ -507,20 +490,18 @@
       "tools": [
         "score_claim",
         "explain_shap",
+        "search_policy",
         "lookup_carc",
         "lookup_carc",
-        "lookup_carc",
-        "lookup_carc",
-        "lookup_carc",
-        "search_policy"
+        "lookup_carc"
       ],
-      "tokens": 16,
-      "grounded": 16,
+      "tokens": 18,
+      "grounded": 18,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02341,
-      "declines": 2,
-      "cannot_describe": 1,
+      "cost_usd": 0.02544,
+      "declines": 1,
+      "cannot_describe": 0,
       "not_in_dictionary": 1
     },
     {
@@ -530,14 +511,14 @@
         "score_claim",
         "explain_shap"
       ],
-      "tokens": 18,
-      "grounded": 18,
+      "tokens": 19,
+      "grounded": 19,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01123,
-      "declines": 4,
+      "cost_usd": 0.01603,
+      "declines": 3,
       "cannot_describe": 0,
-      "not_in_dictionary": 4
+      "not_in_dictionary": 3
     },
     {
       "claim_id": 637252,
@@ -547,14 +528,14 @@
         "explain_shap",
         "search_policy"
       ],
-      "tokens": 16,
-      "grounded": 16,
+      "tokens": 15,
+      "grounded": 15,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01966,
-      "declines": 0,
-      "cannot_describe": 0,
-      "not_in_dictionary": 0
+      "cost_usd": 0.02368,
+      "declines": 3,
+      "cannot_describe": 2,
+      "not_in_dictionary": 1
     },
     {
       "claim_id": 68884,
@@ -563,12 +544,12 @@
         "score_claim",
         "explain_shap"
       ],
-      "tokens": 19,
-      "grounded": 19,
+      "tokens": 17,
+      "grounded": 17,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01547,
-      "declines": 4,
+      "cost_usd": 0.01378,
+      "declines": 5,
       "cannot_describe": 0,
       "not_in_dictionary": 4
     },
@@ -579,15 +560,15 @@
         "score_claim",
         "explain_shap"
       ],
-      "tokens": 14,
-      "grounded": 14,
+      "tokens": 13,
+      "grounded": 13,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01243,
-      "declines": 4,
-      "cannot_describe": 2,
-      "not_in_dictionary": 2
+      "cost_usd": 0.01401,
+      "declines": 1,
+      "cannot_describe": 0,
+      "not_in_dictionary": 0
     }
   ],
-  "cost_usd": 0.5642
+  "cost_usd": 0.6175
 }

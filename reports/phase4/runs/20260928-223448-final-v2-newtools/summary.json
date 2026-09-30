@@ -28,7 +28,13 @@
         "share": 1.0
       }
     },
-    "empty_explanations": 0
+    "empty_explanations": 0,
+    "explanations_with_a_decline": 28,
+    "decline_phrases": 78,
+    "explanations_that_cannot_describe_something": 13,
+    "cannot_describe_phrases": 15,
+    "explanations_noting_not_in_dictionary": 25,
+    "not_in_dictionary_phrases": 56
   },
   "per_claim": [
     {
@@ -42,7 +48,10 @@
       "grounded": 16,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01151
+      "cost_usd": 0.01151,
+      "declines": 3,
+      "cannot_describe": 1,
+      "not_in_dictionary": 2
     },
     {
       "claim_id": 1119407,
@@ -55,7 +64,10 @@
       "grounded": 16,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.0116
+      "cost_usd": 0.0116,
+      "declines": 1,
+      "cannot_describe": 0,
+      "not_in_dictionary": 1
     },
     {
       "claim_id": 1210977,
@@ -68,7 +80,10 @@
       "grounded": 19,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01111
+      "cost_usd": 0.01111,
+      "declines": 3,
+      "cannot_describe": 0,
+      "not_in_dictionary": 3
     },
     {
       "claim_id": 1219093,
@@ -82,7 +97,10 @@
       "grounded": 19,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02007
+      "cost_usd": 0.02007,
+      "declines": 1,
+      "cannot_describe": 0,
+      "not_in_dictionary": 1
     },
     {
       "claim_id": 1241554,
@@ -100,7 +118,10 @@
       "grounded": 17,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.0228
+      "cost_usd": 0.0228,
+      "declines": 3,
+      "cannot_describe": 0,
+      "not_in_dictionary": 3
     },
     {
       "claim_id": 1248137,
@@ -119,7 +140,10 @@
       "grounded": 26,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02393
+      "cost_usd": 0.02393,
+      "declines": 2,
+      "cannot_describe": 1,
+      "not_in_dictionary": 1
     },
     {
       "claim_id": 1348245,
@@ -133,7 +157,10 @@
       "grounded": 15,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01986
+      "cost_usd": 0.01986,
+      "declines": 2,
+      "cannot_describe": 1,
+      "not_in_dictionary": 1
     },
     {
       "claim_id": 1359486,
@@ -147,7 +174,10 @@
       "grounded": 18,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01996
+      "cost_usd": 0.01996,
+      "declines": 1,
+      "cannot_describe": 0,
+      "not_in_dictionary": 1
     },
     {
       "claim_id": 1371377,
@@ -160,7 +190,10 @@
       "grounded": 23,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01124
+      "cost_usd": 0.01124,
+      "declines": 2,
+      "cannot_describe": 1,
+      "not_in_dictionary": 0
     },
     {
       "claim_id": 1469305,
@@ -179,7 +212,10 @@
       "grounded": 21,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02907
+      "cost_usd": 0.02907,
+      "declines": 1,
+      "cannot_describe": 0,
+      "not_in_dictionary": 1
     },
     {
       "claim_id": 1478014,
@@ -192,7 +228,10 @@
       "grounded": 11,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01324
+      "cost_usd": 0.01324,
+      "declines": 2,
+      "cannot_describe": 1,
+      "not_in_dictionary": 1
     },
     {
       "claim_id": 1549965,
@@ -205,7 +244,10 @@
       "grounded": 23,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01142
+      "cost_usd": 0.01142,
+      "declines": 2,
+      "cannot_describe": 0,
+      "not_in_dictionary": 1
     },
     {
       "claim_id": 1698983,
@@ -219,7 +261,10 @@
       "grounded": 17,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01996
+      "cost_usd": 0.01996,
+      "declines": 1,
+      "cannot_describe": 1,
+      "not_in_dictionary": 0
     },
     {
       "claim_id": 1699347,
@@ -234,7 +279,10 @@
       "grounded": 15,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02549
+      "cost_usd": 0.02549,
+      "declines": 3,
+      "cannot_describe": 0,
+      "not_in_dictionary": 3
     },
     {
       "claim_id": 1701936,
@@ -247,7 +295,10 @@
       "grounded": 23,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01196
+      "cost_usd": 0.01196,
+      "declines": 5,
+      "cannot_describe": 0,
+      "not_in_dictionary": 4
     },
     {
       "claim_id": 1709828,
@@ -266,7 +317,10 @@
       "grounded": 17,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02627
+      "cost_usd": 0.02627,
+      "declines": 3,
+      "cannot_describe": 0,
+      "not_in_dictionary": 3
     },
     {
       "claim_id": 1721550,
@@ -285,7 +339,10 @@
       "grounded": 17,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02611
+      "cost_usd": 0.02611,
+      "declines": 1,
+      "cannot_describe": 0,
+      "not_in_dictionary": 1
     },
     {
       "claim_id": 1728104,
@@ -304,7 +361,10 @@
       "grounded": 17,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02738
+      "cost_usd": 0.02738,
+      "declines": 2,
+      "cannot_describe": 1,
+      "not_in_dictionary": 1
     },
     {
       "claim_id": 1734643,
@@ -317,7 +377,10 @@
       "grounded": 26,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.0121
+      "cost_usd": 0.0121,
+      "declines": 5,
+      "cannot_describe": 0,
+      "not_in_dictionary": 4
     },
     {
       "claim_id": 1746933,
@@ -330,7 +393,10 @@
       "grounded": 15,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01126
+      "cost_usd": 0.01126,
+      "declines": 0,
+      "cannot_describe": 0,
+      "not_in_dictionary": 0
     },
     {
       "claim_id": 1782736,
@@ -344,7 +410,10 @@
       "grounded": 18,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02299
+      "cost_usd": 0.02299,
+      "declines": 6,
+      "cannot_describe": 0,
+      "not_in_dictionary": 4
     },
     {
       "claim_id": 1786301,
@@ -364,7 +433,10 @@
       "grounded": 19,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.04175
+      "cost_usd": 0.04175,
+      "declines": 0,
+      "cannot_describe": 0,
+      "not_in_dictionary": 0
     },
     {
       "claim_id": 386213,
@@ -378,7 +450,10 @@
       "grounded": 16,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02208
+      "cost_usd": 0.02208,
+      "declines": 4,
+      "cannot_describe": 1,
+      "not_in_dictionary": 3
     },
     {
       "claim_id": 38928,
@@ -392,7 +467,10 @@
       "grounded": 17,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02013
+      "cost_usd": 0.02013,
+      "declines": 3,
+      "cannot_describe": 2,
+      "not_in_dictionary": 1
     },
     {
       "claim_id": 420689,
@@ -405,7 +483,10 @@
       "grounded": 16,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01249
+      "cost_usd": 0.01249,
+      "declines": 5,
+      "cannot_describe": 0,
+      "not_in_dictionary": 4
     },
     {
       "claim_id": 511492,
@@ -423,7 +504,10 @@
       "grounded": 16,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.02197
+      "cost_usd": 0.02197,
+      "declines": 3,
+      "cannot_describe": 1,
+      "not_in_dictionary": 2
     },
     {
       "claim_id": 522224,
@@ -441,7 +525,10 @@
       "grounded": 21,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.0227
+      "cost_usd": 0.0227,
+      "declines": 1,
+      "cannot_describe": 2,
+      "not_in_dictionary": 0
     },
     {
       "claim_id": 686696,
@@ -454,7 +541,10 @@
       "grounded": 20,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01153
+      "cost_usd": 0.01153,
+      "declines": 6,
+      "cannot_describe": 0,
+      "not_in_dictionary": 5
     },
     {
       "claim_id": 845589,
@@ -467,7 +557,10 @@
       "grounded": 16,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.01333
+      "cost_usd": 0.01333,
+      "declines": 5,
+      "cannot_describe": 1,
+      "not_in_dictionary": 4
     },
     {
       "claim_id": 857291,
@@ -482,7 +575,10 @@
       "grounded": 10,
       "share": 1.0,
       "ungrounded": [],
-      "cost_usd": 0.0187
+      "cost_usd": 0.0187,
+      "declines": 2,
+      "cannot_describe": 1,
+      "not_in_dictionary": 1
     }
   ],
   "cost_usd": 0.574

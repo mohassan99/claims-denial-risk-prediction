@@ -1,0 +1,146 @@
+{
+  "claim_id": 68884,
+  "question": "Claim 68884: why is its denial risk what it is, and what could a billing team check before submitting?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 3,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 68884
+      },
+      "output": {
+        "claim_id": 68884,
+        "claim_type": "carrier",
+        "probability_denied": 0.1377,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 0.76,
+        "points_versus_validation_average": -4.3,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": null,
+        "principal_diagnosis": "Z3480",
+        "principal_diagnosis_meaning": {
+          "meaning": "Z34.80: Encounter for supervision of other normal pregnancy, unspecified trimester",
+          "kind": "ICD-10-CM diagnosis code",
+          "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=Z34.80"
+        }
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 68884
+      },
+      "output": {
+        "claim_id": 68884,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -1.835,
+        "final_probability": 0.1377,
+        "top_features": [
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "1316233174",
+            "shap_log_odds": 0.278,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.32,
+            "odds_change_percent": 32,
+            "meaning": "The National Provider Identifier (NPI) of the billing provider on a carrier claim. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/carrier-claim-billing-npi-number"
+          },
+          {
+            "feature": "HCPCS_CD",
+            "value": null,
+            "shap_log_odds": -0.189,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.83,
+            "odds_change_percent": -17,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md"
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "11",
+            "shap_log_odds": -0.134,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.87,
+            "odds_change_percent": -13,
+            "meaning": "Place of service code for this claim line: where the service was delivered, using the Medicare place-of-service code set. Exists on carrier and durable medical equipment (DME) claims, not on outpatient facility claims.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-place-service-code-ffs",
+            "value_meaning": {
+              "meaning": "Office",
+              "source": "https://www.cms.gov/medicare/coding-billing/place-of-service-codes/code-sets",
+              "kind": "Place of service code"
+            }
+          },
+          {
+            "feature": "ORG_NPI_NUM",
+            "value": "1316233174",
+            "shap_log_odds": 0.079,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.08,
+            "odds_change_percent": 8,
+            "meaning": "The National Provider Identifier (NPI) of the organization or group practice on the claim. Exists on institutional files (such as outpatient) and carrier claims. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/organization-or-group-npi-number"
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z3480",
+            "shap_log_odds": -0.051,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.95,
+            "odds_change_percent": -5,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "Z34.80: Encounter for supervision of other normal pregnancy, unspecified trimester",
+              "kind": "ICD-10-CM diagnosis code",
+              "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=Z34.80"
+            }
+          },
+          {
+            "feature": "TAX_NUM",
+            "value": "999985341",
+            "shap_log_odds": -0.051,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.95,
+            "odds_change_percent": -5,
+            "meaning": "The federal taxpayer identification number (TIN) of the physician, practice or supplier paid for the line-item service. Exists on carrier and DME claims. The values in this synthetic data are not real TINs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-provider-tax-number"
+          }
+        ],
+        "meaning_note": "meaning and value_meaning come from the project data dictionary or from the sourced reference named in meaning_source. The claims are synthetic, so a code on a claim says what the code is, not anything about a real patient.",
+        "all_other_features_log_odds": 0.046,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    }
+  ],
+  "final_text": "**Claim 68884 (carrier claim) has a denial probability of 0.1377.** The validation-set average is 0.1805. That puts the claim at 0.76 times the average, or -4.3 percentage points. The denial label in this project is synthetic, so this is the probability of a constructed label, not of a real payer decision.\n\n**What the model weighs**\n- **Billing NPI (CARR_CLM_BLG_NPI_NUM, 1316233174):** raises the odds by 32%. This feature is not in the data dictionary. The tool says the NPIs in this data are not real.\n- **HCPCS_CD:** the value is missing, and the model weighs that as lowering the odds by 17%.\n- **Place of service 11 (Office):** lowers the odds by 13%. This feature is also undocumented in the data dictionary.\n- **Organization NPI (ORG_NPI_NUM):** raises the odds by 8%. Also undocumented.\n- **Principal diagnosis Z3480 (supervision of other normal pregnancy, unspecified trimester):** lowers the odds by 5%.\n- **TAX_NUM:** lowers the odds by 5%. Also undocumented.\n\nThere are 153 more features not shown.\n\n**What a billing team could check**\n- Confirm that the missing HCPCS code is intended and not an omission.\n- Verify the billing and organization NPIs.\n- Verify the place of service and the diagnosis code.\n\nI didn't search the policy documents. The tools returned no policy facts for this claim, so I can't say whether any CMS policy applies to it.",
+  "usage": {
+    "input": 2724,
+    "output": 757,
+    "cache_write": 0,
+    "cache_read": 3792
+  },
+  "cost_usd": 0.01378,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-30T00:41:39+00:00"
+}

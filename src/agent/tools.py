@@ -41,6 +41,7 @@ REPORTS = REPO / "reports"
 DEFAULT_SAMPLE = REPO / "data" / "processed" / "val_sample_v2.parquet"
 DATA_DICTIONARY = REPO / "data" / "data_dictionary.md"
 CARC_REFERENCE = REPO / "data" / "agent" / "carc_reference.json"
+CODE_REFERENCE = REPO / "data" / "agent" / "code_reference.json"
 POLICY_DIR = REPO / "data" / "policy"
 
 sys.path.insert(0, str(REPO / "deploy"))  # deploy/score.py is the single scoring implementation
@@ -143,8 +144,78 @@ _UNDOCUMENTED = (
 
 
 def feature_meaning(name: str) -> tuple[str, bool]:
+    """(meaning, documented_in_data_dictionary). Kept for callers that only care about the dictionary."""
     m = _feature_meanings().get(name)
     return (m, True) if m else (_UNDOCUMENTED, False)
+
+
+# Sourced meanings for fields and code values that the data dictionary does not cover
+# (data/agent/code_reference.json; built 2026-09-29, see docs/PHASE4.md).
+@lru_cache(maxsize=1)
+def _codes() -> dict:
+    return json.loads(CODE_REFERENCE.read_text(encoding="utf-8"))
+
+
+def _field_entry(name: str) -> dict | None:
+    fields = _codes()["fields"]
+    if name in fields:
+        return fields[name]
+    for e in fields.values():
+        if e.get("pattern") and re.match(e["pattern"], name):
+            return e
+    return None
+
+
+def feature_meaning_full(name: str) -> tuple[str, bool, str | None]:
+    """(meaning, documented_in_data_dictionary, where the meaning came from).
+
+    Order: the project's data dictionary first, then the sourced code reference, else undocumented.
+    The boolean stays False for reference-only fields so the agent can tell the two sources apart."""
+    m = _feature_meanings().get(name)
+    if m:
+        return m, True, "data/data_dictionary.md"
+    e = _field_entry(name)
+    if e:
+        return e["meaning"], False, e["source"]
+    return _UNDOCUMENTED, False, None
+
+
+def describe_value(feature: str, value) -> dict | None:
+    """What a code value in a claim field means, from the sourced reference. None if the field holds no coded value.
+
+    Returns {"meaning": ..., "source": ...} or, when the value is not covered,
+    {"meaning": None, "note": ...} so the agent has an explicit reason to decline instead of guessing."""
+    if value is None:
+        return None
+    v = str(value).strip()
+    ref = _codes()
+    if v == "NOT_APPLICABLE":
+        return {"meaning": None, "note": ref["not_applicable_note"]}
+    if feature == "HCPCS_CD":
+        if re.fullmatch(r"\d{5}", v):
+            return {"meaning": None, "note": ref["cpt_note"]}
+        hit = ref["hcpcs"].get(v)
+        kind = "HCPCS Level II code"
+        if isinstance(hit, dict):
+            return {"meaning": hit["meaning"], "source": hit["source"], "kind": kind}
+        if hit:
+            return {"meaning": hit, "source": ref["sources"]["hcpcs_level_ii"]["url_pattern"].replace("<code>", v), "kind": kind}
+    elif feature == "LINE_PLACE_OF_SRVC_CD":
+        hit = ref["place_of_service"].get(v)
+        if hit:
+            return {"meaning": hit, "source": ref["sources"]["place_of_service"]["url"], "kind": "Place of service code"}
+    elif feature == "PRNCPAL_DGNS_CD" or re.match(r"^ICD_DGNS_CD[0-9]+$", feature):
+        hit = ref["icd10cm"].get(v)
+        if hit:
+            out = {"meaning": f"{hit['code']}: {hit['title']}", "kind": "ICD-10-CM diagnosis code",
+                   "source": ref["sources"]["icd10cm"]["url_pattern"].replace("<code>", hit["code"].rstrip("-"))}
+            if hit.get("note"):
+                out["note"] = hit["note"]
+            return out
+    else:
+        return None
+    return {"meaning": None, "note": "This value is not in the project's sourced code reference (data/agent/code_reference.json). "
+            "Do not say what it means."}
 
 
 # --------------------------------------------------------------------------- tool 1
@@ -172,6 +243,9 @@ def score_claim(store: ClaimStore, claim_id: int) -> dict:
     for col, key in _ID_FIELDS.items():
         v = row.get(col)
         out[key] = None if v is None or (isinstance(v, float) and math.isnan(v)) else str(v)
+        d = describe_value(col, out[key])
+        if d is not None:
+            out[key + "_meaning"] = d
     return out
 
 
@@ -192,20 +266,23 @@ def explain_shap(store: ClaimStore, claim_id: int, top_k: int = 6) -> dict:
         name = X.columns[i]
         raw = X.iloc[0, i]
         val = None if pd.isna(raw) else (str(raw) if str(X[name].dtype) == "category" else _num(raw, 4))
-        meaning, documented = feature_meaning(name)
+        meaning, documented, meaning_source = feature_meaning_full(name)
         s = float(sv[i])
-        feats.append(
-            {
-                "feature": name,
-                "value": val,
-                "shap_log_odds": _num(s, 3),
-                "effect": "raises denial risk" if s > 0 else "lowers denial risk",
-                "odds_multiplier": _num(math.exp(s), 2),
-                "odds_change_percent": int(round((math.exp(s) - 1) * 100)),
-                "meaning": meaning,
-                "documented_in_data_dictionary": documented,
-            }
-        )
+        row_out = {
+            "feature": name,
+            "value": val,
+            "shap_log_odds": _num(s, 3),
+            "effect": "raises denial risk" if s > 0 else "lowers denial risk",
+            "odds_multiplier": _num(math.exp(s), 2),
+            "odds_change_percent": int(round((math.exp(s) - 1) * 100)),
+            "meaning": meaning,
+            "documented_in_data_dictionary": documented,
+            "meaning_source": meaning_source,
+        }
+        vm = describe_value(name, val)
+        if vm is not None:
+            row_out["value_meaning"] = vm
+        feats.append(row_out)
     rest = float(sv[order[top_k:]].sum())
     return {
         "claim_id": int(claim_id),
@@ -216,6 +293,8 @@ def explain_shap(store: ClaimStore, claim_id: int, top_k: int = 6) -> dict:
         "final_log_odds": _num(total, 3),
         "final_probability": _num(_sigmoid(total), 4),
         "top_features": feats,
+        "meaning_note": "meaning and value_meaning come from the project data dictionary or from the sourced reference named in "
+        "meaning_source. The claims are synthetic, so a code on a claim says what the code is, not anything about a real patient.",
         "all_other_features_log_odds": _num(rest, 3),
         "number_of_features": int(len(sv)),
         "features_not_shown": int(len(sv) - top_k),
