@@ -1,0 +1,184 @@
+{
+  "claim_id": 815757,
+  "question": "Claim 815757: why is its denial risk what it is, and what could a billing team check before submitting?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 4,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 815757
+      },
+      "output": {
+        "claim_id": 815757,
+        "claim_type": "carrier",
+        "probability_denied": 0.1695,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 0.94,
+        "points_versus_validation_average": -1.1,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": null,
+        "principal_diagnosis": "Z608",
+        "principal_diagnosis_meaning": {
+          "meaning": "Z60.8: Other problems related to social environment",
+          "kind": "ICD-10-CM diagnosis code",
+          "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=Z60.8"
+        }
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 815757
+      },
+      "output": {
+        "claim_id": 815757,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -1.589,
+        "final_probability": 0.1695,
+        "top_features": [
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "20",
+            "shap_log_odds": 0.455,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.58,
+            "odds_change_percent": 58,
+            "meaning": "Place of service code for this claim line: where the service was delivered, using the Medicare place-of-service code set. Exists on carrier and durable medical equipment (DME) claims, not on outpatient facility claims.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-place-service-code-ffs",
+            "value_meaning": {
+              "meaning": "Urgent care facility",
+              "source": "https://www.cms.gov/medicare/coding-billing/place-of-service-codes/code-sets",
+              "kind": "Place of service code"
+            }
+          },
+          {
+            "feature": "HCPCS_CD",
+            "value": null,
+            "shap_log_odds": -0.166,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.85,
+            "odds_change_percent": -15,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md"
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z608",
+            "shap_log_odds": -0.07,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.93,
+            "odds_change_percent": -7,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "Z60.8: Other problems related to social environment",
+              "kind": "ICD-10-CM diagnosis code",
+              "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=Z60.8"
+            }
+          },
+          {
+            "feature": "LINE_NUM",
+            "value": "8",
+            "shap_log_odds": 0.049,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.05,
+            "odds_change_percent": 5,
+            "meaning": "The line number of a service on a claim: a sequence number that separates the distinct services billed on the same claim. ResDAC now names this field CLM_LINE_NUM; this dataset calls it LINE_NUM.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/claim-line-number"
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "1275698797",
+            "shap_log_odds": -0.039,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.96,
+            "odds_change_percent": -4,
+            "meaning": "The National Provider Identifier (NPI) of the billing provider on a carrier claim. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/carrier-claim-billing-npi-number"
+          },
+          {
+            "feature": "TAX_NUM",
+            "value": "999264176",
+            "shap_log_odds": 0.021,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.02,
+            "odds_change_percent": 2,
+            "meaning": "The federal taxpayer identification number (TIN) of the physician, practice or supplier paid for the line-item service. Exists on carrier and DME claims. The values in this synthetic data are not real TINs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-provider-tax-number"
+          }
+        ],
+        "meaning_note": "meaning and value_meaning come from the project data dictionary or from the sourced reference named in meaning_source. The claims are synthetic, so a code on a claim says what the code is, not anything about a real patient.",
+        "all_other_features_log_odds": -0.028,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "place of service code urgent care claim denial",
+        "k": 3
+      },
+      "output": {
+        "query": "place of service code urgent care claim denial",
+        "results": [
+          {
+            "doc_id": "cms_r1875cp_consultation_codes",
+            "title": "CMS Transmittal 1875 - Consultation service codes no longer recognized for Medicare payment",
+            "url": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf",
+            "chunk_id": "cms_r1875cp_consultation_codes#1",
+            "text": "facility visits. These increased values were also carried into practice expense and malpractice calculations and into the E/M component of global surgical codes. ## What to bill instead, by setting Hospital inpatient: physicians performing initial evaluations bill initial hospital care codes 99221-99223. More than one physician may bill an initial visit on the same date if each performs an independent evaluation. The principal physician, the one who oversees the patient's care as distinct from other physicians furnishing specialty care, appends modifier AI to the initial visit code. Follow-up visits use subsequent hospital care codes.\n\nNursing facility: physicians bill initial nursing facility care codes 99304-99306, and the principal physician appends modifier AI. Follow-up visits use codes 99307-99310. Nurse practitioners, clinical nurse specialists and certified nurse midwives may perform initial visits where state law permits and collaboration and supervision requirements are met.",
+            "similarity": 0.103
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#2",
+            "text": "mobility devices, pressure reducing support surfaces, lower limb prosthetics and pneumatic compression devices. Selected items usually start in some geographic regions and then expand nationwide. ## Claims without prior authorization For items on the Required Prior Authorization List, prior authorization is a condition of payment. A claim submitted without an affirmative prior authorization decision, or without a provisional affirmation that meets the 90% compliance threshold, is not eligible for payment.\n\nStandard requests are decided within 7 calendar days (effective January 1, 2025). Expedited requests are decided within 2 business days. Suppliers furnishing items under urgent circumstances can use specific modifiers, such as ST, to indicate an emergency, which may bypass the standard timelines.\n\n## Submitting requests",
+            "similarity": 0.087
+          },
+          {
+            "doc_id": "cms_r1875cp_consultation_codes",
+            "title": "CMS Transmittal 1875 - Consultation service codes no longer recognized for Medicare payment",
+            "url": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf",
+            "chunk_id": "cms_r1875cp_consultation_codes#3",
+            "text": "with reassigned billing rights. Rural Health Clinics and Federally Qualified Health Centers: consultation codes were discontinued in favor of office visit codes (99201-99215) and nursing facility codes (99304-99306) as appropriate. ## Documentation\n\nAll E/M services must meet existing E/M documentation guidelines. Services should be documented during or immediately after they are provided. Code selection should reflect the actual service content.\n\n## Timeline\n\nThe effective date was January 1, 2010, and implementation was January 4, 2010. The transmittal removed all references to consultation codes from Claims Processing Manual Chapter 12, Section 30.6.",
+            "similarity": 0.061
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    }
+  ],
+  "final_text": "**Claim 815757 is a carrier claim. The model puts its denial probability at 0.1695, against a validation-set average of 0.1805.** That is 0.94 times the average, or -1.1 percentage points. The denial label in this project is synthetic, so this is the probability of a constructed label and not of a real payer decision.\n\n**What the model weighs**\n- **Place of service 20 (urgent care facility)** is the biggest push up. It raises the odds by 58% (+0.455 log-odds). The data dictionary does not document this feature.\n- **HCPCS_CD is empty on this claim.** The model weighs that as lowering the odds by 15%.\n- **Principal diagnosis Z608 (Z60.8, other problems related to social environment)** lowers the odds by 7%.\n- **Line number 8, the billing NPI and the TIN** each move the odds by 5% or less. None of them is documented in the data dictionary. The NPI and TIN values are not real.\n- 153 other features are not shown. Together they contribute -0.028 log-odds.\n\nThese values show what the model weighs. They don't show what causes a denial.\n\n**What a billing team could check**\n- Confirm that place of service 20 is correct for where the service was delivered.\n- Find out why the HCPCS code is blank, and confirm the procedure code is present before submission.\n- Confirm that line 8 and the diagnosis code match the documentation.\n\nThe policy search returned nothing on place of service or urgent care. The policy documents don't cover those points. They cover consultation codes and DMEPOS prior authorization, and neither result addresses this claim.",
+  "usage": {
+    "input": 6352,
+    "output": 861,
+    "cache_write": 0,
+    "cache_read": 5056
+  },
+  "cost_usd": 0.02233,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-30T01:13:31+00:00"
+}

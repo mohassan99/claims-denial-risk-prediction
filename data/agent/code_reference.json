@@ -4,9 +4,10 @@
   "synthetic_note": "The claims are CMS synthetic data. A code on a claim here does not describe a real patient, diagnosis or service. Use these meanings to say what a code or field IS, never to tell a story about the patient.",
   "selection_rule": "HCPCS codes seen 3 or more times, and diagnosis codes seen 4 or more times, in the 600-row validation sample (data/processed/val_sample_v2.parquet): 26 HCPCS codes covering 73.7% of rows and 24 diagnosis codes covering 83.7% of rows. All 9 place-of-service values seen in the sample are covered. Chosen by frequency, before looking at any answer text from the held-out evaluation claims.",
   "not_verified_left_out": {
-    "hcpcs": ["G9572", "M1069", "H2001"],
-    "icd10cm": ["C50929", "M5450"],
-    "reason": "The lookups for these were refused with a rate-limit error (HTTP 429) and the proxy said not to retry those pages, so they are not verified. CPT codes are handled separately (see cpt_note)."
+    "hcpcs": [],
+    "icd10cm": [],
+    "cpt": ["99397", "99401"],
+    "reason": "The first lookups for HCPCS A4604, G9572, M1069, H2001 and ICD-10 C50.929, M54.50 were refused with a rate-limit error (HTTP 429) and the proxy said not to refetch those exact pages. All six were later verified through different query pages of the same NLM service, so they are now in the reference. CPT 99397 and 99401 are left out because no CMS document found in this session describes them; every other CPT code in the sample is in the cpt section with its CMS source."
   },
   "sources": {
     "hcpcs_level_ii": {
@@ -26,7 +27,7 @@
       "url_pattern": "https://resdac.org/cms-data/variables/<variable-name>"
     }
   },
-  "cpt_note": "A 5-digit numeric HCPCS_CD value is a CPT code (HCPCS Level I). CPT is maintained and licensed by the American Medical Association, so this project does not carry CPT descriptions. The agent may say it is a CPT code and that the description is not carried here; it may not describe what the procedure is.",
+  "cpt_note": "A 5-digit numeric HCPCS_CD value is a CPT code (HCPCS Level I). CPT is maintained and licensed by the American Medical Association, which owns the official descriptors, so this project does not carry them. Entries in the cpt section are our own short paraphrases of what a CMS document says about the code, each with that document as its source; they are not the official AMA wording. A CPT code that is not in the cpt section has no CMS source on file: the agent may say it is a CPT code and that no description is carried here, and may not describe what the procedure is.",
   "not_applicable_note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong.",
   "fields": {
     "LINE_PLACE_OF_SRVC_CD": {
@@ -93,10 +94,19 @@
     "G0444": "Annual depression screening, 5 to 15 minutes",
     "E0601": "Continuous positive airway pressure (CPAP) device",
     "E0570": "Nebulizer, with compressor",
-    "A4604": {
-      "meaning": "Tubing used with a heated humidifier that has a heated wire running the length of the tubing (positive airway pressure accessory)",
-      "source": "CMS Policy Article A52467, as condensed in data/policy/article_a52467_pap_coding.md. The description comes from the policy article, not from the HCPCS file."
-    }
+    "A4604": "Tubing with integrated heating element for use with a positive airway pressure device",
+    "G9572": "Index date PHQ score greater than 9 documented during the twelve month denominator identification period",
+    "M1069": "Patient screened for future fall risk",
+    "H2001": "Rehabilitation program, per 1/2 day"
+  },
+  "cpt": {
+    "99241": {"meaning": "A consultation service code, one of the office or outpatient consultation codes 99241 to 99245. Medicare stopped recognizing consultation codes for payment on January 1, 2010.", "source": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf (CMS Transmittal 1875, as condensed in data/policy/cms_r1875cp_consultation_codes.md)"},
+    "90935": {"meaning": "A renal dialysis procedure code for physician dialysis services. CMS says evaluation and management services related to the dialysis procedure are included in it.", "source": "https://www.cms.gov/files/document/11-chapter11-ncci-medicare-policy-manual-2025finalcleanpdf.pdf (NCCI Medicare Policy Manual, chapter 11); also listed in Medicare Claims Processing Manual chapter 8, section 170, physician dialysis services (https://www.cms.gov/regulations-and-guidance/guidance/manuals/downloads/clm104c08.pdf)"},
+    "99408": {"meaning": "A structured alcohol and/or substance (other than tobacco) abuse assessment with a brief intervention. CMS describes 99408 and 99409 as similar to HCPCS G0396 and G0397, and G0396 is a 15 to 30 minute assessment and brief intervention using tools such as AUDIT or DAST.", "source": "https://www.cms.gov/files/document/12-chapter12-ncci-medicare-policy-manual-2026-final.pdf (NCCI Medicare Policy Manual, chapter 12) and https://www.cms.gov/outreach-and-education/medicare-learning-network-mln/mlnproducts/downloads/sbirt_factsheet_icn904084.pdf (for G0396)"},
+    "96156": {"meaning": "A health behavior assessment or re-assessment: it identifies the psychological, behavioral, emotional, cognitive and social factors that affect a physical health problem and its treatment.", "source": "https://www.cms.gov/medicare-coverage-database/view/article.aspx?articleId=52434 (Local Coverage Article A52434) and https://www.cms.gov/files/document/mln1986542-medicare-mental-health-coverage.pdf"},
+    "99495": {"meaning": "Transitional care management after a hospital or facility discharge: interactive contact within 2 business days of discharge, a face-to-face visit within 14 calendar days, and at least moderate complexity medical decision making.", "source": "https://www.cms.gov/files/document/mln908628-transitional-care-management-services.pdf"},
+    "96127": {"meaning": "A developmental and behavioral screening and testing code. CMS Local Coverage Article A57481 lists it with 96110, 96112 and 96113 for developmental or behavioral screening and testing.", "source": "https://www.cms.gov/medicare-coverage-database/view/article.aspx?articleId=57481"},
+    "45378": {"meaning": "A colonoscopy code. CMS notes it must not be used for an examination limited to the anus.", "source": "https://www.cms.gov/files/document/06-chapter6-ncci-medicare-policy-manual-2026-final.pdf (NCCI Medicare Policy Manual, chapter 6)"}
   },
   "icd10cm": {
     "Z733": {"code": "Z73.3", "title": "Stress, not elsewhere classified"},
@@ -120,6 +130,8 @@
     "B9789": {"code": "B97.89", "title": "Other viral agents as the cause of diseases classified elsewhere"},
     "F0280": {"code": "F02.80", "title": "Dementia in other diseases classified elsewhere, unspecified severity, without behavioral disturbance, psychotic disturbance, mood disturbance, and anxiety"},
     "Z940": {"code": "Z94.0", "title": "Kidney transplant status"},
-    "Z653": {"code": "Z65.3", "title": "Problems related to other legal circumstances"}
+    "Z653": {"code": "Z65.3", "title": "Problems related to other legal circumstances"},
+    "C50929": {"code": "C50.929", "title": "Malignant neoplasm of unspecified site of unspecified male breast"},
+    "M5450": {"code": "M54.50", "title": "Low back pain, unspecified"}
   }
 }

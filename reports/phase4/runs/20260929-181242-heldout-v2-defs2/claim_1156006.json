@@ -1,0 +1,165 @@
+{
+  "claim_id": 1156006,
+  "question": "Explain why claim 1156006 got its denial-risk score.",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 3,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1156006
+      },
+      "output": {
+        "claim_id": 1156006,
+        "claim_type": "outpatient",
+        "probability_denied": 0.9447,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 5.23,
+        "points_versus_validation_average": 76.4,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "99241",
+        "hcpcs_cd_meaning": {
+          "meaning": "A consultation service code, one of the office or outpatient consultation codes 99241 to 99245. Medicare stopped recognizing consultation codes for payment on January 1, 2010.",
+          "source": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf (CMS Transmittal 1875, as condensed in data/policy/cms_r1875cp_consultation_codes.md)",
+          "kind": "CPT code",
+          "note": "Our paraphrase of what a CMS document says about this CPT code, not the official AMA wording."
+        },
+        "principal_diagnosis": "N184",
+        "principal_diagnosis_meaning": {
+          "meaning": "N18.4: Chronic kidney disease, stage 4 (severe)",
+          "kind": "ICD-10-CM diagnosis code",
+          "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=N18.4"
+        }
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1156006
+      },
+      "output": {
+        "claim_id": 1156006,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": 2.839,
+        "final_probability": 0.9447,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "99241",
+            "shap_log_odds": 4.589,
+            "effect": "raises denial risk",
+            "odds_multiplier": 98.36,
+            "odds_change_percent": 9736,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "A consultation service code, one of the office or outpatient consultation codes 99241 to 99245. Medicare stopped recognizing consultation codes for payment on January 1, 2010.",
+              "source": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf (CMS Transmittal 1875, as condensed in data/policy/cms_r1875cp_consultation_codes.md)",
+              "kind": "CPT code",
+              "note": "Our paraphrase of what a CMS document says about this CPT code, not the official AMA wording."
+            }
+          },
+          {
+            "feature": "ICD_DGNS_CD4",
+            "value": "K011",
+            "shap_log_odds": -0.063,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.94,
+            "odds_change_percent": -6,
+            "meaning": "One of the numbered diagnosis code fields on a claim (ICD_DGNS_CD1, ICD_DGNS_CD2, and so on). Each holds one ICD-10-CM diagnosis code that identifies a diagnosis for the beneficiary.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/claim-diagnosis-code-i-ffs",
+            "value_meaning": {
+              "meaning": null,
+              "note": "This value is not in the project's sourced code reference (data/agent/code_reference.json). Do not say what it means."
+            }
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "N184",
+            "shap_log_odds": 0.048,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.05,
+            "odds_change_percent": 5,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "N18.4: Chronic kidney disease, stage 4 (severe)",
+              "kind": "ICD-10-CM diagnosis code",
+              "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=N18.4"
+            }
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.036,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.96,
+            "odds_change_percent": -4,
+            "meaning": "The National Provider Identifier (NPI) of the billing provider on a carrier claim. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/carrier-claim-billing-npi-number",
+            "value_meaning": {
+              "meaning": null,
+              "note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong."
+            }
+          },
+          {
+            "feature": "PRVDR_NUM",
+            "value": "063303",
+            "shap_log_odds": 0.03,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.03,
+            "odds_change_percent": 3,
+            "meaning": "Billing provider identifier",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md"
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.024,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.02,
+            "odds_change_percent": 2,
+            "meaning": "Place of service code for this claim line: where the service was delivered, using the Medicare place-of-service code set. Exists on carrier and durable medical equipment (DME) claims, not on outpatient facility claims.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-place-service-code-ffs",
+            "value_meaning": {
+              "meaning": null,
+              "note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong."
+            }
+          }
+        ],
+        "meaning_note": "meaning and value_meaning come from the project data dictionary or from the sourced reference named in meaning_source. The claims are synthetic, so a code on a claim says what the code is, not anything about a real patient.",
+        "all_other_features_log_odds": 0.061,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    }
+  ],
+  "final_text": "Claim 1156006 is an outpatient claim. The model gives it a denial probability of 0.9447. The validation-set average is 0.1805, which makes this claim 5.23 times the average and 76.4 percentage points above it. The denial label in this project is synthetic, so this is the probability of a constructed label and not of a real payer decision.\n\n**Main driver:** The model weighs HCPCS_CD, the procedure or service code billed, far more than anything else. The value is 99241. The project's reference describes it as one of the office or outpatient consultation codes 99241 to 99245. It also says Medicare stopped recognizing consultation codes for payment on January 1, 2010 (CMS Transmittal 1875). This feature adds 4.589 log-odds, an odds change of 9736 percent.\n\n**Minor features:**\n- The principal diagnosis N184 (chronic kidney disease, stage 4 (severe)) adds 0.048.\n- PRVDR_NUM (billing provider identifier) adds 0.03.\n- LINE_PLACE_OF_SRVC_CD adds 0.024. Its value NOT_APPLICABLE is a pipeline placeholder for a field that doesn't exist for this claim type.\n- CARR_CLM_BLG_NPI_NUM lowers the score by 0.036. Its value is also the NOT_APPLICABLE placeholder.\n- ICD_DGNS_CD4 lowers the score by 0.063. Its value is K011, and I can't say what that means.\n\nTogether, the 153 features not shown add 0.061. The model weighs the procedure code almost entirely on its own.",
+  "usage": {
+    "input": 3520,
+    "output": 759,
+    "cache_write": 0,
+    "cache_read": 3792
+  },
+  "cost_usd": 0.01539,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-30T01:14:52+00:00"
+}

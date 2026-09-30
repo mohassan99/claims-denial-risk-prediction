@@ -1,0 +1,199 @@
+{
+  "claim_id": 1317939,
+  "question": "Claim 1317939: why is its denial risk what it is, and what could a billing team check before submitting?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 4,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1317939
+      },
+      "output": {
+        "claim_id": 1317939,
+        "claim_type": "outpatient",
+        "probability_denied": 0.0096,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 0.05,
+        "points_versus_validation_average": -17.1,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "45378",
+        "hcpcs_cd_meaning": {
+          "meaning": "A colonoscopy code. CMS notes it must not be used for an examination limited to the anus.",
+          "source": "https://www.cms.gov/files/document/06-chapter6-ncci-medicare-policy-manual-2026-final.pdf (NCCI Medicare Policy Manual, chapter 6)",
+          "kind": "CPT code",
+          "note": "Our paraphrase of what a CMS document says about this CPT code, not the official AMA wording."
+        },
+        "principal_diagnosis": "Z733",
+        "principal_diagnosis_meaning": {
+          "meaning": "Z73.3: Stress, not elsewhere classified",
+          "kind": "ICD-10-CM diagnosis code",
+          "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=Z73.3"
+        }
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1317939
+      },
+      "output": {
+        "claim_id": 1317939,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -4.641,
+        "final_probability": 0.0096,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "45378",
+            "shap_log_odds": -1.196,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.3,
+            "odds_change_percent": -70,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "A colonoscopy code. CMS notes it must not be used for an examination limited to the anus.",
+              "source": "https://www.cms.gov/files/document/06-chapter6-ncci-medicare-policy-manual-2026-final.pdf (NCCI Medicare Policy Manual, chapter 6)",
+              "kind": "CPT code",
+              "note": "Our paraphrase of what a CMS document says about this CPT code, not the official AMA wording."
+            }
+          },
+          {
+            "feature": "PRVDR_NUM",
+            "value": "22S012",
+            "shap_log_odds": -1.186,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.31,
+            "odds_change_percent": -69,
+            "meaning": "Billing provider identifier",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md"
+          },
+          {
+            "feature": "ORG_NPI_NUM",
+            "value": "1326006073",
+            "shap_log_odds": -0.289,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.75,
+            "odds_change_percent": -25,
+            "meaning": "The National Provider Identifier (NPI) of the organization or group practice on the claim. Exists on institutional files (such as outpatient) and carrier claims. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/organization-or-group-npi-number"
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.091,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.91,
+            "odds_change_percent": -9,
+            "meaning": "The National Provider Identifier (NPI) of the billing provider on a carrier claim. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/carrier-claim-billing-npi-number",
+            "value_meaning": {
+              "meaning": null,
+              "note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong."
+            }
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.083,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.92,
+            "odds_change_percent": -8,
+            "meaning": "Place of service code for this claim line: where the service was delivered, using the Medicare place-of-service code set. Exists on carrier and durable medical equipment (DME) claims, not on outpatient facility claims.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-place-service-code-ffs",
+            "value_meaning": {
+              "meaning": null,
+              "note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong."
+            }
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z733",
+            "shap_log_odds": -0.063,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.94,
+            "odds_change_percent": -6,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "Z73.3: Stress, not elsewhere classified",
+              "kind": "ICD-10-CM diagnosis code",
+              "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=Z73.3"
+            }
+          }
+        ],
+        "meaning_note": "meaning and value_meaning come from the project data dictionary or from the sourced reference named in meaning_source. The claims are synthetic, so a code on a claim says what the code is, not anything about a real patient.",
+        "all_other_features_log_odds": 0.079,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "colonoscopy 45378 claim requirements denial",
+        "k": 3
+      },
+      "output": {
+        "query": "colonoscopy 45378 claim requirements denial",
+        "results": [
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#2",
+            "text": "mobility devices, pressure reducing support surfaces, lower limb prosthetics and pneumatic compression devices. Selected items usually start in some geographic regions and then expand nationwide. ## Claims without prior authorization For items on the Required Prior Authorization List, prior authorization is a condition of payment. A claim submitted without an affirmative prior authorization decision, or without a provisional affirmation that meets the 90% compliance threshold, is not eligible for payment.\n\nStandard requests are decided within 7 calendar days (effective January 1, 2025). Expedited requests are decided within 2 business days. Suppliers furnishing items under urgent circumstances can use specific modifiers, such as ST, to indicate an emergency, which may bypass the standard timelines.\n\n## Submitting requests",
+            "similarity": 0.078
+          },
+          {
+            "doc_id": "article_a52467_pap_coding",
+            "title": "CMS Policy Article A52467 - PAP devices, coding guidelines (companion to LCD L33718)",
+            "url": "https://www.cms.gov/medicare-coverage-database/view/article.aspx?articleid=52467",
+            "chunk_id": "article_a52467_pap_coding#0",
+            "text": "# CPAP/PAP device coding guidelines and diagnosis requirements\n\n## Overview\n\nPositive airway pressure devices fall under the Durable Medical Equipment benefit category. For Medicare payment the equipment must meet the reasonable and necessary standard in the related Local Coverage Determination (L33718) and the specific statutory payment requirements.\n\n## Diagnosis code requirements\n\nThe only diagnosis code that supports medical necessity for PAP therapy is G47.33 (obstructive sleep apnea). Having the code does not by itself guarantee coverage: the supplier must verify that all applicable coverage criteria in the LCD are met. ICD-10 codes other than G47.33 are treated as not supporting medical necessity for PAP devices, so other diagnoses cannot justify PAP claims.\n\n## Device coding",
+            "similarity": 0.045
+          },
+          {
+            "doc_id": "lcd_l33718_pap_devices",
+            "title": "CMS LCD L33718 - Positive Airway Pressure (PAP) devices for obstructive sleep apnea",
+            "url": "https://www.cms.gov/medicare-coverage-database/view/lcd.aspx?lcdid=33718",
+            "chunk_id": "lcd_l33718_pap_devices#0",
+            "text": "# Coverage indications for PAP devices in obstructive sleep apnea\n\n## Initial Medicare coverage requirements\n\nThree foundational criteria must be met. The item must fall within a defined Medicare benefit category. It must be reasonable and necessary for diagnosing or treating illness or injury or improving the function of a malformed body member. All other applicable statutory and regulatory requirements must be met.\n\nThe policy distinguishes E0601 (single-level continuous positive airway pressure, CPAP) from E0470 (bi-level respiratory assist device without backup rate). Both treat obstructive sleep apnea when specific conditions are documented.\n\n## E0601 coverage criteria",
+            "similarity": 0.042
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    }
+  ],
+  "final_text": "**Claim 1317939 is an outpatient claim. Its denial risk is low: probability_denied is 0.0096, against 0.1805 for the validation-set average.** That is 0.05 times the average, or -17.1 percentage points. The denial label in this project is synthetic. It was built from risk rules, so this is not a real payer decision.\n\n**What the model weighs (SHAP, in log-odds):**\n- **HCPCS_CD 45378:** -1.196, which cuts the odds of denial by 70%. The tool describes 45378 as a colonoscopy code that CMS says must not be used for an examination limited to the anus (NCCI Medicare Policy Manual, chapter 6).\n- **PRVDR_NUM 22S012:** -1.186, a 69% cut in the odds. This is the billing provider identifier.\n- **ORG_NPI_NUM:** -0.289, a 25% cut. This feature is not in the data dictionary. Its meaning comes from ResDAC.\n- **Smaller effects:** The principal diagnosis Z733 (Z73.3, stress, not elsewhere classified) gives -0.063. Two fields marked NOT_APPLICABLE also lower the risk slightly. That value is a pipeline placeholder for fields that don't exist for this claim type. It does not mean data is missing.\n- **Not shown:** 153 features are not shown.\n\n**What to check before submitting:**\n- Confirm that 45378 matches the procedure actually performed. The CMS note says it must not be used for an anus-only exam.\n- Confirm that the billing provider and NPI details are correct.\n- Check that the diagnosis Z733 fits the documentation.\n\nThe policy documents I searched cover only the consultation-code rule, CPAP coverage and coding, and DMEPOS prior authorization. They do not cover colonoscopy claim requirements. I can't give a policy-based checklist for this claim.\n\nThe model weighs these features. That does not show what would cause a denial.",
+  "usage": {
+    "input": 7414,
+    "output": 921,
+    "cache_write": 0,
+    "cache_read": 5056
+  },
+  "cost_usd": 0.02505,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-30T01:15:29+00:00"
+}

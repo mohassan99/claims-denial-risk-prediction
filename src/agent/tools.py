@@ -193,6 +193,10 @@ def describe_value(feature: str, value) -> dict | None:
         return {"meaning": None, "note": ref["not_applicable_note"]}
     if feature == "HCPCS_CD":
         if re.fullmatch(r"\d{5}", v):
+            hit = ref["cpt"].get(v)
+            if hit:
+                return {"meaning": hit["meaning"], "source": hit["source"], "kind": "CPT code",
+                        "note": "Our paraphrase of what a CMS document says about this CPT code, not the official AMA wording."}
             return {"meaning": None, "note": ref["cpt_note"]}
         hit = ref["hcpcs"].get(v)
         kind = "HCPCS Level II code"

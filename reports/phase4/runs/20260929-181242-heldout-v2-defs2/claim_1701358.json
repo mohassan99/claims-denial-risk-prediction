@@ -1,0 +1,194 @@
+{
+  "claim_id": 1701358,
+  "question": "Claim 1701358: why is its denial risk what it is, and what could a billing team check before submitting?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 3,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1701358
+      },
+      "output": {
+        "claim_id": 1701358,
+        "claim_type": "dme",
+        "probability_denied": 0.2619,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 1.45,
+        "points_versus_validation_average": 8.1,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "A7031",
+        "hcpcs_cd_meaning": {
+          "meaning": "Face mask interface, replacement for full face mask, each",
+          "source": "https://clinicaltables.nlm.nih.gov/api/hcpcs/v3/search?terms=A7031&ef=long_desc",
+          "kind": "HCPCS Level II code"
+        },
+        "principal_diagnosis": "Y0703",
+        "principal_diagnosis_meaning": {
+          "meaning": null,
+          "note": "This value is not in the project's sourced code reference (data/agent/code_reference.json). Do not say what it means."
+        }
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1701358
+      },
+      "output": {
+        "claim_id": 1701358,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -1.036,
+        "final_probability": 0.2619,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "A7031",
+            "shap_log_odds": 0.447,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.56,
+            "odds_change_percent": 56,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "Face mask interface, replacement for full face mask, each",
+              "source": "https://clinicaltables.nlm.nih.gov/api/hcpcs/v3/search?terms=A7031&ef=long_desc",
+              "kind": "HCPCS Level II code"
+            }
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "22",
+            "shap_log_odds": 0.323,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.38,
+            "odds_change_percent": 38,
+            "meaning": "Place of service code for this claim line: where the service was delivered, using the Medicare place-of-service code set. Exists on carrier and durable medical equipment (DME) claims, not on outpatient facility claims.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-place-service-code-ffs",
+            "value_meaning": {
+              "meaning": "On-campus outpatient hospital",
+              "source": "https://www.cms.gov/medicare/coding-billing/place-of-service-codes/code-sets",
+              "kind": "Place of service code"
+            }
+          },
+          {
+            "feature": "LINE_NUM",
+            "value": "1",
+            "shap_log_odds": -0.271,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.76,
+            "odds_change_percent": -24,
+            "meaning": "The line number of a service on a claim: a sequence number that separates the distinct services billed on the same claim. ResDAC now names this field CLM_LINE_NUM; this dataset calls it LINE_NUM.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/claim-line-number"
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Y0703",
+            "shap_log_odds": 0.161,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.18,
+            "odds_change_percent": 18,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": null,
+              "note": "This value is not in the project's sourced code reference (data/agent/code_reference.json). Do not say what it means."
+            }
+          },
+          {
+            "feature": "PRVDR_NUM",
+            "value": "060004",
+            "shap_log_odds": 0.102,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.11,
+            "odds_change_percent": 11,
+            "meaning": "Billing provider identifier",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md"
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.054,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.95,
+            "odds_change_percent": -5,
+            "meaning": "The National Provider Identifier (NPI) of the billing provider on a carrier claim. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/carrier-claim-billing-npi-number",
+            "value_meaning": {
+              "meaning": null,
+              "note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong."
+            }
+          }
+        ],
+        "meaning_note": "meaning and value_meaning come from the project data dictionary or from the sourced reference named in meaning_source. The claims are synthetic, so a code on a claim says what the code is, not anything about a real patient.",
+        "all_other_features_log_odds": 0.068,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "CPAP mask replacement supplies coverage coding documentation"
+      },
+      "output": {
+        "query": "CPAP mask replacement supplies coverage coding documentation",
+        "results": [
+          {
+            "doc_id": "article_a52467_pap_coding",
+            "title": "CMS Policy Article A52467 - PAP devices, coding guidelines (companion to LCD L33718)",
+            "url": "https://www.cms.gov/medicare-coverage-database/view/article.aspx?articleid=52467",
+            "chunk_id": "article_a52467_pap_coding#2",
+            "text": "breathing through a nasal, oral or facial mask interface. E0471: like E0470 but with a timed backup feature that delivers pressure whenever spontaneous inspiratory effort is not sufficient. ## Accessories A7032 is a replacement nasal mask (unit of service: each). A7033 is a replacement nasal cannula-type interface (unit: pair). A7027 is a combination oral/nasal mask, where one unit of service includes both the oral and the nasal components. A4604 is tubing used with a heated humidifier that has a heated wire running the length of the tubing.\n\nLiners are soft material placed between the patient's skin and the mask interface. They are comfort items with no separate payment and are coded A9270 (noncovered item).\n\n## Monitoring technology",
+            "similarity": 0.111
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#0",
+            "text": "# DMEPOS prior authorization process overview\n\n## Purpose\n\nThe prior authorization program for durable medical equipment, prosthetics, orthotics and supplies (DMEPOS) helps protect the Medicare Trust Fund from improper payments while making sure beneficiaries can get the items they need in a timely way. Prior authorization checks that applicable Medicare coverage, payment and coding requirements are met before the item is delivered.\n\n## How items are selected",
+            "similarity": 0.094
+          },
+          {
+            "doc_id": "article_a52467_pap_coding",
+            "title": "CMS Policy Article A52467 - PAP devices, coding guidelines (companion to LCD L33718)",
+            "url": "https://www.cms.gov/medicare-coverage-database/view/article.aspx?articleid=52467",
+            "chunk_id": "article_a52467_pap_coding#0",
+            "text": "# CPAP/PAP device coding guidelines and diagnosis requirements\n\n## Overview\n\nPositive airway pressure devices fall under the Durable Medical Equipment benefit category. For Medicare payment the equipment must meet the reasonable and necessary standard in the related Local Coverage Determination (L33718) and the specific statutory payment requirements.\n\n## Diagnosis code requirements\n\nThe only diagnosis code that supports medical necessity for PAP therapy is G47.33 (obstructive sleep apnea). Having the code does not by itself guarantee coverage: the supplier must verify that all applicable coverage criteria in the LCD are met. ICD-10 codes other than G47.33 are treated as not supporting medical necessity for PAP devices, so other diagnoses cannot justify PAP claims.\n\n## Device coding",
+            "similarity": 0.081
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    }
+  ],
+  "final_text": "**Score:** Claim 1701358 (DME claim) has a denial probability of 0.2619. The validation-set average is 0.1805, so the claim is 1.45 times the average, or 8.1 percentage points higher. The denial label in this project is synthetic, so this is the probability of a constructed label and not of a real payer decision.\n\n**What the model weighs (SHAP, log-odds):**\n- **HCPCS_CD A7031** (face mask interface, replacement for full face mask, each): 0.447, raising the odds by 56%.\n- **LINE_PLACE_OF_SRVC_CD 22** (on-campus outpatient hospital): 0.323, raising the odds by 38%. The data dictionary doesn't document this feature. The meaning comes from ResDAC and CMS.\n- **LINE_NUM 1:** \u22120.271, lowering the odds by 24%. This feature is also undocumented in the data dictionary.\n- **Principal diagnosis Y0703:** 0.161, raising the odds by 18%. The project's code reference doesn't give a meaning for this code, so I won't give one.\n- **Billing provider 060004:** 0.102, raising the odds by 11%.\n\nThe tool doesn't show 153 other features.\n\n**What to check before submitting:**\n- **Diagnosis:** CMS Policy Article A52467 says G47.33 is the only diagnosis code that supports medical necessity for PAP therapy. It says other ICD-10 codes are treated as not supporting it. The claim's diagnosis is Y0703, not G47.33. The excerpt I retrieved doesn't name A7031, so I can't confirm this rule applies to this line.\n- **Place of service:** Confirm that code 22 is correct.\n- **Prior authorization:** The DMEPOS prior authorization overview I retrieved doesn't say whether A7031 is covered, so check that separately.",
+  "usage": {
+    "input": 4335,
+    "output": 1162,
+    "cache_write": 0,
+    "cache_read": 3792
+  },
+  "cost_usd": 0.02105,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-30T01:16:32+00:00"
+}

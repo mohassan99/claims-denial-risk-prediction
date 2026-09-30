@@ -198,22 +198,40 @@ Each entry was checked against an official source in this session, not written f
 |---|---|---|
 | Field meanings (`TAX_NUM`, NPI fields, `LINE_NUM`, place of service, pricing locality, and others) | ResDAC (the Research Data Assistance Center) variable pages for CMS claims files | 9 fields |
 | Place of service codes | CMS Place of Service Code Set page | 8 codes |
-| HCPCS Level II codes (the letter-prefixed ones) | Long descriptions from the National Library of Medicine's Clinical Table Search Service, which serves the CMS code set | 13 codes |
-| ICD-10-CM diagnosis codes | Code titles from the same NLM service, which serves the CMS and NCHS code set | 22 codes |
+| HCPCS Level II codes (the letter-prefixed ones) | Long descriptions from the National Library of Medicine's Clinical Table Search Service, which serves the CMS code set | 17 codes |
+| ICD-10-CM diagnosis codes | Code titles from the same NLM service, which serves the CMS and NCHS code set | 24 codes |
 
 Things that did not go to plan, and how each was handled:
 
-- **Rate limits.** Six lookups were refused with an HTTP 429 error and the proxy said not to retry those pages.
-  They are HCPCS A4604, G9572, M1069, H2001 and ICD-10 C50.929, M54.50. I did not retry, and I did not fill them in from
-  memory. Five of them (all but A4604, below) are listed in the reference under `not_verified_left_out`, and a test fails if any of them is
-  ever added without being verified.
-- **A4604** (tubing for a heated humidifier) was the one HCPCS code whose lookup was refused but that a CMS document
-  already in this repo describes (policy article A52467, condensed in `data/policy/`). It is included, and its source line says
-  the description comes from the policy article, not from the HCPCS file.
-- **CPT codes are left without descriptions on purpose.** A 5-digit numeric code in `HCPCS_CD` is a CPT code
-  (HCPCS Level I), and the American Medical Association owns and licenses CPT descriptions. These public
-  sources do not carry them, and copying them would not be right. The tools tell the agent it is a CPT code and give
-  the reason, so it can decline with a reason. This matters: 90935 and 99241 are the two most common codes in the sample.
+- **Rate limits, then a retry.** Six lookups were refused with an HTTP 429 error and the proxy said not to refetch
+  those exact pages: HCPCS A4604, G9572, M1069, H2001 and ICD-10 C50.929, M54.50. In the first patch (0007) I did not
+  retry and did not fill them in from memory; five were listed in the reference under `not_verified_left_out`, and
+  A4604 was covered by a CMS policy article (A52467, condensed in `data/policy/`). In the follow-up (0008) I retried
+  through different query URLs (prefix searches rather than the refused exact URLs), and all six came back. Each
+  entry now carries the text the service returned. A4604 now uses the service text too; the policy article agrees with it.
+  `not_verified_left_out` is empty for HCPCS Level II and ICD-10-CM, and the integrity test still fails if anything on
+  that list is ever added without a source.
+- **CPT codes: paraphrases with a CMS source, for specific codes only (0008).** A 5-digit numeric code in `HCPCS_CD`
+  is a CPT code (HCPCS Level I). The American Medical Association owns and licenses the official CPT descriptors, and
+  the public code sets do not carry them, so I do not copy them. You asked for CPT descriptions from a CMS source for
+  specific codes, so the reference now has a separate `cpt` section. Each entry is a short paraphrase of what a CMS
+  document says about that code, with the CMS URL beside it, and the tool output labels it "our paraphrase of a CMS
+  document, not the official AMA wording". A test caps each entry at 60 words and requires a cms.gov source.
+  Seven codes qualified (the codes that appear in the held-out sample where CMS text could be found):
+
+  | CPT code | What the entry says, in short | CMS source |
+  |---|---|---|
+  | 99241 | An office or outpatient consultation code that Medicare stopped recognizing for payment in 2010 | Transmittal 1875 |
+  | 90935 | A physician dialysis services code; related evaluation and management is included in it | NCCI ch. 11, Claims Processing Manual ch. 8 |
+  | 99408 | A structured alcohol and/or substance abuse assessment with brief intervention | NCCI ch. 12, SBIRT fact sheet |
+  | 96156 | A health behavior assessment or re-assessment | Coverage article, MLN mental health booklet |
+  | 99495 | Transitional care management after discharge (contact within 2 business days, visit within 14 days) | MLN TCM booklet |
+  | 96127 | A developmental and behavioral screening and testing code | Coverage article A57481 |
+  | 45378 | A colonoscopy code, with a CMS note on when it must not be used | NCCI ch. 6 |
+
+  Two CPT codes, 99397 and 99401, had no CMS source I could find in this session. They stay undescribed, are listed in
+  `not_verified_left_out["cpt"]`, and a test keeps them out. The paraphrases describe what CMS says about the code, so
+  they can be narrower than the official descriptor; that is why each is labelled as a paraphrase.
 - **The sources corrected me.** I had guessed that diagnosis `T7432X` meant psychological abuse. The official
   title is "Child psychological abuse, confirmed", and the official codes in that family carry a seventh character
   the data value lacks. That is why entries are looked up, not remembered.
@@ -227,27 +245,27 @@ what a code is and does not tell a story about a patient. I read the answers for
 
 ### How it was tested
 
-1. **Unit tests** (17 in total now, from 10): meanings are returned for known values; CPT codes, the
-   `NOT_APPLICABLE` placeholder and unverified values decline instead of guessing; the order of lookup is dictionary,
-   then reference, then undocumented; an integrity test fails if an unverified code sneaks in, if a CPT code is given
-   a description, or if any entry lacks a source; a description quoted from a tool output grades as grounded.
+1. **Unit tests** (17 in total now, from 10): meanings are returned for known values; CPT codes with a CMS source
+   return a labelled paraphrase, other CPT codes, the `NOT_APPLICABLE` placeholder and unverified values decline instead of guessing; the order of lookup is dictionary,
+   then reference, then undocumented; an integrity test fails if an unverified code sneaks in, if a CPT code without a CMS source is
+   described, if a CPT paraphrase is over 60 words or lacks a cms.gov source, or if any entry lacks a source; a description quoted from a tool output grades as grounded.
 2. **A controlled before and after.** The same 30 held-out claims, the same prompt (v2), the same model
    (Claude Sonnet 5.5), the same questions. Only the tool output changed. Run `20260929-174122-heldout-v2-defs`
-   against `20260928-224007-heldout-v2`. Added `--claims-from` to the runner to re-run exactly a previous run's claims.
+   against `20260928-224007-heldout-v2`, and after the CPT follow-up `20260929-181242-heldout-v2-defs2` against both. Added `--claims-from` to the runner to re-run exactly a previous run's claims.
 3. **A hand read** of the after answers for anything the reference did not support, especially the diagnosis
    codes with sensitive titles.
 
 ### Results
 
-| Measure (30 held-out claims) | Before | After |
-|---|---|---|
-| Checkable tokens grounded | 542 of 542 | 511 of 511 |
-| Top features shown that came with a meaning | 68 of 180 (38%) | 178 of 180 (99%) |
-| Coded values (procedure, diagnosis, place of service) that came with a meaning | 0 of 74 | 56 of 74 (76%) |
-| Explanations saying they cannot say what an item is | 14 of 30 (16 phrases) | 8 of 30 (10 phrases) |
-| Explanations noting "not in the dictionary" | 23 of 30 (53 phrases) | 18 of 30 (36 phrases) |
-| Description checks passed (a description after a code) | 7 of 7 | 14 of 14 |
-| Cost per claim | $0.019 | $0.021 |
+| Measure (30 held-out claims) | Before | After 0007 | After 0008 (CPT + retried) |
+|---|---|---|---|
+| Checkable tokens grounded | 542 of 542 | 511 of 511 | 516 of 516 |
+| Top features shown that came with a meaning | 68 of 180 (38%) | 178 of 180 (99%) | 180 of 182 (99%) |
+| Coded values (procedure, diagnosis, place of service) that came with a meaning | 0 of 74 | 56 of 74 (76%) | 67 of 74 (91%) |
+| Explanations saying they cannot say what an item is | 14 of 30 (16 phrases) | 8 of 30 (10 phrases) | 3 of 30 (3 phrases) |
+| Explanations noting "not in the dictionary" | 23 of 30 (53 phrases) | 18 of 30 (36 phrases) | 15 of 30 (32 phrases) |
+| Description checks passed (a description after a code) | 7 of 7 | 14 of 14 | 6 of 6 |
+| Cost per claim | $0.019 | $0.021 | $0.022 |
 
 What the numbers say, and one measurement mistake I made on the way:
 
@@ -260,23 +278,30 @@ What the numbers say, and one measurement mistake I made on the way:
   honest, but the phrase counter reads it as a refusal. I split the counter into refusals to say what an item is
   and provenance notes. **The split was written after I saw the after answers, so it is post hoc.** The
   original combined count is kept in the summary files next to it, unchanged.
-- **The 18 code values still without a meaning:** 11 are CPT codes (99241 four times, 90935 three times, and one each of
-  45378, 99408, 99495, 96127), and 7 are rare diagnosis codes outside the frequency cutoff (K011, J029, L209, E034,
-  O039, Y0703, J441). The 2 features without a meaning are `CARR_CLM_RFRNG_PIN_NUM`.
+- **After 0007, the 18 code values without a meaning:** 11 were CPT codes (99241 four times, 90935 three times, and one each of
+  45378, 99408, 99495, 96127), and 7 were rare diagnosis codes outside the frequency cutoff (K011, J029, L209, E034,
+  O039, Y0703, J441). **After 0008 the 11 CPT ones are covered** (67 of 74). The 7 still without a meaning are the same
+  rare diagnosis codes, one each. The 2 features without a meaning are `CARR_CLM_RFRNG_PIN_NUM`.
+- **Hand read of the CPT answers (0008).** I read the 11 answers that used a CPT paraphrase. Each attributed the meaning to
+  the tool or to CMS, and none described it as the AMA wording. One (claim 637252, code 96127) also cited the coverage
+  article the tool gave. The 99241 answers repeated the consultation-code policy correctly. Note the caveat that a
+  paraphrase of a CMS document is narrower than a code descriptor: the colonoscopy answer said the code "must not be used for an
+  examination limited to the anus", which is what CMS says about 45378, but it is not a full definition of the procedure.
+  This was a read by eye, not a measured rate.
+- **Checkable tokens** were 542, 511 and 516 across the three runs. I still did not investigate why they moved.
 - **The hand read found no story about a patient.** The answers said things like "the tool lists this as Child
   psychological abuse, confirmed" and, in the same place, that the encounter type is unknown. They attributed
   meanings to the tool, and several added useful reviewer checks ("confirm that the place-of-service code matches where the
   item was supplied"). That read was by eye on 46 sentences. It is not a measured rate.
-- **Checkable tokens fell from 542 to 511.** I did not investigate why. One guess is that answers describe more
-  and quote fewer numbers, but that is a guess.
 - **One sample per claim.** Both runs are single samples, so a difference of a few explanations is inside the run-to-run
   variation this project has already seen.
 
 ### What is still open
 
-- CPT descriptions. This is the largest remaining gap, because CPT codes are the most common codes in the data.
-  Options: a CMS source for the specific codes, or accept the honest decline with its stated reason.
-- The 5 unverified items above (A4604 is covered by a CMS policy article), and the rare diagnosis codes outside the cutoff.
+- CPT codes 99397 and 99401 (no CMS source found), any CPT code not in the seven above, and the 7 rare diagnosis codes
+  outside the frequency cutoff. The agent declines on these with a stated reason.
+- The seven CPT paraphrases were chosen because they appear in the held-out sample, so the 91% is coverage of this
+  sample and not a claim about all claims. Codes outside the sample would need the same source work.
 - The retrieval weakness seen in the demo (the most relevant policy chunk ranked last) is unchanged.
 
 ## Run it yourself
@@ -309,8 +334,9 @@ python -m src.agent.run_eval --model claude-sonnet-5-5 --prompt v2 --n-per-type 
 
 ## Known limits and next steps
 
-- Meanings for fields and common codes were added on 2026-09-29 (see "Adding sourced definitions"). CPT
-  descriptions, 5 unverified items and rare diagnosis codes are still missing, so the agent still declines on those.
+- Meanings for fields and common codes were added on 2026-09-29 (see "Adding sourced definitions"), and seven CPT
+  codes carry labelled CMS paraphrases. Other CPT codes (for example 99397, 99401) and rare diagnosis codes are still missing,
+  so the agent declines on those.
 - Retrieval is lexical and unevaluated. Only rules with a CMS policy behind them are covered: nothing
   supports duplicate-claim or provider-outlier questions, and the agent says so.
 - The Azure endpoint was not used. `score_claim` runs the same scoring code locally. Restarting the

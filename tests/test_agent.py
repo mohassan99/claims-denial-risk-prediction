@@ -99,12 +99,15 @@ def test_describe_value_covers_the_four_cases():
     assert pos["meaning"] == "Urgent care facility"
     dx = describe_value("PRNCPAL_DGNS_CD", "Z733")
     assert dx["meaning"].startswith("Z73.3")
-    # CPT codes are AMA-licensed: no description, but an explicit reason
-    cpt = describe_value("HCPCS_CD", "99241")
-    assert cpt["meaning"] is None and "CPT" in cpt["note"]
+    # CPT codes are AMA-licensed: the reference carries only our paraphrase of a CMS document, marked as such
+    cpt = describe_value("HCPCS_CD", "99495")
+    assert cpt["meaning"] and cpt["source"].startswith("https://www.cms.gov/") and "not the official AMA wording" in cpt["note"]
+    # a CPT code with no CMS source on file declines with an explicit reason
+    nocms = describe_value("HCPCS_CD", "99401")
+    assert nocms["meaning"] is None and "CPT" in nocms["note"]
     # placeholder value and a value that was never verified both decline instead of guessing
     assert describe_value("LINE_PLACE_OF_SRVC_CD", "NOT_APPLICABLE")["meaning"] is None
-    assert describe_value("HCPCS_CD", "M1069")["meaning"] is None
+    assert describe_value("HCPCS_CD", "Q9999")["meaning"] is None  # never looked up
     # a field that holds no coded value gets nothing
     assert describe_value("TAX_NUM", "999996021") is None
 
@@ -128,7 +131,13 @@ def test_code_reference_integrity():
         assert code not in ref["hcpcs"], f"{code} was never verified; it must not be in the reference"
     for code in left_out["icd10cm"]:
         assert code not in ref["icd10cm"]
-    assert all(not k.isdigit() for k in ref["hcpcs"]), "CPT (numeric) codes must not carry descriptions"
+    for code in left_out["cpt"]:
+        assert code not in ref["cpt"], f"{code} has no CMS source on file; it must not be described"
+    assert all(not k.isdigit() for k in ref["hcpcs"]), "CPT (numeric) codes belong in the cpt section, not hcpcs"
+    for k, v in ref["cpt"].items():
+        assert k.isdigit() and len(k) == 5, k
+        assert v["meaning"].strip() and v["source"].startswith("https://www.cms.gov/"), f"{k}: needs a CMS source"
+        assert len(v["meaning"].split()) <= 60, f"{k}: keep CPT entries to a short paraphrase, not a copied descriptor"
     for k, v in ref["hcpcs"].items():
         assert (v if isinstance(v, str) else v["meaning"]).strip(), k
         if isinstance(v, dict):

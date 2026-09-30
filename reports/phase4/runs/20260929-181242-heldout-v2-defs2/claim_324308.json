@@ -1,0 +1,274 @@
+{
+  "claim_id": 324308,
+  "question": "For claim 324308, which denial reason code is most plausible, and how does the model's score relate to it?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 4,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 324308
+      },
+      "output": {
+        "claim_id": 324308,
+        "claim_type": "carrier",
+        "probability_denied": 0.1057,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 0.59,
+        "points_versus_validation_average": -7.5,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "99495",
+        "hcpcs_cd_meaning": {
+          "meaning": "Transitional care management after a hospital or facility discharge: interactive contact within 2 business days of discharge, a face-to-face visit within 14 calendar days, and at least moderate complexity medical decision making.",
+          "source": "https://www.cms.gov/files/document/mln908628-transitional-care-management-services.pdf",
+          "kind": "CPT code",
+          "note": "Our paraphrase of what a CMS document says about this CPT code, not the official AMA wording."
+        },
+        "principal_diagnosis": "P292",
+        "principal_diagnosis_meaning": {
+          "meaning": "P29.2: Neonatal hypertension",
+          "kind": "ICD-10-CM diagnosis code",
+          "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=P29.2"
+        }
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 324308
+      },
+      "output": {
+        "claim_id": 324308,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -2.136,
+        "final_probability": 0.1057,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "99495",
+            "shap_log_odds": -1.097,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.33,
+            "odds_change_percent": -67,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "Transitional care management after a hospital or facility discharge: interactive contact within 2 business days of discharge, a face-to-face visit within 14 calendar days, and at least moderate complexity medical decision making.",
+              "source": "https://www.cms.gov/files/document/mln908628-transitional-care-management-services.pdf",
+              "kind": "CPT code",
+              "note": "Our paraphrase of what a CMS document says about this CPT code, not the official AMA wording."
+            }
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "1154891562",
+            "shap_log_odds": 0.813,
+            "effect": "raises denial risk",
+            "odds_multiplier": 2.25,
+            "odds_change_percent": 125,
+            "meaning": "The National Provider Identifier (NPI) of the billing provider on a carrier claim. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/carrier-claim-billing-npi-number"
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "11",
+            "shap_log_odds": -0.174,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.84,
+            "odds_change_percent": -16,
+            "meaning": "Place of service code for this claim line: where the service was delivered, using the Medicare place-of-service code set. Exists on carrier and durable medical equipment (DME) claims, not on outpatient facility claims.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-place-service-code-ffs",
+            "value_meaning": {
+              "meaning": "Office",
+              "source": "https://www.cms.gov/medicare/coding-billing/place-of-service-codes/code-sets",
+              "kind": "Place of service code"
+            }
+          },
+          {
+            "feature": "ORG_NPI_NUM",
+            "value": "1154891562",
+            "shap_log_odds": 0.124,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.13,
+            "odds_change_percent": 13,
+            "meaning": "The National Provider Identifier (NPI) of the organization or group practice on the claim. Exists on institutional files (such as outpatient) and carrier claims. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/organization-or-group-npi-number"
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "P292",
+            "shap_log_odds": 0.043,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.04,
+            "odds_change_percent": 4,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "P29.2: Neonatal hypertension",
+              "kind": "ICD-10-CM diagnosis code",
+              "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=P29.2"
+            }
+          },
+          {
+            "feature": "ICD_DGNS_CD4",
+            "value": "J441",
+            "shap_log_odds": 0.042,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.04,
+            "odds_change_percent": 4,
+            "meaning": "One of the numbered diagnosis code fields on a claim (ICD_DGNS_CD1, ICD_DGNS_CD2, and so on). Each holds one ICD-10-CM diagnosis code that identifies a diagnosis for the beneficiary.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/claim-diagnosis-code-i-ffs",
+            "value_meaning": {
+              "meaning": null,
+              "note": "This value is not in the project's sourced code reference (data/agent/code_reference.json). Do not say what it means."
+            }
+          }
+        ],
+        "meaning_note": "meaning and value_meaning come from the project data dictionary or from the sourced reference named in meaning_source. The claims are synthetic, so a code on a claim says what the code is, not anything about a real patient.",
+        "all_other_features_log_odds": -0.074,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "11"
+      },
+      "output": {
+        "code": "11",
+        "found": true,
+        "description": "The diagnosis doesn't support the procedure billed.",
+        "project_rule": "dx_procedure_mismatch",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "16"
+      },
+      "output": {
+        "code": "16",
+        "found": true,
+        "description": "The claim is missing information or has a billing error.",
+        "project_rule": "provider_outlier and missing_hcpcs",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "18"
+      },
+      "output": {
+        "code": "18",
+        "found": true,
+        "description": "Duplicate of a claim or service already submitted.",
+        "project_rule": "duplicate_claim",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "181"
+      },
+      "output": {
+        "code": "181",
+        "found": true,
+        "description": "The procedure code wasn't valid on the date of service.",
+        "project_rule": "deprecated_code",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "lookup_carc",
+      "input": {
+        "code": "197"
+      },
+      "output": {
+        "code": "197",
+        "found": true,
+        "description": "Required prior authorization wasn't obtained.",
+        "project_rule": "missing_prior_auth",
+        "note": "Short paraphrases written for this project. X12 owns the official Claim Adjustment Reason Code (CARC) list and its wording, so these are not the official text. Official list: https://x12.org/codes/claim-adjustment-reason-codes",
+        "label_caveat": "In this project the denial label is synthetic (engineered from risk rules on CMS synthetic claims), so a CARC attached to a claim here is illustrative, not an observed payer decision.",
+        "official_list_url": "https://x12.org/codes/claim-adjustment-reason-codes"
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "transitional care management 99495 denial"
+      },
+      "output": {
+        "query": "transitional care management 99495 denial",
+        "results": [
+          {
+            "doc_id": "cms_r1875cp_consultation_codes",
+            "title": "CMS Transmittal 1875 - Consultation service codes no longer recognized for Medicare payment",
+            "url": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf",
+            "chunk_id": "cms_r1875cp_consultation_codes#1",
+            "text": "facility visits. These increased values were also carried into practice expense and malpractice calculations and into the E/M component of global surgical codes. ## What to bill instead, by setting Hospital inpatient: physicians performing initial evaluations bill initial hospital care codes 99221-99223. More than one physician may bill an initial visit on the same date if each performs an independent evaluation. The principal physician, the one who oversees the patient's care as distinct from other physicians furnishing specialty care, appends modifier AI to the initial visit code. Follow-up visits use subsequent hospital care codes.\n\nNursing facility: physicians bill initial nursing facility care codes 99304-99306, and the principal physician appends modifier AI. Follow-up visits use codes 99307-99310. Nurse practitioners, clinical nurse specialists and certified nurse midwives may perform initial visits where state law permits and collaboration and supervision requirements are met.",
+            "similarity": 0.095
+          },
+          {
+            "doc_id": "cms_r1875cp_consultation_codes",
+            "title": "CMS Transmittal 1875 - Consultation service codes no longer recognized for Medicare payment",
+            "url": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf",
+            "chunk_id": "cms_r1875cp_consultation_codes#0",
+            "text": "# Medicare consultation code elimination, January 1, 2010\n\n## Policy change\n\nEffective January 1, 2010, Medicare stopped recognizing consultation service codes 99241-99245 and 99251-99255 for Part B payment under the physician fee schedule. The change was applied budget-neutrally across inpatient and office/outpatient settings, with limited exceptions for telehealth consultation G-codes.\n\n## Rationale\n\nCMS restructured evaluation and management (E/M) payment. The transmittal states that the agency increased the work relative value units (RVUs) for new and established office visits and increased payment for initial hospital and nursing facility visits. These increased values were also carried into practice expense and malpractice calculations and into the E/M component of global surgical codes.\n\n## What to bill instead, by setting",
+            "similarity": 0.066
+          },
+          {
+            "doc_id": "lcd_l33718_pap_devices",
+            "title": "CMS LCD L33718 - Positive Airway Pressure (PAP) devices for obstructive sleep apnea",
+            "url": "https://www.cms.gov/medicare-coverage-database/view/lcd.aspx?lcdid=33718",
+            "chunk_id": "lcd_l33718_pap_devices#2",
+            "text": "cognition, mood disorders, insomnia, hypertension, ischemic heart disease, or history of stroke. Third, the beneficiary is given instruction by the supplier in the proper use and care of the device. ## E0470 requirements\n\nA beneficiary qualifies for E0470 only after meeting all E0601 criteria plus an additional one: an E0601 has been tried and proven ineffective based on a therapeutic trial. Ineffective means documented failure to meet therapeutic goals despite optimal therapy, including proper mask selection and appropriate pressure adjustment. If E0601 proves ineffective during the initial facility-based titration or home trial, moving to E0470 needs no new clinical evaluation or sleep test.\n\n## Continued coverage beyond three months",
+            "similarity": 0.044
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    }
+  ],
+  "final_text": "For claim 324308, CARC 16 is the most plausible code, but only weakly. The claim's denial probability is 0.1057. That is 0.59 times the validation average of 0.1805, or -7.5 percentage points below it. So the model does not flag this claim as likely to be denied.\n\n**Why CARC 16:** The project's paraphrase of CARC 16 is \"the claim is missing information or has a billing error.\" It maps to the project rules provider_outlier and missing_hcpcs. The biggest upward push comes from the billing provider NPI (CARR_CLM_BLG_NPI_NUM), at 0.813 log-odds, which is a 125% rise in the odds. The model weighs that feature upward, which fits the provider-based rule. The data dictionary doesn't document this feature. This is a loose link, not a finding of an outlier.\n\n**What lowers the score:** The model weighs HCPCS 99495 downward (-1.097, a 67% drop in the odds). The tool describes that code as transitional care management. The diagnosis P292 adds almost nothing (0.043), so CARC 11 has little support from the model.\n\nThe policy documents don't cover this code. The denial label here is synthetic, so any CARC is illustrative.",
+  "usage": {
+    "input": 8864,
+    "output": 1170,
+    "cache_write": 0,
+    "cache_read": 5056
+  },
+  "cost_usd": 0.03044,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-30T01:14:14+00:00"
+}

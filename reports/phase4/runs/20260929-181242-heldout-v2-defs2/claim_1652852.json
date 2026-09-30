@@ -1,0 +1,198 @@
+{
+  "claim_id": 1652852,
+  "question": "Claim 1652852: why is its denial risk what it is, and what could a billing team check before submitting?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 3,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1652852
+      },
+      "output": {
+        "claim_id": 1652852,
+        "claim_type": "outpatient",
+        "probability_denied": 0.949,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 5.26,
+        "points_versus_validation_average": 76.8,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "99241",
+        "hcpcs_cd_meaning": {
+          "meaning": "A consultation service code, one of the office or outpatient consultation codes 99241 to 99245. Medicare stopped recognizing consultation codes for payment on January 1, 2010.",
+          "source": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf (CMS Transmittal 1875, as condensed in data/policy/cms_r1875cp_consultation_codes.md)",
+          "kind": "CPT code",
+          "note": "Our paraphrase of what a CMS document says about this CPT code, not the official AMA wording."
+        },
+        "principal_diagnosis": "Z733",
+        "principal_diagnosis_meaning": {
+          "meaning": "Z73.3: Stress, not elsewhere classified",
+          "kind": "ICD-10-CM diagnosis code",
+          "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=Z73.3"
+        }
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1652852
+      },
+      "output": {
+        "claim_id": 1652852,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": 2.923,
+        "final_probability": 0.949,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "99241",
+            "shap_log_odds": 4.627,
+            "effect": "raises denial risk",
+            "odds_multiplier": 102.25,
+            "odds_change_percent": 10125,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "A consultation service code, one of the office or outpatient consultation codes 99241 to 99245. Medicare stopped recognizing consultation codes for payment on January 1, 2010.",
+              "source": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf (CMS Transmittal 1875, as condensed in data/policy/cms_r1875cp_consultation_codes.md)",
+              "kind": "CPT code",
+              "note": "Our paraphrase of what a CMS document says about this CPT code, not the official AMA wording."
+            }
+          },
+          {
+            "feature": "ORG_NPI_NUM",
+            "value": "1194895227",
+            "shap_log_odds": 0.065,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.07,
+            "odds_change_percent": 7,
+            "meaning": "The National Provider Identifier (NPI) of the organization or group practice on the claim. Exists on institutional files (such as outpatient) and carrier claims. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/organization-or-group-npi-number"
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "Z733",
+            "shap_log_odds": -0.061,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.94,
+            "odds_change_percent": -6,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "Z73.3: Stress, not elsewhere classified",
+              "kind": "ICD-10-CM diagnosis code",
+              "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=Z73.3"
+            }
+          },
+          {
+            "feature": "PRVDR_NUM",
+            "value": "050510",
+            "shap_log_odds": 0.042,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.04,
+            "odds_change_percent": 4,
+            "meaning": "Billing provider identifier",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md"
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.037,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.96,
+            "odds_change_percent": -4,
+            "meaning": "The National Provider Identifier (NPI) of the billing provider on a carrier claim. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/carrier-claim-billing-npi-number",
+            "value_meaning": {
+              "meaning": null,
+              "note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong."
+            }
+          },
+          {
+            "feature": "ICD_DGNS_CD4",
+            "value": "Z733",
+            "shap_log_odds": 0.033,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.03,
+            "odds_change_percent": 3,
+            "meaning": "One of the numbered diagnosis code fields on a claim (ICD_DGNS_CD1, ICD_DGNS_CD2, and so on). Each holds one ICD-10-CM diagnosis code that identifies a diagnosis for the beneficiary.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/claim-diagnosis-code-i-ffs",
+            "value_meaning": {
+              "meaning": "Z73.3: Stress, not elsewhere classified",
+              "kind": "ICD-10-CM diagnosis code",
+              "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=Z73.3"
+            }
+          }
+        ],
+        "meaning_note": "meaning and value_meaning come from the project data dictionary or from the sourced reference named in meaning_source. The claims are synthetic, so a code on a claim says what the code is, not anything about a real patient.",
+        "all_other_features_log_odds": 0.066,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "consultation codes 99241 Medicare not recognized what to bill instead"
+      },
+      "output": {
+        "query": "consultation codes 99241 Medicare not recognized what to bill instead",
+        "results": [
+          {
+            "doc_id": "cms_r1875cp_consultation_codes",
+            "title": "CMS Transmittal 1875 - Consultation service codes no longer recognized for Medicare payment",
+            "url": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf",
+            "chunk_id": "cms_r1875cp_consultation_codes#0",
+            "text": "# Medicare consultation code elimination, January 1, 2010\n\n## Policy change\n\nEffective January 1, 2010, Medicare stopped recognizing consultation service codes 99241-99245 and 99251-99255 for Part B payment under the physician fee schedule. The change was applied budget-neutrally across inpatient and office/outpatient settings, with limited exceptions for telehealth consultation G-codes.\n\n## Rationale\n\nCMS restructured evaluation and management (E/M) payment. The transmittal states that the agency increased the work relative value units (RVUs) for new and established office visits and increased payment for initial hospital and nursing facility visits. These increased values were also carried into practice expense and malpractice calculations and into the E/M component of global surgical codes.\n\n## What to bill instead, by setting",
+            "similarity": 0.241
+          },
+          {
+            "doc_id": "cms_r1875cp_consultation_codes",
+            "title": "CMS Transmittal 1875 - Consultation service codes no longer recognized for Medicare payment",
+            "url": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf",
+            "chunk_id": "cms_r1875cp_consultation_codes#3",
+            "text": "with reassigned billing rights. Rural Health Clinics and Federally Qualified Health Centers: consultation codes were discontinued in favor of office visit codes (99201-99215) and nursing facility codes (99304-99306) as appropriate. ## Documentation\n\nAll E/M services must meet existing E/M documentation guidelines. Services should be documented during or immediately after they are provided. Code selection should reflect the actual service content.\n\n## Timeline\n\nThe effective date was January 1, 2010, and implementation was January 4, 2010. The transmittal removed all references to consultation codes from Claims Processing Manual Chapter 12, Section 30.6.",
+            "similarity": 0.161
+          },
+          {
+            "doc_id": "cms_r1875cp_consultation_codes",
+            "title": "CMS Transmittal 1875 - Consultation service codes no longer recognized for Medicare payment",
+            "url": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf",
+            "chunk_id": "cms_r1875cp_consultation_codes#2",
+            "text": "AI. Follow-up visits use codes 99307-99310. Nurse practitioners, clinical nurse specialists and certified nurse midwives may perform initial visits where state law permits and collaboration and supervision requirements are met. Office and outpatient: physicians and qualified nonphysician practitioners choose a new or established patient visit code (99201-99215) based on visit complexity and the patient relationship. A new patient is one who has not received professional services from the physician or physician group practice within the previous 3 years.\n\nCritical Access Hospital Method II: appropriate new or established visit codes (99201-99215) are reported on type of bill 85X with revenue codes 96X, 97X or 98X for physicians and nonphysician practitioners with reassigned billing rights.\n\nRural Health Clinics and Federally Qualified Health Centers: consultation codes were discontinued in favor of office visit codes (99201-99215) and nursing facility codes (99304-99306) as appropriate.",
+            "similarity": 0.108
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    }
+  ],
+  "final_text": "Claim 1652852 is an outpatient claim. The model gives it a denial probability of 0.949, against a validation-set average of 0.1805. That is 5.26 times the average, or 76.8 percentage points higher. The denial label in this project is synthetic, so this is the probability of a constructed label, not of a real payer decision.\n\n**What the model weighs:** One feature dominates. The billed procedure code, HCPCS_CD = 99241, has a SHAP value of 4.627 log-odds, an odds multiplier of 102.25 (odds change percent 10125). The tool describes 99241 as an office or outpatient consultation code. The other features shown are tiny. ORG_NPI_NUM, which is undocumented in the data dictionary, adds 0.065. The principal diagnosis Z733 (Z73.3: Stress, not elsewhere classified) subtracts 0.061. There are 153 features not shown.\n\n**What to check before submitting** (from CMS Transmittal 1875):\n- Medicare stopped recognizing codes 99241-99245 for Part B payment on January 1, 2010. The only exceptions the document names are telehealth consultation G-codes.\n- For office or outpatient visits, the document says to choose a new or established patient visit code (99201-99215). The choice depends on visit complexity and the patient relationship. A new patient is one not seen by the physician or group within the previous 3 years.\n- Confirm that the documentation supports the code selected.\n\nThe policy documents don't say whether non-Medicare payers follow this rule.",
+  "usage": {
+    "input": 4953,
+    "output": 951,
+    "cache_write": 0,
+    "cache_read": 3792
+  },
+  "cost_usd": 0.02017,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-30T01:14:32+00:00"
+}

@@ -399,16 +399,18 @@ the ceiling of an 8 GB machine. The same pipeline now also runs on Databricks as
   HCPCS and ICD-10-CM titles via the National Library of Medicine's service for the CMS code sets), joined into the
   tool output, and re-ran the same 30 held-out claims with the prompt unchanged. Grounding stayed at 100%
   (511 of 511); the share of top features that came with a meaning went from 38% to 99% and of code values from 0% to
-  76%. CPT codes are left undescribed on purpose (AMA licensed). Sources, misses and the measurement mistake I made
-  are in `docs/PHASE4.md`.
+  76%. A follow-up added labelled paraphrases of CMS documents for seven CPT codes (the AMA owns the official
+  descriptors) and re-verified six rate-limited lookups: code values with a meaning went to 91% (67 of 74), grounding
+  516 of 516. Sources, misses and the measurement mistake I made are in `docs/PHASE4.md`.
 
 ### Phase 4 addendum: sourced definitions for the explainer (2026-09-29)
 
 - Measured a gap grounding cannot see: with the small data dictionary, 27 of 30 held-out answers declined to
   describe something and 0 of 74 coded values came with a meaning. An answer that says nothing is trivially grounded.
 - Added `data/agent/code_reference.json` (9 fields, 8 place-of-service codes, 14 HCPCS Level II codes, 22 ICD-10-CM
-  codes), each with its source, and joined it into `score_claim` and `explain_shap`. Left out on purpose: CPT
-  descriptions (AMA licensed) and 5 items whose lookups were rate limited (a 6th, A4604, is covered by a CMS policy article). A test keeps unverified items out.
+  codes), each with its source, and joined it into `score_claim` and `explain_shap`. Follow-up (patch 0008): the six
+  rate-limited lookups were retried and verified, and seven CPT codes carry short paraphrases of CMS documents (the AMA owns
+  the official descriptors, so each is labelled a paraphrase). CPT 99397 and 99401 had no CMS source and stay undescribed. A test keeps unsourced entries out.
 - Same 30 claims, prompt v2 unchanged: grounded 511 of 511; features with a meaning 68 to 178 of 180; code values
   with a meaning 0 to 56 of 74; answers that cannot say what an item is 14 to 8 of 30. My first decline counter
   misread honest provenance notes as refusals; the split I made afterward is post hoc and labeled so.

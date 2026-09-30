@@ -333,10 +333,12 @@ eval runner), guide in `docs/PHASE4.md`, all transcripts in `reports/phase4/runs
   in `docs/PHASE4.md`): field meanings (ResDAC), place of service (CMS), HCPCS Level II and ICD-10-CM (NLM
   serving the CMS code sets), joined into `score_claim` / `explain_shap` output with a source per entry. Same 30
   held-out claims, prompt v2 unchanged: grounding 511/511, features with a meaning 68/180 to 178/180, code values
-  with a meaning 0/74 to 56/74. CPT codes (AMA licensed) are deliberately left without descriptions; 5 items
-  whose lookups were rate limited (a 6th, A4604, is covered by a CMS policy article) are listed in the reference under `not_verified_left_out` and a test keeps them out
-  until verified. Rule kept: never add an entry that was not checked against a source in the session.
-- Open: CPT descriptions, the 5 unverified items and rare diagnosis codes still get an honest decline.
+  with a meaning 0/74 to 56/74. **Follow-up (patch 0008):** the six rate-limited lookups were retried and verified;
+  seven CPT codes (99241, 90935, 99408, 96156, 99495, 96127, 45378) carry short paraphrases of CMS documents in the
+  `cpt` section (AMA owns the official descriptors, so the tools label them as paraphrases); re-run grounding 516/516,
+  code values with a meaning 67/74. `not_verified_left_out` now lists only CPT 99397 and 99401 and a test keeps them out.
+  Rule kept: never add an entry that was not checked against a source in the session.
+- Open: CPT 99397, 99401 and other CPT codes, and rare diagnosis codes still get an honest decline.
 
 ## Task queue (do in order; log each in SESSION_LOG.md)
 

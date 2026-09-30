@@ -1,0 +1,148 @@
+{
+  "claim_id": 1092776,
+  "question": "Explain why claim 1092776 got its denial-risk score.",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 3,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1092776
+      },
+      "output": {
+        "claim_id": 1092776,
+        "claim_type": "carrier",
+        "probability_denied": 0.1183,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 0.66,
+        "points_versus_validation_average": -6.2,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 0,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": null,
+        "principal_diagnosis": "T7432X",
+        "principal_diagnosis_meaning": {
+          "meaning": "T74.32X-: Child psychological abuse, confirmed",
+          "kind": "ICD-10-CM diagnosis code",
+          "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=T74.32X",
+          "note": "Official codes in this family carry a seventh character (A initial encounter, D subsequent encounter, S sequela). This data value has no seventh character, so the encounter type is unknown."
+        }
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1092776
+      },
+      "output": {
+        "claim_id": 1092776,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -2.008,
+        "final_probability": 0.1183,
+        "top_features": [
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "20",
+            "shap_log_odds": 0.611,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.84,
+            "odds_change_percent": 84,
+            "meaning": "Place of service code for this claim line: where the service was delivered, using the Medicare place-of-service code set. Exists on carrier and durable medical equipment (DME) claims, not on outpatient facility claims.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-place-service-code-ffs",
+            "value_meaning": {
+              "meaning": "Urgent care facility",
+              "source": "https://www.cms.gov/medicare/coding-billing/place-of-service-codes/code-sets",
+              "kind": "Place of service code"
+            }
+          },
+          {
+            "feature": "LINE_NUM",
+            "value": "1",
+            "shap_log_odds": -0.502,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.61,
+            "odds_change_percent": -39,
+            "meaning": "The line number of a service on a claim: a sequence number that separates the distinct services billed on the same claim. ResDAC now names this field CLM_LINE_NUM; this dataset calls it LINE_NUM.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/claim-line-number"
+          },
+          {
+            "feature": "HCPCS_CD",
+            "value": null,
+            "shap_log_odds": -0.365,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.69,
+            "odds_change_percent": -31,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md"
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "1376994533",
+            "shap_log_odds": -0.083,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.92,
+            "odds_change_percent": -8,
+            "meaning": "The National Provider Identifier (NPI) of the billing provider on a carrier claim. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/carrier-claim-billing-npi-number"
+          },
+          {
+            "feature": "TAX_NUM",
+            "value": "999188979",
+            "shap_log_odds": 0.058,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.06,
+            "odds_change_percent": 6,
+            "meaning": "The federal taxpayer identification number (TIN) of the physician, practice or supplier paid for the line-item service. Exists on carrier and DME claims. The values in this synthetic data are not real TINs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-provider-tax-number"
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "T7432X",
+            "shap_log_odds": 0.05,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.05,
+            "odds_change_percent": 5,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "T74.32X-: Child psychological abuse, confirmed",
+              "kind": "ICD-10-CM diagnosis code",
+              "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=T74.32X",
+              "note": "Official codes in this family carry a seventh character (A initial encounter, D subsequent encounter, S sequela). This data value has no seventh character, so the encounter type is unknown."
+            }
+          }
+        ],
+        "meaning_note": "meaning and value_meaning come from the project data dictionary or from the sourced reference named in meaning_source. The claims are synthetic, so a code on a claim says what the code is, not anything about a real patient.",
+        "all_other_features_log_odds": 0.035,
+        "number_of_features": 159,
+        "features_not_shown": 153
+      }
+    }
+  ],
+  "final_text": "**Claim 1092776 (carrier claim): denial probability 0.1183.** The validation-set average is 0.1805. That puts this claim at 0.66 times the average, which is -6.2 percentage points below it. The model's baseline probability is 0.1404. The denial label in this project is synthetic. The score is the probability of a constructed label, not of a real payer decision.\n\n**What the model weighs, in log-odds:**\n- **LINE_PLACE_OF_SRVC_CD = 20** raises the score by 0.611, an odds change of 84%. The tool gives the value's meaning as urgent care facility. The field is not in the project data dictionary.\n- **LINE_NUM = 1** lowers it by 0.502, an odds change of -39%. This is the line's sequence number on the claim. It is also undocumented in the dictionary.\n- **HCPCS_CD** is empty. The model weighs that as lowering the score by 0.365, an odds change of -31%.\n- **CARR_CLM_BLG_NPI_NUM** (-0.083), **TAX_NUM** (+0.058) and **PRNCPAL_DGNS_CD** (+0.05) have small effects. The diagnosis is T7432X, which the tool describes as \"Child psychological abuse, confirmed\". The value has no seventh character, so the encounter type is unknown.\n\nThe other 153 features are not shown. Together they add 0.035.\n\nThe place-of-service value pushes the score up. The line number and the missing procedure code pull it down more, so the claim ends up below average. I didn't look up any policy or denial reason codes, so I can't say whether any policy applies to this claim.",
+  "usage": {
+    "input": 2840,
+    "output": 650,
+    "cache_write": 0,
+    "cache_read": 3792
+  },
+  "cost_usd": 0.01294,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-30T01:13:53+00:00"
+}

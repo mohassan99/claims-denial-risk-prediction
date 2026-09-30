@@ -1,0 +1,230 @@
+{
+  "claim_id": 1450749,
+  "question": "Claim 1450749: why is its denial risk what it is, and what could a billing team check before submitting?",
+  "model": "claude-sonnet-5-5",
+  "prompt_version": "v2",
+  "turns": 4,
+  "stop_reasons": [
+    "tool_use",
+    "tool_use",
+    "tool_use",
+    "end_turn"
+  ],
+  "tool_calls": [
+    {
+      "name": "score_claim",
+      "input": {
+        "claim_id": 1450749
+      },
+      "output": {
+        "claim_id": 1450749,
+        "claim_type": "outpatient",
+        "probability_denied": 0.043,
+        "average_probability_in_validation_set": 0.1805,
+        "times_validation_average": 0.24,
+        "points_versus_validation_average": -13.7,
+        "points_note": "percentage points; negative means below the validation average",
+        "unseen_category_values": 1,
+        "model": "claims-denial-xgboost v2 (content hash 11f409f72fc4c45e), run locally",
+        "label_caveat": "The denial label is synthetic (engineered from risk rules), so this is the probability of the constructed label, not of a real payer decision.",
+        "hcpcs_cd": "99408",
+        "hcpcs_cd_meaning": {
+          "meaning": "A structured alcohol and/or substance (other than tobacco) abuse assessment with a brief intervention. CMS describes 99408 and 99409 as similar to HCPCS G0396 and G0397, and G0396 is a 15 to 30 minute assessment and brief intervention using tools such as AUDIT or DAST.",
+          "source": "https://www.cms.gov/files/document/12-chapter12-ncci-medicare-policy-manual-2026-final.pdf (NCCI Medicare Policy Manual, chapter 12) and https://www.cms.gov/outreach-and-education/medicare-learning-network-mln/mlnproducts/downloads/sbirt_factsheet_icn904084.pdf (for G0396)",
+          "kind": "CPT code",
+          "note": "Our paraphrase of what a CMS document says about this CPT code, not the official AMA wording."
+        },
+        "principal_diagnosis": "N186",
+        "principal_diagnosis_meaning": {
+          "meaning": "N18.6: End stage renal disease",
+          "kind": "ICD-10-CM diagnosis code",
+          "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=N18.6"
+        }
+      }
+    },
+    {
+      "name": "explain_shap",
+      "input": {
+        "claim_id": 1450749,
+        "top_k": 8
+      },
+      "output": {
+        "claim_id": 1450749,
+        "units": "log-odds. Positive raises denial risk, negative lowers it. odds_multiplier = exp(shap_log_odds), the factor this feature applies to the odds of denial; odds_change_percent = the same as a percent change (negative lowers the odds).",
+        "baseline_log_odds": -1.812,
+        "baseline_probability": 0.1404,
+        "final_log_odds": -3.102,
+        "final_probability": 0.043,
+        "top_features": [
+          {
+            "feature": "HCPCS_CD",
+            "value": "99408",
+            "shap_log_odds": -1.369,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.25,
+            "odds_change_percent": -75,
+            "meaning": "Procedure/service code billed",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "A structured alcohol and/or substance (other than tobacco) abuse assessment with a brief intervention. CMS describes 99408 and 99409 as similar to HCPCS G0396 and G0397, and G0396 is a 15 to 30 minute assessment and brief intervention using tools such as AUDIT or DAST.",
+              "source": "https://www.cms.gov/files/document/12-chapter12-ncci-medicare-policy-manual-2026-final.pdf (NCCI Medicare Policy Manual, chapter 12) and https://www.cms.gov/outreach-and-education/medicare-learning-network-mln/mlnproducts/downloads/sbirt_factsheet_icn904084.pdf (for G0396)",
+              "kind": "CPT code",
+              "note": "Our paraphrase of what a CMS document says about this CPT code, not the official AMA wording."
+            }
+          },
+          {
+            "feature": "CARR_CLM_BLG_NPI_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": -0.082,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.92,
+            "odds_change_percent": -8,
+            "meaning": "The National Provider Identifier (NPI) of the billing provider on a carrier claim. The values in this synthetic data are not real NPIs.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/carrier-claim-billing-npi-number",
+            "value_meaning": {
+              "meaning": null,
+              "note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong."
+            }
+          },
+          {
+            "feature": "LINE_PLACE_OF_SRVC_CD",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.058,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.06,
+            "odds_change_percent": 6,
+            "meaning": "Place of service code for this claim line: where the service was delivered, using the Medicare place-of-service code set. Exists on carrier and durable medical equipment (DME) claims, not on outpatient facility claims.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/line-place-service-code-ffs",
+            "value_meaning": {
+              "meaning": null,
+              "note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong."
+            }
+          },
+          {
+            "feature": "REV_CNTR_TOT_CHRG_AMT",
+            "value": 0.0,
+            "shap_log_odds": 0.049,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.05,
+            "odds_change_percent": 5,
+            "meaning": "Total charges, covered and non-covered, for all accommodations and services in the billing period, before deductible and coinsurance reductions. Exists on institutional files such as outpatient.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/revenue-center-total-charge-amount"
+          },
+          {
+            "feature": "PRNCPAL_DGNS_CD",
+            "value": "N186",
+            "shap_log_odds": 0.049,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.05,
+            "odds_change_percent": 5,
+            "meaning": "Principal diagnosis (ICD-10-CM)",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md",
+            "value_meaning": {
+              "meaning": "N18.6: End stage renal disease",
+              "kind": "ICD-10-CM diagnosis code",
+              "source": "https://clinicaltables.nlm.nih.gov/api/icd10cm/v3/search?terms=N18.6"
+            }
+          },
+          {
+            "feature": "CARR_LINE_PRCNG_LCLTY_CD",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.031,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.03,
+            "odds_change_percent": 3,
+            "meaning": "Pricing locality code: a carrier-specific geographic identifier used to price line items on carrier claims. Medicare fee-for-service pricing uses 89 localities across states.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/carrier-line-pricing-locality-code",
+            "value_meaning": {
+              "meaning": null,
+              "note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong."
+            }
+          },
+          {
+            "feature": "LINE_NUM",
+            "value": "NOT_APPLICABLE",
+            "shap_log_odds": 0.02,
+            "effect": "raises denial risk",
+            "odds_multiplier": 1.02,
+            "odds_change_percent": 2,
+            "meaning": "The line number of a service on a claim: a sequence number that separates the distinct services billed on the same claim. ResDAC now names this field CLM_LINE_NUM; this dataset calls it LINE_NUM.",
+            "documented_in_data_dictionary": false,
+            "meaning_source": "https://resdac.org/cms-data/variables/claim-line-number",
+            "value_meaning": {
+              "meaning": null,
+              "note": "The value NOT_APPLICABLE is a placeholder this project's pipeline writes when a field does not exist for that claim type (see data/FEATURE_ENGINEERING.md, sentinel fill of claim-type-exclusive fields). It means the field does not apply to this claim's file, not that a value is missing or wrong."
+            }
+          },
+          {
+            "feature": "PRVDR_NUM",
+            "value": "340098",
+            "shap_log_odds": -0.018,
+            "effect": "lowers denial risk",
+            "odds_multiplier": 0.98,
+            "odds_change_percent": -2,
+            "meaning": "Billing provider identifier",
+            "documented_in_data_dictionary": true,
+            "meaning_source": "data/data_dictionary.md"
+          }
+        ],
+        "meaning_note": "meaning and value_meaning come from the project data dictionary or from the sourced reference named in meaning_source. The claims are synthetic, so a code on a claim says what the code is, not anything about a real patient.",
+        "all_other_features_log_odds": -0.027,
+        "number_of_features": 159,
+        "features_not_shown": 151
+      }
+    },
+    {
+      "name": "search_policy",
+      "input": {
+        "query": "alcohol substance abuse screening brief intervention 99408 billing requirements outpatient",
+        "k": 3
+      },
+      "output": {
+        "query": "alcohol substance abuse screening brief intervention 99408 billing requirements outpatient",
+        "results": [
+          {
+            "doc_id": "cms_r1875cp_consultation_codes",
+            "title": "CMS Transmittal 1875 - Consultation service codes no longer recognized for Medicare payment",
+            "url": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf",
+            "chunk_id": "cms_r1875cp_consultation_codes#2",
+            "text": "AI. Follow-up visits use codes 99307-99310. Nurse practitioners, clinical nurse specialists and certified nurse midwives may perform initial visits where state law permits and collaboration and supervision requirements are met. Office and outpatient: physicians and qualified nonphysician practitioners choose a new or established patient visit code (99201-99215) based on visit complexity and the patient relationship. A new patient is one who has not received professional services from the physician or physician group practice within the previous 3 years.\n\nCritical Access Hospital Method II: appropriate new or established visit codes (99201-99215) are reported on type of bill 85X with revenue codes 96X, 97X or 98X for physicians and nonphysician practitioners with reassigned billing rights.\n\nRural Health Clinics and Federally Qualified Health Centers: consultation codes were discontinued in favor of office visit codes (99201-99215) and nursing facility codes (99304-99306) as appropriate.",
+            "similarity": 0.094
+          },
+          {
+            "doc_id": "dmepos_prior_auth_overview",
+            "title": "CMS - Prior authorization process for certain DMEPOS items",
+            "url": "https://www.cms.gov/data-research/monitoring-programs/medicare-fee-service-compliance-programs/prior-authorization-and-pre-claim-review-initiatives/prior-authorization-process-certain-durable-medical-equipment-prosthetics-orthotics-and-supplies",
+            "chunk_id": "dmepos_prior_auth_overview#1",
+            "text": "items they need in a timely way. Prior authorization checks that applicable Medicare coverage, payment and coding requirements are met before the item is delivered. ## How items are selected CMS keeps a Master List of DMEPOS items that may require prior authorization or a face-to-face encounter with a written order before delivery. The list is updated at least once a year based on items with patterns of unnecessary utilization. Items on the Required Prior Authorization List are chosen by evaluating DMEPOS categories for problematic billing trends. Recent additions include orthoses, power mobility devices, pressure reducing support surfaces, lower limb prosthetics and pneumatic compression devices. Selected items usually start in some geographic regions and then expand nationwide.\n\n## Claims without prior authorization",
+            "similarity": 0.06
+          },
+          {
+            "doc_id": "cms_r1875cp_consultation_codes",
+            "title": "CMS Transmittal 1875 - Consultation service codes no longer recognized for Medicare payment",
+            "url": "https://www.cms.gov/regulations-and-guidance/guidance/transmittals/downloads/r1875cp.pdf",
+            "chunk_id": "cms_r1875cp_consultation_codes#0",
+            "text": "# Medicare consultation code elimination, January 1, 2010\n\n## Policy change\n\nEffective January 1, 2010, Medicare stopped recognizing consultation service codes 99241-99245 and 99251-99255 for Part B payment under the physician fee schedule. The change was applied budget-neutrally across inpatient and office/outpatient settings, with limited exceptions for telehealth consultation G-codes.\n\n## Rationale\n\nCMS restructured evaluation and management (E/M) payment. The transmittal states that the agency increased the work relative value units (RVUs) for new and established office visits and increased payment for initial hospital and nursing facility visits. These increased values were also carried into practice expense and malpractice calculations and into the E/M component of global surgical codes.\n\n## What to bill instead, by setting",
+            "similarity": 0.05
+          }
+        ],
+        "note": "Chunks come from condensed renderings of public CMS documents (data/policy/README.md); they are not verbatim and cover only the rules with a CMS policy behind them. If nothing relevant is returned, say so instead of answering from memory."
+      }
+    }
+  ],
+  "final_text": "Claim 1450749 is an outpatient claim. The model gives it a denial probability of 0.043. The validation-set average is 0.1805, so this claim is 0.24 times that average and 13.7 percentage points below it. The denial label in this project is synthetic. The score is the probability of a constructed label, not of a real payer decision.\n\n**What the model weighs**\n- **HCPCS code 99408** has by far the largest effect. It lowers the log-odds by 1.369, which is an odds change of -75%. A tool result describes this code as a structured alcohol and/or substance abuse assessment with brief intervention.\n- **Principal diagnosis N18.6** (end stage renal disease, per the tool) raises the risk slightly, by 5% in odds.\n- **REV_CNTR_TOT_CHRG_AMT** (total charges on institutional files) has a value of 0.0 and adds 5%. The data dictionary doesn't document this feature.\n- Several fields show NOT_APPLICABLE. This is a pipeline placeholder for fields that don't exist for this claim type. It doesn't mean data is missing or wrong. Their effects are small (-8% to +6%).\n- The scorer also flagged one category value as unseen in training, so treat the score with some caution.\n\n**What a billing team could check**\n- Confirm the 99408 service was actually delivered and documented.\n- Check that the N18.6 diagnosis is consistent with the rest of the record.\n- Look at the 0.0 total charge amount.\n\nThe policy search returned nothing on 99408. The documents cover consultation codes and DMEPOS prior authorization, and neither addresses this code. I can't cite any policy requirement for it, so those checks are general suggestions, not policy findings.",
+  "usage": {
+    "input": 9558,
+    "output": 865,
+    "cache_write": 0,
+    "cache_read": 5056
+  },
+  "cost_usd": 0.02878,
+  "finished": true,
+  "nudged": false,
+  "at": "2026-09-30T01:15:59+00:00"
+}
