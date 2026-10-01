@@ -3,7 +3,7 @@
 Portfolio project: predict claim-denial risk on CMS Synthetic Medicare Claims (carrier,
 outpatient, DME), with an engineered noisy-OR label (`is_denied`, 14.9% since the 2026-09-24 carrier fix; was 12.1%). Phases: 0 setup,
 1 data/EDA (done), 2 baseline logistic + Chow test + XGBoost + SHAP (done 2026-09-25),
-**3 Azure ML deploy (done 2026-09-25)**, **3b Databricks port (done 2026-09-27)**, **4 agentic claim explainer (done 2026-09-28)**, **5 report/video (next)**,
+**3 Azure ML deploy (done 2026-09-25)**, **3b Databricks port (done 2026-09-27)**, **4 agentic claim explainer (done 2026-09-28)**, **5 report/video (in progress: step 1, the one-time test evaluation, done 2026-09-30)**,
 6 README/portfolio.
 
 ## How the user wants to work (read first)
@@ -341,6 +341,23 @@ eval runner), guide in `docs/PHASE4.md`, all transcripts in `reports/phase4/runs
 - **Phase 5 design basis (2026-09-30):** `docs/COST_SENSITIVE_THRESHOLDS.md` (cost-optimal cutoff, capacity-bound ranking,
   metrics for a claims quality lead list). Payer is the primary audience. Choose thresholds on val, evaluate test once.
 - Open: CPT 99401 and other CPT codes, and rare diagnosis codes still get an honest decline.
+
+### Phase 5 state (2026-09-30)
+
+**The test set has been used.** `src/evaluate_test.py --stage test` ran once (2026-10-01T02:43:10Z) under the protocol
+frozen on val (`reports/phase5/protocol.json`); results in `reports/phase5/test_results.json`. The script refuses to
+run the test stage again while that file exists. Do not re-score test to tune anything; figures and the report read
+the saved results and `reports/phase5/test_predictions.parquet` (gitignored, regenerable only by deleting
+test_results.json, which would void the once-only record: don't).
+- Decision rule: flag a line when p * L > r, r = 37.51 * 1.3 * 20/60 = $16.25, L = A * (1 - rho) + 0.125 * rho * A,
+  rho at 0.24 and 0.55, A = native line payment. Raw scores kept (pre-stated isotonic rule did not fire). See
+  `docs/PHASE5.md` for terms, sources and results.
+- Test: PR-AUC 0.570 / ROC 0.813 / ECE 0.007; carrier 0.189/0.713, outpatient 0.807/0.898, DME 0.259/0.710.
+  Outpatient's drop is claim mix (deprecated-code lines 24.9% to 14.5%); without them PR-AUC is flat (0.200 to 0.206).
+- The user's local `val_model.parquet` / `test_model.parquet` are STALE (pre-2026-09-27 split, string-sorted dates).
+  Rebuild locally with load_data.py, build_target_and_split.py, build_features.py before any local Phase 5 work.
+- Next: figures (task 2), report as .docx until approved then PDF, video (slides with voiceover plus a short live demo),
+  Tableau aggregate CSVs and spec.
 
 ## Task queue (do in order; log each in SESSION_LOG.md)
 

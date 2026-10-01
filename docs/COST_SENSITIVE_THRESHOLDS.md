@@ -128,3 +128,11 @@ each lead. The report should say plainly that the operational claim needs real r
 - Choose t on the validation set per claim type and per lead type, then evaluate the untouched test set once.
 - Figures: precision@k and lift, calibration, cost versus threshold across a range of cost ratios, decision curve.
 - State every cost as a labelled hypothetical.
+
+## Update (2026-09-30, after the test evaluation)
+
+- The reliability curve this guide listed as not yet verified is done: on validation, expected calibration error (ECE, the
+  count-weighted gap between mean score and observed rate over 10 score bins) is 0.006 overall, 0.010 carrier, 0.010
+  outpatient, 0.011 DME. A recalibration rule stated in advance did not fire, so raw scores are used.
+- t was not swept as in step 2 above: with per-line costs the cutoff is r / L_i, which calibrated scores make valid
+  directly. See `docs/PHASE5.md` for the rule, the costs and the one-time test results.

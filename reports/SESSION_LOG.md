@@ -963,3 +963,37 @@ the score range (a reliability curve) is not yet verified.
 **Next.** Phase 5 in a new chat: the one-time test evaluation, figures, report, video script, Tableau aggregates. The handoff
 is in the Projects doc `claude/phase5_handoff_2026-09-30.md`.
 
+## 2026-09-30 Phase 5, step 1: one-time test evaluation
+
+**Result first.** The held-out test set (2021-11-23 to 2023-03-02, 359,985 lines) was scored once. PR-AUC 0.570,
+ROC-AUC 0.813, expected calibration error 0.007. Per claim type PR-AUC: carrier 0.189, outpatient 0.807, DME 0.259 (val
+0.191, 0.878, 0.266). Ranked by expected value, the top 1% of lines holds 80% of denied dollars. The cost rule nets
+$29.6M (24% recovery) or $19.0M (55% recovery) of synthetic dollars, 95% and 94% of a perfect model.
+
+**What I ran.** Your local val/test model files turned out to be stale (built 2026-09-25, before the date-sort split
+fix; val's denial rate was 14.9%, not 17.8%). I staged `combined_claims_raw.parquet`, added `_row_id` in the same
+file order `load_data.py` uses, and reran `build_target_and_split.py` and `build_features.py` in the cloud session.
+The label audit came out byte-identical to the committed one and the split rates matched, so the rebuild is the same
+data. The model was your local v2 (content hash 11f409f72fc4c45e, checked). Then `src/evaluate_test.py --stage val`
+(reproduced the recorded val metrics to 1e-6, applied a recalibration rule written in advance: it did not fire),
+committed the frozen protocol, and ran `--stage test` once.
+
+**Decisions you made today.** Review cost r = $37.51 x 1.3 x 20 minutes = $16.25. Recovery rate reported at both 24%
+(OIG verified) and 55% (CMS reported). Report as .docx until you approve, then PDF in the repo and LinkedIn. Video:
+what shows communication best, so slides with voiceover plus a short live demo of the explainer.
+
+**What the results mean.**
+- Outpatient's drop from val is claim mix, checked: deprecated-code lines fell from 24.9% to 14.5% of outpatient. Without
+  them, outpatient PR-AUC is 0.200 (val) and 0.206 (test). Outside that one rule the model is about 1.6 to 2.3 times
+  the base rate in every claim type. That is the honest size of the learned signal.
+- With unlimited reviewers, reviewing every outpatient line would net almost as much as the model's rule, because
+  outpatient lines carry large payments. The model earns its keep where capacity binds (ranking) and in carrier, where
+  reviewing everything loses money and the rule nets $0.73M.
+- DME line payments in Synthea are tiny (median $0), so almost no DME line is worth a review. A data limit, stated.
+
+**What went wrong.** One test failed at first only because the claim sample file was not in the sandbox; staged it,
+17 pass. Nothing else.
+
+**Left open / for you.** Rebuild your local processed files (three commands, one at a time when you're ready). Next
+step is task 2, the figures; I'll ask before building.
+

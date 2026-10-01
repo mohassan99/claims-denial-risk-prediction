@@ -424,3 +424,15 @@ the ceiling of an 8 GB machine. The same pipeline now also runs on Databricks as
   dollars, top k), how to choose the threshold on validation and report once on test, and which metrics matter for a claims
   quality lead list. All dollar figures are labelled hypotheticals; nothing has been computed on the test set.
 
+### Phase 5, step 1: one-time test evaluation (2026-09-30)
+
+- Decision rule chosen and frozen on validation before test was touched: review a line when p * L > r, with a
+  hypothetical review cost r = $16.25 (median examiner wage, 1.3 benefits load, 20 minutes) and loss L from the line's
+  payment and an overpayment recovery rate reported at both 24% and 55%. Calibration checked per claim type; a
+  pre-stated recalibration rule did not fire, so raw scores are used.
+- Test (2021-11-23 to 2023-03-02, used once): PR-AUC 0.570, ROC-AUC 0.813, calibration error 0.007. Carrier 0.189,
+  outpatient 0.807, DME 0.259. Outpatient fell from val because the near-deterministic deprecated-code lines became
+  rarer; without them its PR-AUC is flat.
+- For scarce reviewers: the top 1% of lines ranked by expected value holds 80% of denied dollars; the top 1% by score
+  is 95% denials (6.7 times the base rate). All dollars and labels are synthetic. Details: `docs/PHASE5.md`.
+
