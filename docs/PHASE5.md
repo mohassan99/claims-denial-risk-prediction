@@ -158,3 +158,65 @@ that carry facts:
   (9 of 364 were the model's own arithmetic, 3 of 409 were code meanings from memory, 0 after prompt v2). The right shows what the
   explainer could say, because 100% traceable is easy if it says little: fields with a meaning 68 to 178 of 180, code values
   with a meaning 0 to 56 of 74 (held-out claims, from the saved run summaries).
+
+## Reader's guide (plain-language answers for the report)
+
+### What goes in a figure and what goes in the text
+
+Decision (2026-10-01): the written report is the source, and the video script is written from the report text. Each figure must still
+stand alone when lifted out (a LinkedIn post, a slide). So a figure carries its own takeaway title, plain axis labels, a legend, and a
+short footnote that says what is plotted and on what sample, in plain words. The report text carries the reasoning, the formulas,
+the sources and the caveats. A figure never needs a spoken explanation to be read; the voiceover repeats and extends the report.
+
+### The three claim types, in plain words
+
+- **Carrier**: Medicare Part B claims from professional providers (physicians, physician assistants, nurse practitioners, clinical
+  social workers) and some organizations that bill the same way (independent clinical laboratories, ambulance providers, free-standing
+  surgery and radiology centers). The CMS documentation calls the people and businesses that are not institutions "suppliers", which
+  is why the figures say "clinician and supplier claims".
+- **Outpatient**: claims from institutions for care where the patient is not admitted as an inpatient. The CMS file covers hospital
+  outpatient departments, renal dialysis facilities, rural health clinics, federally qualified health centers, community mental
+  health centers and outpatient rehabilitation facilities. So "hospital outpatient" was too narrow: the figures now say "facility
+  claims, patient not admitted". The exact facility mix inside this synthetic file has not been checked.
+- **DME** (durable medical equipment): equipment such as wheelchairs, CPAP machines and supplies, billed by equipment suppliers.
+
+Sources: ResDAC, Original Medicare Carrier and Outpatient file descriptions (resdac.org/cms-data/files/carrier-ffs and /op-ffs);
+CMS Medicare enrollment terms (provider versus supplier). A "line" is one billed service on a claim.
+
+### Reading the decision curve (appendix figure)
+
+Reviewing a line has a price (a reviewer's time) and a prize (finding a denial). The curve asks, for a given exchange rate between
+the two, whether acting on the model beats the two lazy alternatives: review everything, or review nothing.
+
+- **t** is that exchange rate, written as a cutoff. t = 0.10 means "I would review a line if there is at least a 10% chance it is a
+  denial", which is the same as saying a false alarm costs 1/9 of what a catch gains (t / (1 - t) = 0.1 / 0.9 = 1/9). At t = 0.5 a false alarm
+  costs as much as a catch is worth. It connects to dollars through t = r / L: the review cost divided by the loss from a missed denial.
+- **Net benefit** = catches per line, minus false alarms per line times t / (1 - t). Shown per 100 lines.
+- **Worked example (test, all claim types, t = 0.10).** The model flags the lines scoring above 0.10, which is 49.9 of every 100 lines:
+  11.7 are real denials and 38.1 are false alarms. Net benefit = 11.7 - 38.1 / 9 = 7.5. Reviewing every line catches all 14.2 denials
+  but raises 85.8 false alarms: 14.2 - 85.8 / 9 = 4.6. Reviewing nothing scores 0. The model beats both.
+- This counts denials, not dollars. It is kept as an appendix figure because the dollar version is figure 3.
+
+### Is the cost rule usable in practice?
+
+The single cutoff in figure 3 is the baseline we compare against, so "not realistic" and "recommended rule" do not conflict: they are
+different rules. The recommended rule asks, for each line, whether the expected loss (chance of denial times the dollars at stake after
+recovery) is bigger than the cost of reviewing it, and it ranks lines by the surplus. That is an expected-value worklist.
+
+What carries over to a real payer:
+
+- The structure. Score every line, multiply by its dollars, subtract the cost of a review, and work the list from the top until the
+  reviewers' capacity runs out (figure 1, dollar order). Nothing in it depends on this synthetic data.
+- The inputs are observable: a calibrated probability, the dollars on the line, a review cost per case, and a recovery rate. A payer
+  would replace the hypothetical review cost and the 24% and 55% recovery rates with its own measured values, and would check the
+  calibration on its own claims before trusting the scores (here the sparse top bins ran above the diagonal).
+
+What would need to change or is not shown:
+
+- The unit. Reviews usually happen per claim, so a real version would add the expected losses of a claim's lines and compare that sum
+  with one review's cost. This project scores lines, which overstates the number of reviews.
+- The loss definition depends on the use. Here a missed denial is an overpayment that is recovered later at a cost (a post-payment
+  review). Before payment, or on the billing side, the loss is different (delay and rework rather than recovery).
+- The label is synthetic, so the dollar savings ($29.6M and $19.0M) show the method, not what a payer would save. A real deployment
+  would train on real denial or audit-finding outcomes and monitor for drift, as the claim-mix shift between validation and test shows.
+- Not modeled: appeal overturn rates, audit rules and time limits, and the provider-relations cost of audits.

@@ -123,8 +123,8 @@ def fig_calibration():
     ax.plot([0, 1], [0, 1], color=MUTED, lw=1, ls="--")
     ax.text(0.30, 0.37, "model exactly right", color=MUTED, fontsize=8, rotation=38)
     # outpatient is the only type with lines scoring above 0.5, so draw overall first, outpatient last, on top
-    order = [("overall", "All claim types", INK, 2.6), ("carrier", "Carrier (physician and supplier claims)", BLUE, 1.6),
-             ("dme", "DME (equipment claims)", AQUA, 1.6), ("outpatient", "Outpatient (hospital outpatient claims)", ORANGE, 1.6)]
+    order = [("overall", "All claim types", INK, 2.6), ("carrier", "Carrier (clinician and supplier claims)", BLUE, 1.6),
+             ("dme", "DME (equipment claims)", AQUA, 1.6), ("outpatient", "Outpatient (facility claims, patient not admitted)", ORANGE, 1.6)]
     for key, label, col, lw in order:
         d = RES["scored"][key]
         cal = [b for b in d["calibration"] if b["n"] > 0]
@@ -143,8 +143,8 @@ def fig_calibration():
     ax2.set_yscale("log"); ax2.set_xlim(0, 1); ax2.set_ylabel("Number of lines\n(log scale)")
     ax2.set_xlabel("Predicted chance of denial (in bins of 10 points)")
     ax2.set_title("How many lines fall in each bin: 87% score below 30%", loc="left", fontsize=9)
-    fig.text(0.01, 0.005, "Test set. Average gap between predicted and actual across bins: 0.7 percentage points (all types), "
-             "1.0 carrier, 1.8 outpatient, 1.2 DME.", fontsize=8, color=MUTED)
+    fig.text(0.01, -0.03, "Test set. Average gap between predicted and actual across bins: 0.7 percentage points (all types), "
+             "1.0 carrier, 1.8 outpatient, 1.2 DME.\nCarrier = claims from doctors, other clinicians, labs and ambulance.\nOutpatient = facility claims (hospital outpatient departments, dialysis centers, clinics) where the patient was not admitted.\nDME = equipment such as wheelchairs and CPAP.", fontsize=8, color=MUTED)
     save(fig, "fig2_calibration.png")
 
 
@@ -196,8 +196,8 @@ def fig_cost_threshold():
 
 # ---- Figure 4: decision curve (appendix) -----------------------------------------------
 def fig_decision_curve():
-    panels = [("overall", "All claim types", INK), ("carrier", "Carrier (physician and supplier claims)", BLUE),
-              ("outpatient", "Outpatient (hospital outpatient claims)", ORANGE), ("dme", "DME (equipment claims)", AQUA)]
+    panels = [("overall", "All claim types", INK), ("carrier", "Carrier (clinician and supplier claims)", BLUE),
+              ("outpatient", "Outpatient (facility claims, patient not admitted)", ORANGE), ("dme", "DME (equipment claims)", AQUA)]
     fig, axes = plt.subplots(2, 2, figsize=(9.8, 7.0), sharex=True)
     for ax, (key, title, col) in zip(axes.ravel(), panels):
         dc = RES["scored"][key]["decision_curve"]
@@ -217,8 +217,12 @@ def fig_decision_curve():
         ax.set_ylabel("Net denials found per 100 lines")
     fig.suptitle("Appendix: decision curve. The model finds more net denials than reviewing everything,\nbut in carrier and DME the gain is gone above a cutoff of about 0.3",
                  x=0.01, ha="left", fontsize=11, y=1.0)
-    fig.text(0.01, -0.03, "Net denials found = denials caught per 100 lines, minus false alarms per 100 lines x t/(1-t). Higher t means false alarms are charged more.\n"
-             "This counts denials, not dollars; dollars are in the cost figure.", fontsize=8, color=MUTED)
+    fig.text(0.01, -0.095, "Net denials found = denials caught per 100 lines, minus false alarms per 100 lines x t/(1-t). This counts denials, not dollars.\n"
+             "Reading t: at t = 0.10 each false alarm is charged 1/9 of a catch. Example, all claim types: the model flags 49.9 of every 100 lines,\n"
+             "11.7 real denials and 38.1 false alarms, so 11.7 - 38.1/9 = 7.5. Reviewing all 100 lines gives 14.2 - 85.8/9 = 4.6. Reviewing none gives 0.\n"
+             "Carrier = claims from doctors, other clinicians, labs and ambulance.\n"
+             "Outpatient = facility claims (hospital outpatient departments, dialysis centers, clinics) where the patient was not admitted.\n"
+             "DME = equipment such as wheelchairs and CPAP.", fontsize=8, color=MUTED)
     fig.subplots_adjust(top=0.9, bottom=0.1)
     save(fig, "fig4_decision_curve.png")
 
