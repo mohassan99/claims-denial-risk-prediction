@@ -443,3 +443,9 @@ the ceiling of an 8 GB machine. The same pipeline now also runs on Databricks as
   cost versus cutoff with review-time sensitivity, decision curve, SHAP importance, grounding by failure type) and checks each
   recomputed number against the saved JSON. Headline: the per-line cost rule beats the best single cutoff, even picked with
   hindsight on test, by $1.4M to $2.9M in all six cost settings. Details: `docs/PHASE5.md`.
+
+### Phase 5, step 2 follow-up: figures redrawn in plain language (2026-10-01)
+
+- After review, all six figures were redrawn so each reads without a spoken explanation (takeaway titles, plain axis labels, claim
+  types named). New verified fact for the report: every line the model scores 0.5 or higher is an outpatient line billed with a retired
+  consultation code, so the high end of the calibration curve is that one rule. Details: `docs/PHASE5.md`.

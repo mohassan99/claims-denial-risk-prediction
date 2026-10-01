@@ -1019,3 +1019,16 @@ data. Rebuild all three locally with the same three commands.
   "not tuned on test", which was wrong (they are hindsight), so it now says so; the grounding legend now names the failure.
 - Not drawn: the 516 of 516 grounding re-run after the CPT additions (no saved run folder). Open: confirm the figure list
   before the report uses it; the report is next (Opus).
+
+
+### Phase 5, step 2 follow-up: plain-language figures (2026-10-01)
+
+- You said the figures could not be understood without a spoken explanation, and asked whether the single cutoff is realistic, what
+  carrier means, whether net benefit is dollars, and about the empty grounding figure. All six were redrawn: takeaway titles, plain
+  axis labels, claim types defined, and a footnote with the sample and assumptions. The figure script still cross-checks every number.
+- Answers recorded in `docs/PHASE5.md`: a single cutoff is a comparison only (the rule is per-line dollars, a post-payment review
+  framing); net benefit counts denials, not dollars; the grounding figure now also shows how much the explainer can say.
+- New checked fact: all lines scoring 0.5 or higher are outpatient, 99.9% of them with a retired consultation code. Answered your
+  question about figure 2: carrier and DME do not overlap there because they have no lines there.
+- Mistake caught before shipping: I first wrote "dollar order: only 80%" under the precision panel, which read as a weakness; 80% is
+  high, it is just below score order's 95%. Fixed. Also a dollar sign in a caption was rendered as math text; fixed.

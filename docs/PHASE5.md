@@ -136,3 +136,25 @@ Notes and limits:
   tool output, not correct. Policy over-statements were found by reading and are not in the counts.
 - Figure 6 uses the five saved run summaries. The 516 of 516 re-run after the CPT additions has no saved run folder of its own, so it is not drawn.
 - Palette: first three slots of the validated default (blue, orange, aqua), the set that passes the all-pairs colorblind checks.
+
+### Update (2026-10-01, after reading the first versions): plain-language redraw
+
+The first versions needed a spoken explanation, so all six were redrawn with a one-sentence takeaway as the title, plain axis
+labels (no p, L, rho, ECE or "precision"), claim types named (carrier = physician and supplier claims, outpatient = hospital
+outpatient claims, DME = equipment claims), and the sample and assumptions in a footnote. Same data, same cross-checks. Changes
+that carry facts:
+
+- **Figure 2.** Every line scoring 0.5 or higher is outpatient (17,516 lines), and 99.9% of them are lines billed with a retired
+  consultation code (all 17,481 lines at 0.6 or higher). Carrier and DME have no lines above their 0.4 to 0.5 bin (50 and 54
+  lines). So the high-score end of the curve is the deprecated-code rule alone, and the black overall line and the orange
+  outpatient line coincide there. The figure now says so, and its histogram shows 87% of lines score below 0.3.
+- **Figure 3.** The single cutoff t is a comparison, not a recommendation. The recommended rule judges each line by its own
+  dollars. The dollars are overpayments recovered after payment (line payment times the recovery rate, less recovery cost), so the
+  framing is a post-payment review of paid lines.
+- **Figure 4** moved to an appendix role. Net benefit is not dollars: it is denials caught per line minus false alarms per line
+  weighted by t/(1-t), shown per 100 lines. It answers "does acting on the model beat reviewing everything or nothing at this
+  tradeoff", and the dollar story is figure 3.
+- **Figure 6** now has two panels. The left shows the share of statements traceable to a tool output and what each fix removed
+  (9 of 364 were the model's own arithmetic, 3 of 409 were code meanings from memory, 0 after prompt v2). The right shows what the
+  explainer could say, because 100% traceable is easy if it says little: fields with a meaning 68 to 178 of 180, code values
+  with a meaning 0 to 56 of 74 (held-out claims, from the saved run summaries).
