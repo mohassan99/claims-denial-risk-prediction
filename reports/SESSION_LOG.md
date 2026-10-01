@@ -957,8 +957,8 @@ D3 skipped.
 
 **What I added.** `docs/COST_SENSITIVE_THRESHOLDS.md` explains the confusion matrix metrics, the cost-optimal threshold
 and its derivation, the capacity-bound ranking, how to optimize (calibration check, validation sweep, cost-ratio sensitivity,
-decision curve, test once), and the metrics that matter. Dollar figures are hypothetical. XGBoost calibration on validation is
-not yet verified.
+decision curve, test once), and the metrics that matter. Dollar figures are hypothetical. On validation, mean predicted probability matches the actual denial rate overall and per claim type; calibration across
+the score range (a reliability curve) is not yet verified.
 
 **Next.** Phase 5 in a new chat: the one-time test evaluation, figures, report, video script, Tableau aggregates. The handoff
 is in the Projects doc `claude/phase5_handoff_2026-09-30.md`.

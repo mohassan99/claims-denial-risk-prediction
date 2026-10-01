@@ -85,8 +85,10 @@ and not by p_i alone. A 40% claim worth $5,000 can outrank a 70% claim worth $50
 
 1. **Check calibration first.** t* is only valid if p is a real probability. Use a reliability curve and the Brier score,
    per claim type. Recalibrate if needed. Prevalence moves between splits in this project, so calibration must be checked
-   on the data used to choose t. The Phase 2 baseline's calibration was tight in every claim type; the XGBoost model's
-   calibration has not yet been verified on the validation set (not yet verified).
+   on the data used to choose t. Verified so far (from `reports/xgboost_results.txt`, validation set): the average predicted probability matches the actual
+   denial rate overall and in each claim type (overall 0.1805 vs 0.1779, carrier 0.1006 vs 0.1004, outpatient 0.3168 vs 0.3099,
+   DME 0.1596 vs 0.1589). Not yet verified: calibration across the score range, which is what the high-score end of a lead list
+   depends on. That needs a reliability curve (bin by score, compare each bin's mean prediction to its actual rate).
 2. **Sweep t on the validation set.** At each t compute the confusion matrix and the total cost
    C(t) = C_FP x FP(t) + C_FN x FN(t) (plus review costs). Take the minimizer.
 3. **Sweep the cost ratio too.** The costs are assumptions. Show how t* and the chosen operating point move as C_FN / C_FP
