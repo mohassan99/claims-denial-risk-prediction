@@ -111,3 +111,28 @@ on whether the reviewer's goal is error counts or dollars.
 `train_model.parquet` is stale too, and older: built 2026-09-22, it predates both the 2026-09-24 label fix (12.1% denied
 instead of 14.4%) and the split fix (its dates run 2015 to 2023, days 1 to 20 of each month). All three local split files
 need the rebuild. Nothing in this evaluation used them: the model came from the registry and val/test were rebuilt.
+
+## Figures (step 2)
+
+`python scripts/make_phase5_figures.py` writes six PNGs to `reports/phase5/figures/`. It reads only saved results
+(`test_results.json`, `test_predictions.parquet`, `reports/shap_fit.json`, the Phase 4 run summaries) and never scores the
+test set. Before drawing, it recomputes every plotted number it can (precision and dollar share at each k, net savings per
+setting, review-all net) and fails if any differs from the saved JSON; the passes are in `figure_checks.txt`.
+
+| File | What it shows | What it says |
+| --- | --- | --- |
+| `fig1_ranking_precision_and_dollars.png` | Precision and share of denied dollars covered as more lines are reviewed, ranked by score and by value p*L - r (rho 0.24) | Score ranking finds denials (about 95% precision in the top 5%); value ranking finds dollars (80% of denied dollars in the top 1%, 97% in the top 20% versus 85% by score) |
+| `fig2_calibration.png` | Reliability curve per claim type with ECE, and how many lines fall in each score bin | 87% of lines score below 0.3, where the curve hugs the diagonal. Only 4.9% of lines score 0.6 or higher, and those bins run above the diagonal (0.66 scored, 0.86 denied), so the model under-states risk there. ECE stays 0.007 overall because those bins are small |
+| `fig3_cost_vs_cutoff.png` | Net savings versus one cutoff t for every line, for review time m = 10, 20, 30 minutes (r = $8.13, $16.25, $24.38), at rho 0.24 and 0.55 | The per-line rule p*L > r beats the best single cutoff chosen with hindsight on test by $1.4M to $2.9M in all six settings (for example $29.6M versus $26.8M at m = 20, rho 0.24). The ratio of review cost to loss moves the optimum, which is why one cutoff cannot be right for every line |
+| `fig4_decision_curve.png` | Net benefit (TP/n - FP/n * t/(1-t)) versus threshold, overall and by claim type | The model beats review-all and review-none at every threshold overall and in outpatient. In carrier and DME it adds value only below about t = 0.25 and 0.3; above that net benefit is about zero (DME slightly negative) |
+| `fig5_shap_importance.png` | Mean absolute SHAP, top 15 features | HCPCS procedure code is 0.87, next is 0.15. SHAP comes from the 20,000-row validation sample, not test |
+| `fig6_grounding_by_failure_type.png` | Ungrounded tokens by kind for each Phase 4 run | The 9 ungrounded tokens in v1 were all numbers the model computed itself; the 3 in the next run were code descriptions from memory; none after prompt v2 |
+
+Notes and limits:
+
+- The dots in figure 3 are the best single cutoff found on test, with hindsight. They are an upper bound for any single
+  cutoff and are not a tuned setting. The cost rule itself was frozen on validation.
+- Figure 4 reads the saved decision curve values (t = 0.02 to 0.60). Figure 6 reports grounding, which means traceable to a
+  tool output, not correct. Policy over-statements were found by reading and are not in the counts.
+- Figure 6 uses the five saved run summaries. The 516 of 516 re-run after the CPT additions has no saved run folder of its own, so it is not drawn.
+- Palette: first three slots of the validated default (blue, orange, aqua), the set that passes the all-pairs colorblind checks.

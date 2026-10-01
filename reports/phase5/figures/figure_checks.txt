@@ -1,0 +1,28 @@
+OK   precision@1% by score: recomputed 0.951667 vs saved 0.951667
+OK   precision@1% by value: recomputed 0.800556 vs saved 0.800556
+OK   dollar share@1% by score: recomputed 0.224726 vs saved 0.224726
+OK   dollar share@1% by value: recomputed 0.795848 vs saved 0.795848
+OK   precision@2% by score: recomputed 0.950139 vs saved 0.950139
+OK   precision@2% by value: recomputed 0.725972 vs saved 0.725972
+OK   dollar share@2% by score: recomputed 0.361273 vs saved 0.361273
+OK   dollar share@2% by value: recomputed 0.831238 vs saved 0.831238
+OK   precision@5% by score: recomputed 0.931552 vs saved 0.931552
+OK   precision@5% by value: recomputed 0.704984 vs saved 0.704984
+OK   dollar share@5% by score: recomputed 0.842456 vs saved 0.842456
+OK   dollar share@5% by value: recomputed 0.886792 vs saved 0.886792
+OK   precision@10% by score: recomputed 0.598978 vs saved 0.598978
+OK   precision@10% by value: recomputed 0.416079 vs saved 0.416079
+OK   dollar share@10% by score: recomputed 0.842586 vs saved 0.842586
+OK   dollar share@10% by value: recomputed 0.927273 vs saved 0.927273
+OK   precision@20% by score: recomputed 0.400378 vs saved 0.400378
+OK   precision@20% by value: recomputed 0.293221 vs saved 0.293221
+OK   dollar share@20% by score: recomputed 0.849849 vs saved 0.849849
+OK   dollar share@20% by value: recomputed 0.974092 vs saved 0.974092
+OK   rule net savings rho=0.24 m=10: recomputed 30362004.023733 vs saved 30362004.023733
+OK   rule net savings rho=0.24 m=20: recomputed 29632530.602800 vs saved 29632530.602800
+OK   review-all net rho=0.24: recomputed 25655914.273000 vs saved 25655914.273000
+OK   rule net savings rho=0.24 m=30: recomputed 28963779.813800 vs saved 28963779.813800
+OK   rule net savings rho=0.55 m=10: recomputed 19682764.755354 vs saved 19682764.755354
+OK   rule net savings rho=0.55 m=20: recomputed 18997221.136708 vs saved 18997221.136708
+OK   review-all net rho=0.55: recomputed 14837767.106250 vs saved 14837767.106250
+OK   rule net savings rho=0.55 m=30: recomputed 18413220.298875 vs saved 18413220.298875

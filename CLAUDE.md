@@ -354,11 +354,13 @@ test_results.json, which would void the once-only record: don't).
   `docs/PHASE5.md` for terms, sources and results.
 - Test: PR-AUC 0.570 / ROC 0.813 / ECE 0.007; carrier 0.189/0.713, outpatient 0.807/0.898, DME 0.259/0.710.
   Outpatient's drop is claim mix (deprecated-code lines 24.9% to 14.5%); without them PR-AUC is flat (0.200 to 0.206).
-- ALL THREE of the user's local split files are STALE (checked 2026-09-30): `train_model.parquet` (built 2026-09-22) has
+- (Fixed 2026-10-01: the user rebuilt all three locally; row ids, labels and columns match the cloud rebuild.) ALL THREE of the user's local split files WERE STALE (checked 2026-09-30): `train_model.parquet` (built 2026-09-22) has
   the pre-2026-09-24 label (12.1% denied) and the day-of-month split; `val_model` / `test_model` (2026-09-25) have the
   corrected label but the day-of-month split. Model v2 is fine (it came from the Azure registry, trained in the cloud on
   the correct data). Rebuild locally with load_data.py, build_target_and_split.py, build_features.py.
-- Next: figures (task 2), report as .docx until approved then PDF, video (slides with voiceover plus a short live demo),
+- Figures done 2026-10-01 (`scripts/make_phase5_figures.py` -> `reports/phase5/figures/`, six PNGs, numbers cross-checked against the saved JSON; see `docs/PHASE5.md`).
+  Per-line rule beats the best hindsight single cutoff by $1.4M to $2.9M in all six cost settings.
+- Next: report as .docx until approved then PDF (switch to Opus), video (slides with voiceover plus a short live demo),
   Tableau aggregate CSVs and spec.
 
 ## Task queue (do in order; log each in SESSION_LOG.md)

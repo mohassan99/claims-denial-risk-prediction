@@ -1002,3 +1002,20 @@ built 2026-09-22, before the label fix (12.1% denied, not 14.4%) and before the 
 each month). The model is right because it came from the Azure registry, where it was trained in the cloud on the correct
 data. Rebuild all three locally with the same three commands.
 
+
+
+### Phase 5, step 2: figures (2026-10-01)
+
+- Wrote `scripts/make_phase5_figures.py` and generated six figures in `reports/phase5/figures/`. Every plotted number that
+  has a saved counterpart (precision and dollar share at each k, net savings per cost setting, review-all net) was
+  recomputed from `test_predictions.parquet` and matched the saved JSON; `figure_checks.txt` lists them. The test set was
+  not scored again.
+- What the figures show: score ranking finds denials, value ranking finds dollars. Scores are well calibrated where 87% of
+  lines sit (below 0.3) but run low in the sparse bins above 0.6 (4.9% of lines). The per-line rule beats the best single
+  cutoff, chosen with hindsight on test, by $1.4M to $2.9M in all six settings. The model beats review-all at every
+  threshold overall, but in carrier and DME only below about t = 0.25 to 0.3.
+- Fixed while looking at the first drafts: the calibration title said scores can be read as probabilities, which the
+  sparse high bins contradict, so it now says where they do and do not; the cost-curve caption called the best-cutoff dots
+  "not tuned on test", which was wrong (they are hindsight), so it now says so; the grounding legend now names the failure.
+- Not drawn: the 516 of 516 grounding re-run after the CPT additions (no saved run folder). Open: confirm the figure list
+  before the report uses it; the report is next (Opus).

@@ -436,3 +436,10 @@ the ceiling of an 8 GB machine. The same pipeline now also runs on Databricks as
 - For scarce reviewers: the top 1% of lines ranked by expected value holds 80% of denied dollars; the top 1% by score
   is 95% denials (6.7 times the base rate). All dollars and labels are synthetic. Details: `docs/PHASE5.md`.
 
+
+### Phase 5, step 2: figures (2026-10-01)
+
+- `scripts/make_phase5_figures.py` draws six figures from the saved test results and predictions (ranking, calibration,
+  cost versus cutoff with review-time sensitivity, decision curve, SHAP importance, grounding by failure type) and checks each
+  recomputed number against the saved JSON. Headline: the per-line cost rule beats the best single cutoff, even picked with
+  hindsight on test, by $1.4M to $2.9M in all six cost settings. Details: `docs/PHASE5.md`.
