@@ -14,3 +14,6 @@ data/processed/*
 # train_model.parquet -- rerun `python src/fit_xgboost.py` to reproduce.
 reports/xgboost_model.json
 reports/xgboost_model_meta.json
+
+# Phase 5 per-line predictions: regenerable by src/evaluate_test.py
+reports/phase5/*_predictions.parquet
