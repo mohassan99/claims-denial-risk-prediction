@@ -416,3 +416,11 @@ the ceiling of an 8 GB machine. The same pipeline now also runs on Databricks as
   misread honest provenance notes as refusals; the split I made afterward is post hoc and labeled so.
 - A source corrected my guess: `T7432X` is child psychological abuse, confirmed, not generic psychological abuse.
 - Cost $0.62 for the after run. Tests: 17 pass.
+
+### Phase 5 preparation: cost-sensitive thresholds (2026-09-30)
+
+- Added `docs/COST_SENSITIVE_THRESHOLDS.md`: how the cost of a false positive versus a false negative sets the cutoff
+  (t* = (C_FP - C_TN) / ((C_FP - C_TN) + (C_FN - C_TP))), what changes when reviewer capacity binds (rank by expected
+  dollars, top k), how to choose the threshold on validation and report once on test, and which metrics matter for a claims
+  quality lead list. All dollar figures are labelled hypotheticals; nothing has been computed on the test set.
+

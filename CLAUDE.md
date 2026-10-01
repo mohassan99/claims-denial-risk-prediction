@@ -338,6 +338,8 @@ eval runner), guide in `docs/PHASE4.md`, all transcripts in `reports/phase4/runs
   `cpt` section (AMA owns the official descriptors, so the tools label them as paraphrases); re-run grounding 516/516,
   code values with a meaning 67/74. `not_verified_left_out` now lists only CPT 99401 (99397 was added from CMS Transmittal 12546; 99401 is not in it) and a test keeps it out.
   Rule kept: never add an entry that was not checked against a source in the session.
+- **Phase 5 design basis (2026-09-30):** `docs/COST_SENSITIVE_THRESHOLDS.md` (cost-optimal cutoff, capacity-bound ranking,
+  metrics for a claims quality lead list). Payer is the primary audience. Choose thresholds on val, evaluate test once.
 - Open: CPT 99401 and other CPT codes, and rare diagnosis codes still get an honest decline.
 
 ## Task queue (do in order; log each in SESSION_LOG.md)

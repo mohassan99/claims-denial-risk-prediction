@@ -946,3 +946,20 @@ You pointed me to CMS Transmittal 12546 for 99397 and 99401. I fetched it twice.
 worded only from what the document says; 99401 stays undescribed and on the not-verified list. Tests updated (99397 now
 described, 99401 still declines). I did not re-run the 30 claims: none of them showed 99397 as a top feature, so a re-run would
 not measure anything. The earlier Phase 4 finding that an agent invented "99397 (a preventive visit)" under prompt v1 is unchanged.
+
+### Phase 5 preparation: cost-sensitive thresholds and the payer framing (2026-09-30)
+
+**Decisions (from discussion, no code run).** Payer is the primary audience (claims quality, claims analysts, their management),
+provider billing team secondary. The central use case is a ranked lead list for scarce reviewers, two-sided: likely
+overpayments and likely wrongful denials or underpayments. Keep a random audit slice and reweight targeted selections by
+inverse probability. Visuals: static figures carry the report and video, plus one Tableau Public dashboard (aggregates only);
+D3 skipped.
+
+**What I added.** `docs/COST_SENSITIVE_THRESHOLDS.md` explains the confusion matrix metrics, the cost-optimal threshold
+and its derivation, the capacity-bound ranking, how to optimize (calibration check, validation sweep, cost-ratio sensitivity,
+decision curve, test once), and the metrics that matter. Dollar figures are hypothetical. XGBoost calibration on validation is
+not yet verified.
+
+**Next.** Phase 5 in a new chat: the one-time test evaluation, figures, report, video script, Tableau aggregates. The handoff
+is in the Projects doc `claude/phase5_handoff_2026-09-30.md`.
+
