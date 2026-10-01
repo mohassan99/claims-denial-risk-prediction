@@ -106,3 +106,8 @@ on whether the reviewer's goal is error counts or dollars.
   order `load_data.py` uses); `reports/label_audit.txt` came out byte-identical and the split rates matched (14.4%,
   17.8%, 14.2%). The user's local `val_model.parquet` / `test_model.parquet` predate the 2026-09-27 split fix and
   must be rebuilt (`python src/load_data.py`, `python src/build_target_and_split.py`, `python src/build_features.py`).
+
+**Correction (2026-09-30, same day).** The line above named only the local val and test files. The local
+`train_model.parquet` is stale too, and older: built 2026-09-22, it predates both the 2026-09-24 label fix (12.1% denied
+instead of 14.4%) and the split fix (its dates run 2015 to 2023, days 1 to 20 of each month). All three local split files
+need the rebuild. Nothing in this evaluation used them: the model came from the registry and val/test were rebuilt.

@@ -997,3 +997,8 @@ what shows communication best, so slides with voiceover plus a short live demo o
 **Left open / for you.** Rebuild your local processed files (three commands, one at a time when you're ready). Next
 step is task 2, the figures; I'll ask before building.
 
+**Correction (same day).** I said your local val and test files were stale. So is your local train file, and it is older:
+built 2026-09-22, before the label fix (12.1% denied, not 14.4%) and before the split fix (dates 2015 to 2023, days 1 to 20 of
+each month). The model is right because it came from the Azure registry, where it was trained in the cloud on the correct
+data. Rebuild all three locally with the same three commands.
+
