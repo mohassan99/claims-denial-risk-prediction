@@ -1032,3 +1032,16 @@ data. Rebuild all three locally with the same three commands.
   question about figure 2: carrier and DME do not overlap there because they have no lines there.
 - Mistake caught before shipping: I first wrote "dollar order: only 80%" under the precision panel, which read as a weakness; 80% is
   high, it is just below score order's 95%. Fixed. Also a dollar sign in a caption was rendered as math text; fixed.
+
+
+### Epic mapping for the provider-side view (2026-10-02)
+
+- **Why:** a recruiter for a provider-side revenue cycle role raised Epic as the gap. The goal is honest evidence of where payer-side claim fields
+  and denial outcomes live in a hospital's billing data, not a claim of Epic experience.
+- **What was added (documentation only):** `docs/EPIC_MAPPING.md`, a short README section, and Appendix D in the written report (v4). The model,
+  metrics, figures, results files, agent, tools and tests were not touched, and `src/evaluate_test.py` was not run.
+- **What was checked:** the open.epic.com page for each table was read on 2026-10-02. ARPB_TRANSACTIONS has 67 columns and no allowed-amount
+  or CPT/HCPCS column, so those two rows moved to To confirm for professional billing. Authorization tables map the prior-authorization reason only as a
+  closest match. Appeal tables are mentioned only as not modeled.
+- **Open:** where diagnosis codes sit in hospital billing, where remittance reason codes live, and how to join billing transactions into claim
+  lines. All listed as To confirm.

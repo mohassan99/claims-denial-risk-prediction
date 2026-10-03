@@ -449,3 +449,12 @@ the ceiling of an 8 GB machine. The same pipeline now also runs on Databricks as
 - After review, all six figures were redrawn so each reads without a spoken explanation (takeaway titles, plain axis labels, claim
   types named). New verified fact for the report: every line the model scores 0.5 or higher is an outpatient line billed with a retired
   consultation code, so the high end of the calibration curve is that one rule. Details: `docs/PHASE5.md`.
+
+
+### Epic mapping (provider-side view)
+
+A recruiter asked how this payer-side work relates to a hospital's Epic billing data, so `docs/EPIC_MAPPING.md` maps this project's claim fields
+and built denial reasons to the Epic tables where they would sit. It is built from Epic's public table documentation (open.epic.com EHI export
+schema), not hands-on Epic work, and the pipeline has never been run on Epic data. Every row carries a status (Verified, Table exists description
+not read, or To confirm). The public schema covers Epic-released export tables; an organization's version and its reporting database (Clarity) can
+differ. The written report's Appendix D is the short version. See `docs/EPIC_MAPPING.md`.
